@@ -39,6 +39,10 @@ def main():
     if not setup_script.exists():
         shutil.copy2(bundled / "plugins-update.sh", setup_script)
         setup_script.chmod(0o755)
+    tips_script = tmux_dir / "tips.sh"
+    if not tips_script.exists():
+        shutil.copy2(bundled / "tips.sh", tips_script)
+        tips_script.chmod(0o755)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name
