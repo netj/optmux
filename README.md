@@ -29,10 +29,10 @@ That's it. On first run, optmux will:
 uv tool install git+https://github.com/netj/optmux
 ```
 
-Or run directly without installing:
+For local development/testing:
 
 ```bash
-uvx optmux myproject.optmux.yaml
+uv tool install -e .
 ```
 
 ## Usage

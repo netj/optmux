@@ -1,7 +1,7 @@
 [project]
 name = "optmux"
 version = "0.1.0"
-description = "tmuxp wrapper with per-workflow tmux config directories"
+description = "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project"
 readme = "README.md"
 authors = [
     { name = "Jaeho Shin", email = "netj@sparcs.org" }
