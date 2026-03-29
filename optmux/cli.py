@@ -36,6 +36,8 @@ def main():
     # also source any tmux.*.conf files from the optmux dir
     # (tmux -f only takes one file, but the bundled conf can source-file extras)
 
+    os.environ["OPTMUX_DIR"] = str(optmux_dir)
+    os.environ["OPTMUX_BASENAME"] = optmux_dir.name.removesuffix(".optmux.d")
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(optmux_dir / "tmux-plugins")
 
     sock = str(optmux_dir / "tmux.sock")
