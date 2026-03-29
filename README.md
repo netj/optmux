@@ -56,7 +56,7 @@ Opens plain `tmux` using `.optmux.d/` in the current directory — useful for a 
 
 ### As a shebang
 
-Add the shebang line to any `.optmux.yaml` file and make it executable:
+Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable:
 
 ```yaml
 #!/usr/bin/env -S uvx optmux
