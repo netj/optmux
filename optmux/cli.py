@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -27,18 +28,22 @@ def main():
 
     optmux_dir.mkdir(parents=True, exist_ok=True)
 
-    # seed tmux.conf from bundled default if not present
+    # seed bundled files if not present
+    bundled = files("optmux").joinpath("data")
     tmux_conf = optmux_dir / "tmux.conf"
     if not tmux_conf.exists():
-        bundled = files("optmux").joinpath("data/tmux.conf")
-        shutil.copy2(bundled, tmux_conf)
-
-    # also source any tmux.*.conf files from the optmux dir
-    # (tmux -f only takes one file, but the bundled conf can source-file extras)
+        shutil.copy2(bundled / "tmux.conf", tmux_conf)
+    setup_script = optmux_dir / "tmux-plugins-setup.sh"
+    if not setup_script.exists():
+        shutil.copy2(bundled / "tmux-plugins-setup.sh", setup_script)
+        setup_script.chmod(0o755)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_BASENAME"] = optmux_dir.name.removesuffix(".optmux.d")
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(optmux_dir / "tmux-plugins")
+
+    # bootstrap/update tmux plugins before starting tmux
+    subprocess.run([str(setup_script)], check=True)
 
     sock = str(optmux_dir / "tmux.sock")
     conf = str(tmux_conf)
