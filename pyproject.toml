@@ -1,0 +1,23 @@
+[project]
+name = "optmux"
+version = "0.1.0"
+description = "tmuxp wrapper with per-workflow tmux config directories"
+readme = "README.md"
+authors = [
+    { name = "Jaeho Shin", email = "netj@sparcs.org" }
+]
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "tmuxp",
+]
+
+[project.scripts]
+optmux = "optmux.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.10,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""

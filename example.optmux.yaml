@@ -1,0 +1,12 @@
+#!/usr/bin/env -S uvx optmux
+session_name: example
+windows:
+  - window_name: editor
+    panes:
+      - vim .
+  - window_name: shell
+    panes:
+      - ""
+  - window_name: logs
+    panes:
+      - tail -f /var/log/system.log
