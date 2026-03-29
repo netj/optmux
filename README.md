@@ -1,6 +1,6 @@
 # optmux
 
-A [tmuxp](https://github.com/tmux-python/tmuxp) wrapper that creates per-workflow tmux config directories with [TPM](https://github.com/tmux-plugins/tpm) and plugins pre-configured.
+A [tmuxp](https://github.com/tmux-python/tmuxp) wrapper that creates per-project tmux config directories with [TPM](https://github.com/tmux-plugins/tpm) and plugins pre-configured.
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ cd optmux
 
 That's it. On first run, optmux will:
 
-1. Create `example.optmux.d/tmux/` next to the YAML file
+1. Create `.example.optmux.d/tmux/` next to the YAML file
 2. Seed a default `tmux.conf` with TPM and plugins
 3. Install TPM and all plugins (visible in window 0)
 4. Launch tmuxp with an isolated tmux server
@@ -30,7 +30,7 @@ uv tool install optmux
 Or run directly without installing:
 
 ```bash
-uvx optmux workflow.optmuxp.yaml
+uvx optmux myproject.optmux.yaml
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ uvx optmux workflow.optmuxp.yaml
 ### With a tmuxp YAML file
 
 ```bash
-optmux myproject.optmuxp.yaml
+optmux myproject.optmux.yaml
 ```
 
 ### Without arguments
@@ -70,15 +70,15 @@ chmod +x myproject.optmux.yaml
 ./myproject.optmux.yaml
 ```
 
-## Per-workflow config directory
+## Config directory
 
-Each workflow gets its own `$WORKFLOW.optmux.d/` directory:
+Each project gets its own `.$NAME.optmux.d/` directory:
 
 | Path | Purpose |
 |---|---|
 | `tmux/tmux.conf` | Main tmux config (editable after creation) |
 | `tmux/tmux.*.conf` | Additional config files you can add |
-| `tmux/tmux.sock` | Tmux server socket (isolates this workflow) |
+| `tmux/tmux.sock` | Tmux server socket (isolates this project) |
 | `tmux/plugins/` | TPM plugin directory |
 | `tmux/plugins-update.sh` | Run manually to update all plugins |
 
@@ -95,8 +95,8 @@ optmux sets these before launching tmux/tmuxp:
 
 | Variable | Value |
 |---|---|
-| `OPTMUX_DIR` | Absolute path to the `.optmux.d/` directory |
-| `OPTMUX_BASENAME` | Workflow name (e.g., `myproject`) |
+| `OPTMUX_DIR` | Absolute path to the `.$NAME.optmux.d/` directory |
+| `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
 
 ## License

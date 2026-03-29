@@ -8,7 +8,7 @@ from pathlib import Path
 
 def main():
     if len(sys.argv) > 1:
-        # optmux WORKFLOW.optmuxp.yaml [TMUXP_ARGS...]
+        # optmux NAME.optmux.yaml [TMUXP_ARGS...]
         tmuxp_yaml = sys.argv[1]
         remaining_args = sys.argv[2:]
 
@@ -16,14 +16,15 @@ def main():
         yaml_dir = yaml_path.parent
 
         # strip .yaml, then .tmuxp, then .optmux suffixes
-        workflow = yaml_path.stem
+        name = yaml_path.stem
         for suffix in (".tmuxp", ".optmux", ".optmuxp"):
-            if workflow.endswith(suffix):
-                workflow = workflow[: -len(suffix)]
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
 
-        optmux_dir = yaml_dir / f"{workflow}.optmux.d"
+        optmux_dir = yaml_dir / f".{name}.optmux.d"
     else:
         # optmux (no args) — just open tmux in cwd
+        name = Path.cwd().name
         optmux_dir = Path.cwd() / ".optmux.d"
 
     tmux_dir = optmux_dir / "tmux"
@@ -40,7 +41,7 @@ def main():
         setup_script.chmod(0o755)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
-    os.environ["OPTMUX_BASENAME"] = optmux_dir.name.removesuffix(".optmux.d")
+    os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
 
     # bootstrap TPM (clone only); plugin install happens inside tmux via tmux.conf
@@ -63,5 +64,4 @@ def main():
         if has_session:
             os.execvp("tmux", ["tmux", "-S", sock, "attach-session"])
         else:
-            session_name = f"optmux-{Path.cwd().name}"
-            os.execvp("tmux", ["tmux", "-S", sock, "-f", conf, "new-session", "-s", session_name])
+            os.execvp("tmux", ["tmux", "-S", sock, "-f", conf, "new-session", "-s", f"optmux {name}"])
