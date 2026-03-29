@@ -44,7 +44,7 @@ def main():
     if len(sys.argv) > 1:
         os.execvp(
             "tmuxp",
-            ["tmuxp", "load", "-S", sock, "-f", conf, *remaining_args],
+            ["tmuxp", "load", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
         )
     else:
         os.execvp("tmux", ["tmux", "-S", sock, "-f", conf])
