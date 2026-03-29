@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # optmux tmux plugin setup/update script
-# Bootstraps TPM, and installs/updates plugins when run inside tmux.
-# Run manually to update: ./path/to/workflow.optmux.d/tmux/plugins-setup.sh
+# Bootstraps TPM, installs missing plugins, and updates all plugins.
+# Run manually to update: ./path/to/workflow.optmux.d/tmux/plugins-update.sh
 set -euo pipefail
 
 : ${OPTMUX_DIR:="$(cd "$(dirname "$0")/.."; pwd)"}
@@ -17,9 +17,9 @@ if [[ ! -x "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/tpm ]]; then
 fi
 
 if [[ -n "${TMUX:-}" ]]; then
-    # inside tmux: tpm can query the server, so install/update plugins
     echo "optmux: installing/updating tmux plugins..."
     "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/bin/install_plugins
-    # reload config to activate newly installed plugins
+    "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/bin/update_plugins all
+    # reload config to activate newly installed/updated plugins
     tmux source-file "$OPTMUX_DIR/tmux/tmux.conf"
 fi

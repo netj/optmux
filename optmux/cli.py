@@ -34,9 +34,9 @@ def main():
     tmux_conf = tmux_dir / "tmux.conf"
     if not tmux_conf.exists():
         shutil.copy2(bundled / "tmux.conf", tmux_conf)
-    setup_script = tmux_dir / "plugins-setup.sh"
+    setup_script = tmux_dir / "plugins-update.sh"
     if not setup_script.exists():
-        shutil.copy2(bundled / "plugins-setup.sh", setup_script)
+        shutil.copy2(bundled / "plugins-update.sh", setup_script)
         setup_script.chmod(0o755)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
