@@ -1,5 +1,7 @@
 # optmux
 
+Optimal, opinionated, batteries-included TMUX that's neat and easy for any project.
+
 A [tmuxp](https://github.com/tmux-python/tmuxp) wrapper that creates per-project tmux config directories with [TPM](https://github.com/tmux-plugins/tpm) and plugins pre-configured.
 
 ## Quick Start
