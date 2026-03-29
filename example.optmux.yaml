@@ -1,5 +1,6 @@
 #!/usr/bin/env -S uvx optmux
 session_name: example
+start_directory: .
 windows:
   - window_name: editor
     panes:
