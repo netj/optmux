@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e74c3c"/>
+      <stop offset="100%" style="stop-color:#c0392b"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#2980b9"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="100%" style="stop-color:#00b4d8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect x="16" y="16" width="480" height="480" rx="64" ry="64" fill="url(#bg)"/>
+  <rect x="48" y="48" width="416" height="416" rx="16" ry="16" fill="none" stroke="#334" stroke-width="4"/>
+
+  <!-- Top title bar pane -->
+  <rect x="80" y="72" width="352" height="48" rx="8" ry="8" fill="url(#red)" opacity="0.9"/>
+  <circle cx="104" cy="96" r="6" fill="#fff" opacity="0.5"/>
+  <circle cx="124" cy="96" r="6" fill="#fff" opacity="0.5"/>
+  <circle cx="144" cy="96" r="6" fill="#fff" opacity="0.5"/>
+  <rect x="168" y="88" width="12" height="16" rx="2" fill="#0f0" opacity="0.7"/>
+
+  <!-- Two main panes -->
+  <rect x="96" y="148" width="120" height="80" rx="8" ry="8" fill="url(#blue)" opacity="0.95"/>
+  <rect x="296" y="148" width="120" height="80" rx="8" ry="8" fill="url(#blue)" opacity="0.95"/>
+  <rect x="120" y="168" width="72" height="40" rx="6" ry="6" fill="url(#cyan)" opacity="0.8"/>
+  <rect x="320" y="168" width="72" height="40" rx="6" ry="6" fill="url(#cyan)" opacity="0.8"/>
+  <rect x="136" y="178" width="8" height="20" rx="2" fill="#fff" opacity="0.9"/>
+  <text x="336" y="196" font-family="monospace" font-size="20" fill="#fff" opacity="0.9">$_</text>
+
+  <!-- Vertical split bar -->
+  <rect x="248" y="140" width="16" height="200" rx="4" ry="4" fill="#445" opacity="0.8"/>
+
+  <!-- Lower pane grid -->
+  <rect x="112" y="260" width="72" height="36" rx="4" ry="4" fill="url(#red)" opacity="0.7"/>
+  <rect x="196" y="260" width="44" height="36" rx="4" ry="4" fill="url(#red)" opacity="0.6"/>
+  <rect x="272" y="260" width="44" height="36" rx="4" ry="4" fill="url(#red)" opacity="0.6"/>
+  <rect x="328" y="260" width="72" height="36" rx="4" ry="4" fill="url(#red)" opacity="0.7"/>
+  <rect x="112" y="308" width="104" height="32" rx="4" ry="4" fill="url(#red)" opacity="0.5"/>
+  <rect x="296" y="308" width="104" height="32" rx="4" ry="4" fill="url(#red)" opacity="0.5"/>
+
+  <!-- Side panes -->
+  <rect x="56" y="148" width="24" height="200" rx="4" ry="4" fill="url(#blue)" opacity="0.4"/>
+  <rect x="432" y="148" width="24" height="200" rx="4" ry="4" fill="url(#blue)" opacity="0.4"/>
+
+  <!-- Horizontal split lines -->
+  <line x1="80" y1="136" x2="432" y2="136" stroke="#445" stroke-width="2" opacity="0.6"/>
+  <line x1="80" y1="348" x2="432" y2="348" stroke="#445" stroke-width="2" opacity="0.6"/>
+
+  <!-- Terminal lines in panes -->
+  <line x1="96" y1="172" x2="216" y2="172" stroke="#1a1a2e" stroke-width="1" opacity="0.3"/>
+  <line x1="96" y1="196" x2="216" y2="196" stroke="#1a1a2e" stroke-width="1" opacity="0.3"/>
+  <line x1="296" y1="172" x2="416" y2="172" stroke="#1a1a2e" stroke-width="1" opacity="0.3"/>
+  <line x1="296" y1="196" x2="416" y2="196" stroke="#1a1a2e" stroke-width="1" opacity="0.3"/>
+
+  <!-- Top accent -->
+  <polygon points="256,60 268,78 256,74 244,78" fill="#e74c3c" opacity="0.6"/>
+
+  <!-- Status bar -->
+  <rect x="80" y="380" width="352" height="36" rx="8" ry="8" fill="#1e3a1e" opacity="0.9"/>
+  <text x="96" y="404" font-family="monospace" font-size="14" font-weight="bold" fill="#4ade80">optmux</text>
+  <text x="168" y="404" font-family="monospace" font-size="13" fill="#6b7280">|</text>
+  <text x="184" y="404" font-family="monospace" font-size="13" fill="#4ade80">1:editor* 2:shell</text>
+  <text x="376" y="404" font-family="monospace" font-size="12" fill="#6b7280" text-anchor="end">optimal</text>
+</svg>
