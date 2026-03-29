@@ -37,8 +37,11 @@ uvx optmux myproject.optmux.yaml
 
 ### With a tmuxp YAML file
 
+Supports `.optmux.yaml`, `.tmuxp.yaml`, and `.optmuxp.yaml` extensions:
+
 ```bash
 optmux myproject.optmux.yaml
+optmux myproject.tmuxp.yaml
 ```
 
 ### Without arguments
