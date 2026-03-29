@@ -6,7 +6,7 @@ A [tmuxp](https://github.com/tmux-python/tmuxp) wrapper that creates per-project
 
 ```bash
 # install optmux
-uv tool install optmux
+uv tool install git+https://github.com/netj/optmux
 
 # try the included example
 git clone https://github.com/netj/optmux
@@ -24,7 +24,7 @@ That's it. On first run, optmux will:
 ## Install
 
 ```bash
-uv tool install optmux
+uv tool install git+https://github.com/netj/optmux
 ```
 
 Or run directly without installing:
