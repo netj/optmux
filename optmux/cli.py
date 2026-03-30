@@ -5,6 +5,49 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
+import yaml
+
+MANAGED_MARKER = "# optmux:managed\n"
+
+
+def generate_tmux_conf_files(tmux_dir, yaml_path):
+    """Generate tmux conf files from optmux YAML keys."""
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f) or {}
+    optmux = data.get("optmux") or {}
+
+    managed_files = set()
+
+    # optmux.shortcuts → tmux.shortcuts.conf
+    shortcuts = optmux.get("shortcuts") or {}
+    shortcuts_conf = tmux_dir / "tmux.shortcuts.conf"
+    if shortcuts:
+        lines = [MANAGED_MARKER]
+        for key, command in shortcuts.items():
+            lines.append(
+                f'bind -n {key} split-window -v -c "#{{pane_current_path}}" {command} \\; resize-pane -Z\n'
+            )
+        shortcuts_conf.write_text("".join(lines))
+        managed_files.add(shortcuts_conf)
+    elif shortcuts_conf.exists() and shortcuts_conf.read_text().startswith(MANAGED_MARKER):
+        shortcuts_conf.unlink()
+
+    # optmux.tmux_config → tmux.{name}.conf for each entry
+    tmux_config = optmux.get("tmux_config") or {}
+    for conf_name, content in tmux_config.items():
+        conf_file = tmux_dir / f"tmux.{conf_name}.conf"
+        conf_file.write_text(MANAGED_MARKER + content)
+        managed_files.add(conf_file)
+
+    # clean up stale managed files from previous runs
+    for conf_file in tmux_dir.glob("tmux.*.conf"):
+        if conf_file not in managed_files:
+            try:
+                if conf_file.read_text().startswith(MANAGED_MARKER):
+                    conf_file.unlink()
+            except OSError:
+                pass
+
 
 def main():
     if len(sys.argv) > 1:
@@ -39,6 +82,10 @@ def main():
     if not setup_script.exists():
         shutil.copy2(bundled / "plugins-update.sh", setup_script)
         setup_script.chmod(0o755)
+
+    # generate tmux conf files from optmux YAML
+    if len(sys.argv) > 1:
+        generate_tmux_conf_files(tmux_dir, yaml_path)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name

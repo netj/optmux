@@ -1,6 +1,12 @@
 #!/usr/bin/env -S uvx optmux
 session_name: example
 start_directory: .
+
+optmux:
+  shortcuts:
+    C-M-d: make deploy
+    C-M-b: make build
+
 windows:
   - window_name: editor
     panes:
