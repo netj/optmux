@@ -6,6 +6,10 @@ optmux:
   shortcuts:
     C-M-d: make deploy
     C-M-b: make build
+  tmux_config:
+    project-settings: |
+      set -g status-style bg=blue
+      set -g pane-border-style fg=blue
 
 windows:
   - window_name: editor
