@@ -91,6 +91,55 @@ Each project gets its own `.$NAME.optmux.d/` directory:
 | `tmux/plugins/` | TPM plugin directory |
 | `tmux/plugins-update.sh` | Run manually to update all plugins |
 
+## optmux YAML config
+
+Add an `optmux:` section to your tmuxp YAML to configure shortcuts and tmux settings:
+
+```yaml
+optmux:
+  shortcuts:
+    C-M-b: gh browse .                              # Ctrl-Alt-b: run command directly
+    C-M-e:
+      command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
+      window: true                                  # open in a new-window
+    E:
+      send-keys: ${VISUAL:-${EDITOR:-vim}} .        # send-keys (runs in a new shell)
+      zoom: false                                   # do not zoom (default: true for splits)
+  tmux_config:
+    project-settings: |
+      set -g status-style bg=blue
+```
+
+### Shortcuts
+
+Shortcuts bind tmux keys to commands:
+
+- **`C-M-*` keys** are bound globally (no prefix needed)
+- **Other keys** require the tmux prefix (`C-t`)
+- **`command:`** executes directly (default for string values)
+- **`send-keys:`** sends the command to a new shell (supports shell expansion)
+- **`window: true`** opens in a new window instead of a split
+- **`zoom: false`** disables auto-zoom on splits (default: true)
+
+### tmux_config
+
+Entries under `tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.
+
+### Personal config (`~/.optmux.yaml`)
+
+Create `~/.optmux.yaml` to define personal defaults that apply to all optmux sessions:
+
+```yaml
+optmux:
+  shortcuts:
+    C-M-g: lazygit
+  tmux_config:
+    my-defaults: |
+      set -g status-style bg=green
+```
+
+Personal config is merged with per-project config. When both define the same key, **personal settings take precedence**.
+
 ### Customization
 
 - Edit `tmux/tmux.conf` to change tmux settings
