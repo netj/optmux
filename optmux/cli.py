@@ -5,6 +5,53 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
+import yaml
+
+def generate_tmux_conf_files(tmux_dir, yaml_path):
+    """Generate tmux conf files from optmux YAML keys."""
+    # clear all managed files first to avoid stale configs
+    for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
+        conf_file.unlink()
+
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f) or {}
+    optmux = data.get("optmux") or {}
+
+    # optmux.shortcuts → tmux.optmux-shortcuts.conf
+    shortcuts = optmux.get("shortcuts") or {}
+    if shortcuts:
+        lines = []
+        for key, value in shortcuts.items():
+            bind = "bind -n" if key.startswith("C-M-") else "bind"
+            # normalize str to dict
+            if isinstance(value, str):
+                opts = {"command": value}
+            elif isinstance(value, dict):
+                opts = value
+            else:
+                continue
+            use_window = opts.get("new-window", False)
+            use_zoom = opts.get("zoom", True)
+            open_cmd = "new-window" if use_window else "split-window -v"
+            # build the tmux action
+            if "send-keys" in opts:
+                escaped = opts["send-keys"].replace("'", "'\\''")
+                action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
+            elif "command" in opts:
+                escaped = opts["command"].replace("'", "'\\''")
+                action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+            else:
+                continue
+            if use_zoom and not use_window:
+                action += " \\; resize-pane -Z"
+            lines.append(f"{bind} {key} {action}\n")
+        (tmux_dir / "tmux.optmux-shortcuts.conf").write_text("".join(lines))
+
+    # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
+    tmux_config = optmux.get("tmux_config") or {}
+    for conf_name, content in tmux_config.items():
+        (tmux_dir / f"tmux.optmux-extras.{conf_name}.conf").write_text(content)
+
 
 def main():
     if len(sys.argv) > 1:
@@ -43,6 +90,10 @@ def main():
     if not tips_script.exists():
         shutil.copy2(bundled / "tips.sh", tips_script)
         tips_script.chmod(0o755)
+
+    # generate tmux conf files from optmux YAML
+    if len(sys.argv) > 1:
+        generate_tmux_conf_files(tmux_dir, yaml_path)
 
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name
