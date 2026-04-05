@@ -95,6 +95,10 @@ def main():
     if len(sys.argv) > 1:
         generate_tmux_conf_files(tmux_dir, yaml_path)
 
+    # ensure scripts from optmux's own venv (e.g., tmuxp) are on PATH
+    venv_bin = str(Path(sys.executable).parent)
+    os.environ["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
+
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
@@ -108,7 +112,7 @@ def main():
     if len(sys.argv) > 1:
         os.execvp(
             "tmuxp",
-            ["tmuxp", "load", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
+            ["tmuxp", "load", "--yes", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
         )
     else:
         # attach to existing session on this socket, or create a new one
