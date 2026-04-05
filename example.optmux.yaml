@@ -4,12 +4,16 @@ start_directory: .
 
 optmux:
   shortcuts:
-    C-M-d: make deploy
-    C-M-b: make build
+    C-M-b: gh browse .                              
+    C-M-e:
+      command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
+      window: true                                  # in a new-window
+    E:
+      send-keys: ${VISUAL:-${EDITOR:-vim}} .        # send-keys (given command is run in a new shell)
+      zoom: false                                   # do not zoom (defaults to zoom when split-window)
   tmux_config:
     project-settings: |
       set -g status-style bg=blue
-      set -g pane-border-style fg=blue
 
 windows:
   - window_name: editor

@@ -7,46 +7,50 @@ from pathlib import Path
 
 import yaml
 
-MANAGED_MARKER = "# optmux:managed\n"
-
-
 def generate_tmux_conf_files(tmux_dir, yaml_path):
     """Generate tmux conf files from optmux YAML keys."""
+    # clear all managed files first to avoid stale configs
+    for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
+        conf_file.unlink()
+
     with open(yaml_path) as f:
         data = yaml.safe_load(f) or {}
     optmux = data.get("optmux") or {}
 
-    managed_files = set()
-
-    # optmux.shortcuts → tmux.shortcuts.conf
+    # optmux.shortcuts → tmux.optmux-shortcuts.conf
     shortcuts = optmux.get("shortcuts") or {}
-    shortcuts_conf = tmux_dir / "tmux.shortcuts.conf"
     if shortcuts:
-        lines = [MANAGED_MARKER]
-        for key, command in shortcuts.items():
-            lines.append(
-                f'bind -n {key} split-window -v -c "#{{pane_current_path}}" {command} \\; resize-pane -Z\n'
-            )
-        shortcuts_conf.write_text("".join(lines))
-        managed_files.add(shortcuts_conf)
-    elif shortcuts_conf.exists() and shortcuts_conf.read_text().startswith(MANAGED_MARKER):
-        shortcuts_conf.unlink()
+        lines = []
+        for key, value in shortcuts.items():
+            bind = "bind -n" if key.startswith("C-M-") else "bind"
+            # normalize str to dict
+            if isinstance(value, str):
+                opts = {"command": value}
+            elif isinstance(value, dict):
+                opts = value
+            else:
+                continue
+            use_window = opts.get("new-window", False)
+            use_zoom = opts.get("zoom", True)
+            open_cmd = "new-window" if use_window else "split-window -v"
+            # build the tmux action
+            if "send-keys" in opts:
+                escaped = opts["send-keys"].replace("'", "'\\''")
+                action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
+            elif "command" in opts:
+                escaped = opts["command"].replace("'", "'\\''")
+                action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+            else:
+                continue
+            if use_zoom and not use_window:
+                action += " \\; resize-pane -Z"
+            lines.append(f"{bind} {key} {action}\n")
+        (tmux_dir / "tmux.optmux-shortcuts.conf").write_text("".join(lines))
 
-    # optmux.tmux_config → tmux.{name}.conf for each entry
+    # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
     tmux_config = optmux.get("tmux_config") or {}
     for conf_name, content in tmux_config.items():
-        conf_file = tmux_dir / f"tmux.{conf_name}.conf"
-        conf_file.write_text(MANAGED_MARKER + content)
-        managed_files.add(conf_file)
-
-    # clean up stale managed files from previous runs
-    for conf_file in tmux_dir.glob("tmux.*.conf"):
-        if conf_file not in managed_files:
-            try:
-                if conf_file.read_text().startswith(MANAGED_MARKER):
-                    conf_file.unlink()
-            except OSError:
-                pass
+        (tmux_dir / f"tmux.optmux-extras.{conf_name}.conf").write_text(content)
 
 
 def main():
