@@ -8,14 +8,14 @@ authors = [
 ]
 license = "MIT"
 requires-python = ">=3.12"
+dependencies = [
+    "tmuxp",
+]
 
 [project.urls]
 Homepage = "https://github.com/netj/optmux#readme"
 Repository = "https://github.com/netj/optmux.git"
 Issues = "https://github.com/netj/optmux/issues"
-dependencies = [
-    "tmuxp",
-]
 
 [project.scripts]
 optmux = "optmux.cli:main"
