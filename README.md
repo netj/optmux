@@ -11,37 +11,26 @@ A [tmuxp](https://tmuxp.git-pull.com) wrapper that creates per-project tmux conf
 ## Quick Start
 
 ```bash
-# install optmux
-uv tool install git+https://github.com/netj/optmux
+# run optmux anywhere (installs on first use via uv)
+uvx optmux
 
-# install recommended tools
-brew install netj/tap/wtcode  # https://github.com/netj/wtcode
-brew install lazygit          # https://github.com/jesseduffield/lazygit
+# strongly recommended: install wtcode + lazygit for the full experience
+brew install netj/tap/optmux
+```
 
-# try the included example
-git clone https://github.com/netj/optmux
-cd optmux
+Try the included example:
+
+```bash
+git clone https://github.com/netj/optmux.git && cd optmux
 ./example.optmux.yaml
 ```
 
-That's it. On first run, optmux will:
+On first run, optmux will:
 
 1. Create `.example.optmux.d/tmux/` next to the YAML file
 2. Seed a default `tmux.conf` with TPM and plugins
 3. Install TPM and all plugins (visible in window 0)
 4. Launch tmuxp with an isolated tmux server
-
-## Install
-
-```bash
-uv tool install git+https://github.com/netj/optmux
-```
-
-For local development/testing:
-
-```bash
-uv tool install -e .
-```
 
 ## Usage
 
@@ -81,6 +70,40 @@ windows:
 ```bash
 chmod +x myproject.optmux.yaml
 ./myproject.optmux.yaml
+```
+
+## Example tmuxp YAML
+
+Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
+
+```yaml
+#!/usr/bin/env -S uvx optmux
+session_name: example
+start_directory: .
+
+optmux:
+  shortcuts:
+    C-M-b: gh browse .
+    C-M-e:
+      command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
+      window: true                                  # in a new-window
+    E:
+      send-keys: ${VISUAL:-${EDITOR:-vim}} .        # send-keys (given command is run in a new shell)
+      zoom: false                                   # do not zoom (defaults to zoom when split-window)
+  tmux_config:
+    project-settings: |
+      set -g status-style bg=blue
+
+windows:
+  - window_name: editor
+    panes:
+      - vim .
+  - window_name: shell
+    panes:
+      - ""
+  - window_name: logs
+    panes:
+      - tail -f /var/log/system.log
 ```
 
 ## Config directory
@@ -160,6 +183,19 @@ optmux sets these before launching tmux/tmuxp:
 | `OPTMUX_DIR` | Absolute path to the `.$NAME.optmux.d/` directory |
 | `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
+
+## Development
+
+```bash
+# install the latest main branch
+uvx git+https://github.com/netj/optmux.git
+
+# local editable install for development
+uv tool install -e .
+
+# test any local changes directly (best for testing branches)
+uv run optmux ./example.optmux.yaml
+```
 
 ## License
 
