@@ -47,7 +47,7 @@ cat <<EOF
 
   C-t t     send prefix to nested tmux
   C-t T     swap prefix (for nested tmux)
-  C-t Space copy buffer to clipboard
+  copy-mode yank auto-copies to system clipboard (OSC 52)
 ${nerd_font_tip}
 
   q/Enter: dismiss    d: dismiss for a week    D: dismiss forever
