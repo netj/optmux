@@ -14,6 +14,10 @@ A [tmuxp](https://tmuxp.git-pull.com) wrapper that creates per-project tmux conf
 # install optmux
 uv tool install git+https://github.com/netj/optmux
 
+# install recommended tools
+brew install netj/tap/wtcode  # https://github.com/netj/wtcode
+brew install lazygit          # https://github.com/jesseduffield/lazygit
+
 # try the included example
 git clone https://github.com/netj/optmux
 cd optmux

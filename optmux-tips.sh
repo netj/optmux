@@ -32,10 +32,13 @@ cat <<EOF
 
   Prefix: Ctrl+T  (C-t)
 
-  Workflow:  C-M-c  claude   or   C-M-f  find file to open editor
+  Workflow:  C-M-c  wtcode   or   C-M-f  find file to open editor
           -> C-M-g  lazygit  to check diff/commits
           -> C-M-o  cycle between panes   or   q  to return
           -> C-M-s  shell in same dir (run tests, one-off commands)
+
+  Install:  brew install netj/tap/wtcode   https://github.com/netj/wtcode
+            brew install lazygit          https://github.com/jesseduffield/lazygit
 
   C-t C-t   last window        C-M-h/j/k/l  navigate panes
   C-t C-c   new window         C-M-z         quick toggle zoom
