@@ -97,8 +97,7 @@ def main():
     # seed bundled files if not present
     bundled = files("optmux").joinpath("data")
     tmux_conf = tmux_dir / "tmux.conf"
-    if not tmux_conf.exists():
-        shutil.copy2(bundled / "tmux.conf", tmux_conf)
+    shutil.copy2(bundled / "tmux.conf", tmux_conf)  # always regenerated; use tmux.*.conf for customizations
     setup_script = tmux_dir / "plugins-update.sh"
     if not setup_script.exists():
         shutil.copy2(bundled / "plugins-update.sh", setup_script)
