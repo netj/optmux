@@ -10,7 +10,7 @@
 
 1. Bump `version` in `pyproject.toml`
 2. `uv sync && uv build`
-3. `git commit`, `git tag vX.Y.Z`, `git push origin main --tags`
+3. `git commit` (include `uv.lock`), `git tag vX.Y.Z`, `git push origin main --tags`
 4. Clean old builds: `rm dist/optmux-0.1.* ...` (keep only current version to avoid re-uploading old ones)
 5. `uv publish --token "$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('$HOME/.pypirc'); print(c['pypi']['password'])")"`
 6. `gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes dist/*`
