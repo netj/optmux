@@ -32,16 +32,18 @@ cat <<EOF
 
   Prefix: Ctrl+T  (C-t)
 
-  C-t C-t   last window        C-M-h/j/k/l  navigate panes
-  C-t C     new window         C-M-s         shell in same dir + zoom
-  C-t C-n/p next/prev window
-  C-t n/p   next/prev w/ bell
-  C-t z     toggle zoom        C-M-z         quick toggle zoom
-  C-t o     cycle panes        C-M-\\         last pane
-  C-t R     reload config      C-M-o         prev pane + zoom
+  Workflow:  C-M-c  claude   or   C-M-f  find file to open editor
+          -> C-M-g  lazygit  to check diff/commits
+          -> C-M-o  cycle between panes   or   q  to return
+          -> C-M-s  shell in same dir (run tests, one-off commands)
 
-  Quick commands:
-  C-M-g  lazygit    C-M-c  claude    C-M-f  vim Files    C-M-t  vim Tags
+  C-t C-t   last window        C-M-h/j/k/l  navigate panes
+  C-t C-c   new window         C-M-z         quick toggle zoom
+  C-t C-n/p next/prev window   C-M-\\         last pane
+  C-t n/p   next/prev w/ bell  C-M-o         prev pane + zoom
+  C-t z     toggle zoom
+  C-t o     cycle panes
+  C-t R     reload config
 
   C-t t     send prefix to nested tmux
   C-t T     swap prefix (for nested tmux)
