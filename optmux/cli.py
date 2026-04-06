@@ -132,18 +132,36 @@ def main():
     sock = str(tmux_dir / "tmux.sock")
     conf = str(tmux_conf)
 
+    tmux = ["tmux", "-S", sock]
+
+    def create_optmux_window():
+        """Create window 0 with tips + plugins-update panes."""
+        subprocess.run([*tmux, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
+        subprocess.run([*tmux, "split-window", "-t", "0", "-v", str(setup_script)], check=True)
+
     if len(sys.argv) > 1:
-        os.execvp(
-            "tmuxp",
-            ["tmuxp", "load", "--yes", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
-        )
-    else:
-        # attach to existing session on this socket, or create a new one
         has_session = subprocess.run(
-            ["tmux", "-S", sock, "has-session"],
+            [*tmux, "has-session"],
             capture_output=True,
         ).returncode == 0
         if has_session:
-            os.execvp("tmux", ["tmux", "-S", sock, "attach-session"])
+            os.execvp(tmux[0], [*tmux, "attach-session"])
+        # Load detached so we can create the optmux window after tmuxp is done
+        subprocess.run(
+            ["tmuxp", "load", "--yes", "-d", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
+            check=True,
+        )
+        create_optmux_window()
+        os.execvp(tmux[0], [*tmux, "attach-session"])
+    else:
+        # attach to existing session on this socket, or create a new one
+        has_session = subprocess.run(
+            [*tmux, "has-session"],
+            capture_output=True,
+        ).returncode == 0
+        if has_session:
+            os.execvp(tmux[0], [*tmux, "attach-session"])
         else:
-            os.execvp("tmux", ["tmux", "-S", sock, "-f", conf, "new-session", "-s", f"optmux {name}"])
+            subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", f"optmux {name}"], check=True)
+            create_optmux_window()
+            os.execvp(tmux[0], [*tmux, "attach-session"])
