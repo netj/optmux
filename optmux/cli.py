@@ -7,15 +7,32 @@ from pathlib import Path
 
 import yaml
 
-def generate_tmux_conf_files(tmux_dir, yaml_path):
-    """Generate tmux conf files from optmux YAML keys."""
+def load_optmux_conf():
+    """Load personal optmux config from ~/.optmux.yaml if it exists."""
+    conf_path = Path.home() / ".optmux.yaml"
+    if conf_path.exists():
+        with open(conf_path) as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("optmux") or {}
+    return {}
+
+
+def merge_optmux(project, personal):
+    """Merge project and personal optmux configs (personal wins)."""
+    merged = {}
+    for key in ("shortcuts", "tmux_config"):
+        proj = project.get(key) or {}
+        pers = personal.get(key) or {}
+        if proj or pers:
+            merged[key] = {**proj, **pers}
+    return merged
+
+
+def generate_tmux_conf_files(tmux_dir, optmux):
+    """Generate tmux conf files from merged optmux config."""
     # clear all managed files first to avoid stale configs
     for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
         conf_file.unlink()
-
-    with open(yaml_path) as f:
-        data = yaml.safe_load(f) or {}
-    optmux = data.get("optmux") or {}
 
     # optmux.shortcuts → tmux.optmux-shortcuts.conf
     shortcuts = optmux.get("shortcuts") or {}
@@ -91,9 +108,16 @@ def main():
         shutil.copy2(bundled / "tips.sh", tips_script)
         tips_script.chmod(0o755)
 
-    # generate tmux conf files from optmux YAML
+    # generate tmux conf files from optmux YAML merged with personal config
+    personal = load_optmux_conf()
     if len(sys.argv) > 1:
-        generate_tmux_conf_files(tmux_dir, yaml_path)
+        with open(yaml_path) as f:
+            data = yaml.safe_load(f) or {}
+        project = data.get("optmux") or {}
+        optmux = merge_optmux(project, personal)
+    else:
+        optmux = personal
+    generate_tmux_conf_files(tmux_dir, optmux)
 
     # ensure scripts from optmux's own venv (e.g., tmuxp) are on PATH
     venv_bin = str(Path(sys.executable).parent)
