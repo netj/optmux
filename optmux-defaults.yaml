@@ -1,0 +1,9 @@
+optmux:
+  shortcuts:
+    C-M-s: ""                          # empty split (new shell pane, zoomed)
+    C-M-c:
+      command: wtcode
+      new_window: true
+    C-M-f:
+      command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
+    C-M-g: lazygit
