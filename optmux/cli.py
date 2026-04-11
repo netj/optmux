@@ -106,7 +106,11 @@ def main():
     # seed bundled files if not present
     data_dir = files("optmux").joinpath("data")
     tmux_conf = tmux_dir / "tmux.conf"
+    # make writable before overwriting (it's set read-only below)
+    if tmux_conf.exists():
+        tmux_conf.chmod(0o644)
     shutil.copy2(data_dir / "tmux.conf", tmux_conf)  # always regenerated; use tmux.*.conf for customizations
+    tmux_conf.chmod(0o444)  # read-only to discourage direct edits
     setup_script = tmux_dir / "plugins-update.sh"
     if not setup_script.exists():
         shutil.copy2(data_dir / "plugins-update.sh", setup_script)
