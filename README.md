@@ -195,6 +195,11 @@ uv tool install -e .
 
 # test any local changes directly (best for testing branches)
 uv run optmux ./example.optmux.yaml
+
+# run tests
+uv run pytest                  # all tests
+uv run pytest -m "not e2e"     # skip E2E tests (no tmux needed)
+uv run pytest -m e2e           # E2E only (requires tmux)
 ```
 
 ## License

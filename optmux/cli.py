@@ -7,6 +7,16 @@ from pathlib import Path
 
 import yaml
 
+
+def parse_project_name(yaml_path_str):
+    """Extract project name from a YAML path by stripping known suffixes."""
+    name = Path(yaml_path_str).stem
+    for suffix in (".tmuxp", ".optmux", ".optmuxp"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+    return name
+
+
 def load_bundled_defaults():
     """Load bundled optmux defaults from package data."""
     defaults_path = files("optmux").joinpath("data", "optmux-defaults.yaml")
@@ -15,9 +25,10 @@ def load_bundled_defaults():
     return data.get("optmux") or {}
 
 
-def load_optmux_conf():
+def load_optmux_conf(conf_path=None):
     """Load personal optmux config from ~/.optmux.yaml if it exists."""
-    conf_path = Path.home() / ".optmux.yaml"
+    if conf_path is None:
+        conf_path = Path.home() / ".optmux.yaml"
     if conf_path.exists():
         with open(conf_path) as f:
             data = yaml.safe_load(f) or {}
@@ -37,6 +48,36 @@ def merge_optmux(*layers):
     return merged
 
 
+def generate_shortcut_line(key, value):
+    """Generate a single tmux bind line from a shortcut key and value.
+
+    Returns the line string, or None if the value type is unsupported.
+    """
+    bind = "bind -n" if key.startswith("C-M-") else "bind"
+    # normalize str to dict
+    if isinstance(value, str):
+        opts = {"command": value} if value else {}
+    elif isinstance(value, dict):
+        opts = value
+    else:
+        return None
+    use_window = opts.get("new_window", False)
+    use_zoom = opts.get("zoom", True)
+    open_cmd = "new-window" if use_window else "split-window -v"
+    # build the tmux action
+    if "send-keys" in opts:
+        escaped = opts["send-keys"].replace("'", "'\\''")
+        action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
+    elif "command" in opts:
+        escaped = opts["command"].replace("'", "'\\''")
+        action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+    else:
+        action = f"{open_cmd} -c '#{{pane_current_path}}'"
+    if use_zoom and not use_window:
+        action += " \\; resize-pane -Z"
+    return f"{bind} {key} {action}\n"
+
+
 def generate_tmux_conf_files(tmux_dir, optmux):
     """Generate tmux conf files from merged optmux config."""
     # clear all managed files first to avoid stale configs
@@ -48,29 +89,9 @@ def generate_tmux_conf_files(tmux_dir, optmux):
     if shortcuts:
         lines = []
         for key, value in shortcuts.items():
-            bind = "bind -n" if key.startswith("C-M-") else "bind"
-            # normalize str to dict
-            if isinstance(value, str):
-                opts = {"command": value} if value else {}
-            elif isinstance(value, dict):
-                opts = value
-            else:
-                continue
-            use_window = opts.get("new_window", False)
-            use_zoom = opts.get("zoom", True)
-            open_cmd = "new-window" if use_window else "split-window -v"
-            # build the tmux action
-            if "send-keys" in opts:
-                escaped = opts["send-keys"].replace("'", "'\\''")
-                action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
-            elif "command" in opts:
-                escaped = opts["command"].replace("'", "'\\''")
-                action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
-            else:
-                action = f"{open_cmd} -c '#{{pane_current_path}}'"
-            if use_zoom and not use_window:
-                action += " \\; resize-pane -Z"
-            lines.append(f"{bind} {key} {action}\n")
+            line = generate_shortcut_line(key, value)
+            if line is not None:
+                lines.append(line)
         (tmux_dir / "tmux.optmux-shortcuts.conf").write_text("".join(lines))
 
     # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
@@ -79,20 +100,18 @@ def generate_tmux_conf_files(tmux_dir, optmux):
         (tmux_dir / f"tmux.optmux-extras.{conf_name}.conf").write_text(content)
 
 
-def main():
-    if len(sys.argv) > 1:
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv:
         # optmux NAME.optmux.yaml [TMUXP_ARGS...]
-        tmuxp_yaml = sys.argv[1]
-        remaining_args = sys.argv[2:]
+        tmuxp_yaml = argv[0]
+        remaining_args = argv[1:]
 
         yaml_path = Path(tmuxp_yaml).resolve()
         yaml_dir = yaml_path.parent
 
-        # strip .yaml, then .tmuxp, then .optmux suffixes
-        name = yaml_path.stem
-        for suffix in (".tmuxp", ".optmux", ".optmuxp"):
-            if name.endswith(suffix):
-                name = name[: -len(suffix)]
+        name = parse_project_name(tmuxp_yaml)
 
         optmux_dir = yaml_dir / f".{name}.optmux.d"
     else:
@@ -123,7 +142,7 @@ def main():
     # generate tmux conf files from optmux YAML merged with personal config
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()
-    if len(sys.argv) > 1:
+    if argv:
         with open(yaml_path) as f:
             data = yaml.safe_load(f) or {}
         project = data.get("optmux") or {}
@@ -153,7 +172,7 @@ def main():
         subprocess.run([*tmux, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
         subprocess.run([*tmux, "split-window", "-t", "0", "-v", str(setup_script)], check=True)
 
-    if len(sys.argv) > 1:
+    if argv:
         has_session = subprocess.run(
             [*tmux, "has-session"],
             capture_output=True,
