@@ -20,6 +20,15 @@ Issues = "https://github.com/netj/optmux/issues"
 [project.scripts]
 optmux = "optmux.cli:main"
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end tests requiring real tmux (deselect with '-m not e2e')",
+]
+
 [build-system]
 requires = ["uv_build>=0.10.10,<0.12.0"]
 build-backend = "uv_build"
