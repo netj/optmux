@@ -142,3 +142,42 @@ def test_main_remaining_args_passed(mock_run, mock_execvp, project_yaml_file):
     tmuxp_cmd = tmuxp_calls[0][0][0]
     assert "--log-level" in tmuxp_cmd
     assert "debug" in tmuxp_cmd
+
+
+@patch("os.execvp")
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_nested_different_socket_unsets_tmux(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):
+    """Running optmux inside a different tmux session unsets $TMUX and prints nesting message."""
+    monkeypatch.setenv("TMUX", "/tmp/other-tmux.sock,12345,0")
+    main(argv=[str(project_yaml_file)])
+
+    # $TMUX should have been unset
+    assert "TMUX" not in os.environ
+    # informational message printed
+    assert "nesting inside outer tmux session" in capsys.readouterr().err
+
+
+@patch("os.execvp")
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_nested_same_socket_unsets_tmux(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):
+    """Running optmux inside the same optmux session unsets $TMUX and prints same-session message."""
+    # Compute the socket path that main() will use
+    yaml_path = Path(str(project_yaml_file)).resolve()
+    sock = str(yaml_path.parent / ".myproject.optmux.d" / "tmux" / "tmux.sock")
+    monkeypatch.setenv("TMUX", f"{sock},12345,0")
+    main(argv=[str(project_yaml_file)])
+
+    assert "TMUX" not in os.environ
+    assert "already inside this session" in capsys.readouterr().err
+
+
+@patch("os.execvp")
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_no_tmux_env_no_nesting_message(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):
+    """Without $TMUX set, no nesting messages are printed."""
+    monkeypatch.delenv("TMUX", raising=False)
+    main(argv=[str(project_yaml_file)])
+
+    err = capsys.readouterr().err
+    assert "nesting" not in err
+    assert "already inside" not in err
