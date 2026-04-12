@@ -159,13 +159,24 @@ def main(argv=None):
     os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
 
-    # bootstrap TPM (clone only); plugin install happens inside tmux via tmux.conf
-    subprocess.run([str(setup_script)], check=True)
-
     sock = str(tmux_dir / "tmux.sock")
     conf = str(tmux_conf)
 
     tmux = ["tmux", "-S", sock]
+
+    # Handle nested tmux/optmux gracefully (before plugin bootstrap, which checks $TMUX)
+    outer_tmux = os.environ.get("TMUX")
+    if outer_tmux:
+        outer_sock = outer_tmux.split(",")[0]  # $TMUX format: /path/to/socket,pid,index
+        if os.path.realpath(outer_sock) == os.path.realpath(sock):
+            print(f"optmux: already inside this session ({name})", file=sys.stderr)
+            return
+        print(f"optmux: nesting inside outer tmux session", file=sys.stderr)
+        # unset so tmux allows nested attach with our isolated socket
+        del os.environ["TMUX"]
+
+    # bootstrap TPM (clone only); plugin install happens inside tmux via tmux.conf
+    subprocess.run([str(setup_script)], check=True)
 
     def create_optmux_window():
         """Create window 0 with tips + plugins-update panes."""
