@@ -167,6 +167,17 @@ def main(argv=None):
 
     tmux = ["tmux", "-S", sock]
 
+    # Handle nested tmux/optmux gracefully
+    outer_tmux = os.environ.get("TMUX")
+    if outer_tmux:
+        outer_sock = outer_tmux.split(",")[0]  # $TMUX format: /path/to/socket,pid,index
+        if os.path.realpath(outer_sock) == os.path.realpath(sock):
+            print(f"optmux: already inside this session ({name})", file=sys.stderr)
+        else:
+            print(f"optmux: nesting inside outer tmux session", file=sys.stderr)
+        # unset so tmux allows nested attach with our isolated socket
+        del os.environ["TMUX"]
+
     def create_optmux_window():
         """Create window 0 with tips + plugins-update panes."""
         subprocess.run([*tmux, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
