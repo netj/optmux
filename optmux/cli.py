@@ -173,8 +173,8 @@ def main(argv=None):
         outer_sock = outer_tmux.split(",")[0]  # $TMUX format: /path/to/socket,pid,index
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
             print(f"optmux: already inside this session ({name})", file=sys.stderr)
-        else:
-            print(f"optmux: nesting inside outer tmux session", file=sys.stderr)
+            return
+        print(f"optmux: nesting inside outer tmux session", file=sys.stderr)
         # unset so tmux allows nested attach with our isolated socket
         del os.environ["TMUX"]
 
