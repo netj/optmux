@@ -1,6 +1,6 @@
 [project]
 name = "optmux"
-version = "0.2.0"
+version = "0.2.1"
 description = "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project"
 readme = "README.md"
 authors = [
