@@ -5,14 +5,22 @@ set -euo pipefail
 : ${OPTMUX_DIR:="$(cd "$(dirname "$0")/.."; pwd)"}
 dismissed="$OPTMUX_DIR/tmux/.tips-dismissed"
 
-# check suppression
-if [[ -e "$dismissed" ]]; then
-    if grep -q '^forever$' "$dismissed" 2>/dev/null; then
-        exit 0
-    fi
-    # skip if dismissed less than 7 days ago
-    if find "$dismissed" -mtime -7 -print -quit 2>/dev/null | grep -q .; then
-        exit 0
+# parse flags
+force=false
+for arg in "$@"; do
+    [[ "$arg" == "--force" || "$arg" == "-f" ]] && force=true
+done
+
+# check suppression (skipped when --force)
+if [[ "$force" != true ]]; then
+    if [[ -e "$dismissed" ]]; then
+        if grep -q '^forever$' "$dismissed" 2>/dev/null; then
+            exit 0
+        fi
+        # skip if dismissed less than 7 days ago
+        if find "$dismissed" -mtime -7 -print -quit 2>/dev/null | grep -q .; then
+            exit 0
+        fi
     fi
 fi
 
@@ -46,14 +54,14 @@ cat <<EOF
   C-t n/p   next/prev w/ bell
   C-t z     toggle zoom        C-t F         fingers (copy URLs/paths/hashes)
   C-t o     cycle panes        C-t h/j/k/l   navigate panes
-  C-t R     reload config
+  C-t R     reload config      C-M-h         tips (this screen)
 
   C-t t     send prefix to nested tmux
   C-t T     swap prefix (for nested tmux)
   copy-mode yank auto-copies to system clipboard (OSC 52)
 ${nerd_font_tip}
 
-  q/Enter: dismiss    d: dismiss for a week    D: dismiss forever
+  q/Enter: dismiss    d: dismiss for a week    D: dismiss forever    C-M-h: show again
 
 EOF
 

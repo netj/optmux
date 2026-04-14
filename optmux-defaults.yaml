@@ -7,3 +7,6 @@ optmux:
     C-M-f:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
     C-M-g: lazygit
+    C-M-h:
+      command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
+      new_window: true
