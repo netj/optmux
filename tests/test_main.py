@@ -174,6 +174,23 @@ def test_nested_same_socket_exits_early(mock_run, mock_execvp, project_yaml_file
 
 @patch("os.execvp")
 @patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_main_dir_arg_as_workdir(mock_run, mock_execvp, tmp_path, monkeypatch):
+    """First arg that is a directory changes workdir, then opens session there."""
+    # Start in a different directory
+    monkeypatch.chdir("/")
+    main(argv=[str(tmp_path)])
+
+    # session should be named after tmp_path, not "/"
+    new_session_calls = [c for c in mock_run.call_args_list if "new-session" in str(c)]
+    assert len(new_session_calls) == 1
+    assert tmp_path.name in str(new_session_calls[0])
+
+    mock_execvp.assert_called_once()
+    assert "attach-session" in mock_execvp.call_args[0][1]
+
+
+@patch("os.execvp")
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
 def test_no_tmux_env_no_nesting_message(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):
     """Without $TMUX set, no nesting messages are printed."""
     monkeypatch.delenv("TMUX", raising=False)

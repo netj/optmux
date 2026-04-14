@@ -103,6 +103,12 @@ def generate_tmux_conf_files(tmux_dir, optmux):
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
+
+    # if the first arg is a directory, treat it as the working directory
+    argv = list(argv)
+    if argv and Path(argv[0]).is_dir():
+        os.chdir(argv.pop(0))
+
     if argv:
         # optmux NAME.optmux.yaml [TMUXP_ARGS...]
         tmuxp_yaml = argv[0]
