@@ -128,6 +128,10 @@ def main(argv=None):
     tmux_dir = optmux_dir / "tmux"
     tmux_dir.mkdir(parents=True, exist_ok=True)
 
+    gitignore = optmux_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text("*\n")
+
     # seed bundled files if not present
     data_dir = files("optmux").joinpath("data")
     tmux_conf = tmux_dir / "tmux.conf"
