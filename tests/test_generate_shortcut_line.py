@@ -61,5 +61,18 @@ def test_single_quote_escaping():
     assert "'echo '\\''hello'\\'''" in line
 
 
+def test_detached_split():
+    line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True})
+    assert "split-window -v -d" in line
+    assert "resize-pane -Z" not in line
+
+
+def test_detached_window():
+    line = generate_shortcut_line("C-M-b", {"command": "htop", "new_window": True, "detached": True})
+    assert "new-window -d" in line
+    assert "split-window" not in line
+    assert "resize-pane -Z" not in line
+
+
 def test_invalid_value_type():
     assert generate_shortcut_line("C-M-x", 42) is None

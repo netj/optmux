@@ -63,7 +63,9 @@ def generate_shortcut_line(key, value):
         return None
     use_window = opts.get("new_window", False)
     use_zoom = opts.get("zoom", True)
-    open_cmd = "new-window" if use_window else "split-window -v"
+    detached = opts.get("detached", False)
+    detach_flag = " -d" if detached else ""
+    open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
     # build the tmux action
     if "send-keys" in opts:
         escaped = opts["send-keys"].replace("'", "'\\''")
@@ -73,7 +75,7 @@ def generate_shortcut_line(key, value):
         action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
     else:
         action = f"{open_cmd} -c '#{{pane_current_path}}'"
-    if use_zoom and not use_window:
+    if use_zoom and not use_window and not detached:
         action += " \\; resize-pane -Z"
     return f"{bind} {key} {action}\n"
 
