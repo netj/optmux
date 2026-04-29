@@ -216,6 +216,6 @@ def main(argv=None):
         if has_session:
             os.execvp(tmux[0], [*tmux, "attach-session"])
         else:
-            subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", f"optmux {name}"], check=True)
+            subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", name], check=True)
             create_optmux_window()
             os.execvp(tmux[0], [*tmux, "attach-session"])
