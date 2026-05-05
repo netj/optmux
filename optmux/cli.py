@@ -64,19 +64,38 @@ def generate_shortcut_line(key, value):
     use_window = opts.get("new_window", False)
     use_zoom = opts.get("zoom", True)
     detached = opts.get("detached", False)
-    detach_flag = " -d" if detached else ""
-    open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
-    # build the tmux action
-    if "send-keys" in opts:
-        escaped = opts["send-keys"].replace("'", "'\\''")
-        action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
-    elif "command" in opts:
-        escaped = opts["command"].replace("'", "'\\''")
-        action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+
+    if detached and not use_window:
+        # Split in background: no -d flag; use last-pane to return, restore zoom via if -F
+        # Use double-quotes inside branches (which are single-quoted) so inner quoting works
+        def dq(s):
+            return s.replace("\\", "\\\\").replace('"', '\\"')
+        if "send-keys" in opts:
+            split_part = f'split-window -v -c "#{{pane_current_path}}" \\; send-keys "{dq(opts["send-keys"])}; exit" Enter'
+        elif "command" in opts:
+            split_part = f'split-window -v -c "#{{pane_current_path}}" "{dq(opts["command"])}"'
+        else:
+            split_part = 'split-window -v -c "#{pane_current_path}"'
+        base = split_part + " \\; last-pane"
+        if use_zoom:
+            zoomed = split_part + " \\; last-pane \\; resize-pane -Z"
+            action = f"if -F '#{{window_zoomed_flag}}' '{zoomed}' '{base}'"
+        else:
+            action = base
     else:
-        action = f"{open_cmd} -c '#{{pane_current_path}}'"
-    if use_zoom and not use_window and not detached:
-        action += " \\; resize-pane -Z"
+        detach_flag = " -d" if detached else ""
+        open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
+        # build the tmux action
+        if "send-keys" in opts:
+            escaped = opts["send-keys"].replace("'", "'\\''")
+            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
+        elif "command" in opts:
+            escaped = opts["command"].replace("'", "'\\''")
+            action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+        else:
+            action = f"{open_cmd} -c '#{{pane_current_path}}'"
+        if use_zoom and not use_window and not detached:
+            action += " \\; resize-pane -Z"
     return f"{bind} {key} {action}\n"
 
 

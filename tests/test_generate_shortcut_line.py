@@ -63,8 +63,26 @@ def test_single_quote_escaping():
 
 def test_detached_split():
     line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True})
-    assert "split-window -v -d" in line
+    assert "split-window -v -d" not in line
+    assert "split-window -v" in line
+    assert "last-pane" in line
+    assert "if -F '#{window_zoomed_flag}'" in line
+    assert "resize-pane -Z" in line
+
+
+def test_detached_split_no_zoom():
+    line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True, "zoom": False})
+    assert "split-window -v" in line
+    assert "last-pane" in line
+    assert "if -F" not in line
     assert "resize-pane -Z" not in line
+
+
+def test_detached_split_send_keys():
+    line = generate_shortcut_line("C-M-b", {"send-keys": "make test", "detached": True})
+    assert "split-window -v" in line
+    assert "make test; exit" in line
+    assert "last-pane" in line
 
 
 def test_detached_window():
