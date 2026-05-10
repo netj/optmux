@@ -7,8 +7,8 @@ optmux:
     C-M-b:
       command: gh browse .                          # detached pane: opens browser, pane auto-closes
       detached: true
-    C-M-j:
-      command: uv tool run jupyter notebook         # detached window: server starts in background
+    C-M-m:
+      command: uvx marimo edit                      # detached window: server starts in background
       new_window: true
       detached: true
     C-M-e:
