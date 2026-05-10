@@ -65,33 +65,62 @@ def generate_shortcut_line(key, value):
     use_zoom = opts.get("zoom", True)
     detached = opts.get("detached", False)
 
+    remain = opts.get("remain", "on-error") if detached else False
+
+    def sq(s):  # escape ' for single-quoted tmux string
+        return s.replace("'", "'\\''")
+
+    def remain_wrap(cmd):
+        """Wrap user's command so the pane/window can be held open after exit.
+        - never:    run cmd directly; pane/window closes on any exit
+        - on-error: run cmd via $SHELL -euc heredoc; on failure, pause with read for user
+        - always:   same heredoc, but pause unconditionally
+        Heredoc lets the user's command contain any quoting without escaping.
+        """
+        if remain is False or remain == "never":
+            return cmd
+        sep = ";" if (remain is True or remain == "always") else "||"
+        pause = (
+            'bash -c "echo; echo; '
+            "read -p '[optmux] Exit status $?. Press Return/Enter to dismiss...'\""
+        )
+        return (
+            "_script=$(cat <<'EOC'\n"
+            f"{cmd.rstrip()}\n"
+            "EOC\n"
+            ")\n"
+            f'"$SHELL" -euc "$_script" {sep} {pause}'
+        )
+
     if detached and not use_window:
-        # Split in background: no -d flag; use last-pane to return, restore zoom via if -F
-        # Use double-quotes inside branches (which are single-quoted) so inner quoting works
-        def dq(s):
-            return s.replace("\\", "\\\\").replace('"', '\\"')
-        if "send-keys" in opts:
-            split_part = f'split-window -v -c "#{{pane_current_path}}" \\; send-keys "{dq(opts["send-keys"])}; exit" Enter'
-        elif "command" in opts:
-            split_part = f'split-window -v -c "#{{pane_current_path}}" "{dq(opts["command"])}"'
+        # Detached pane: split with -d so focus never leaves origin (no last-pane needed,
+        # no focus flicker). For zoom: capture pre-split state in @_optmux_zoom and re-zoom
+        # after; treat a single-pane window as zoomed (since it was effectively full-size).
+        cmd = opts.get("send-keys") or opts.get("command")
+        if cmd is None:
+            split_cmd = "split-window -v -d -c '#{pane_current_path}'"
         else:
-            split_part = 'split-window -v -c "#{pane_current_path}"'
-        base = split_part + " \\; last-pane"
+            split_cmd = f"split-window -v -d -c '#{{pane_current_path}}' '{sq(remain_wrap(cmd))}'"
+        parts = []
         if use_zoom:
-            zoomed = split_part + " \\; last-pane \\; resize-pane -Z"
-            action = f"if -F '#{{window_zoomed_flag}}' '{zoomed}' '{base}'"
-        else:
-            action = base
+            parts.append(
+                "set-option -F @_optmux_zoom "
+                "'#{||:#{window_zoomed_flag},#{==:#{window_panes},1}}'"
+            )
+        parts.append(split_cmd)
+        if use_zoom:
+            parts.append("if -F '#{@_optmux_zoom}' 'resize-pane -Z'")
+        action = " \\; ".join(parts)
     else:
         detach_flag = " -d" if detached else ""
         open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
-        # build the tmux action
         if "send-keys" in opts:
-            escaped = opts["send-keys"].replace("'", "'\\''")
-            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
+            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{sq(opts['send-keys'])}' Enter"
         elif "command" in opts:
-            escaped = opts["command"].replace("'", "'\\''")
-            action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+            cmd = opts["command"]
+            if detached and use_window:
+                cmd = remain_wrap(cmd)
+            action = f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'"
         else:
             action = f"{open_cmd} -c '#{{pane_current_path}}'"
         if use_zoom and not use_window and not detached:

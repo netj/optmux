@@ -8,8 +8,15 @@ optmux:
       command: gh browse .                          # detached pane: opens browser, pane auto-closes
       detached: true
     C-M-m:
-      command: uvx marimo edit                      # detached window: server starts in background
-      new_window: true
+      command: uvx marimo edit                      # detached pane: server starts, focus stays here
+      detached: true
+    C-M-d:
+      command: |-
+        hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
+        if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
+        else echo "CPU OK"
+        fi
+      new_window: true                              # detached window: CPU check; stays open iff high
       detached: true
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
