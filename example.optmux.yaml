@@ -4,7 +4,13 @@ start_directory: .
 
 optmux:
   shortcuts:
-    C-M-b: gh browse .                              
+    C-M-b:
+      command: gh browse .                          # detached pane: opens browser, pane auto-closes
+      detached: true
+    C-M-j:
+      command: uv tool run jupyter notebook         # detached window: server starts in background
+      new_window: true
+      detached: true
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
       new_window: true                              # in a new-window
