@@ -1,0 +1,30 @@
+#!/usr/bin/env -S uvx optmux
+# send-keys shortcuts — command is typed into an interactive shell.
+# The shell stays alive after the command exits, so the pane remains open.
+session_name: example-send-keys
+start_directory: .
+
+optmux:
+  shortcuts:
+    C-M-b:
+      send-keys: gh browse .            # shell stays open after browser launches
+    C-M-m:
+      send-keys: uvx marimo edit
+    C-M-d:
+      send-keys: |-
+        hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
+        if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
+        else echo "CPU OK"
+        fi
+      new_window: true
+    C-M-e:
+      send-keys: ${VISUAL:-${EDITOR:-vim}} README.md
+      new_window: true
+    E:
+      send-keys: ${VISUAL:-${EDITOR:-vim}} .
+      zoom: false
+
+windows:
+  - window_name: shell
+    panes:
+      - ""

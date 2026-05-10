@@ -1,11 +1,13 @@
 #!/usr/bin/env -S uvx optmux
-session_name: example
+# command shortcuts — command runs as the pane's direct process.
+# Pane/window closes when the command exits (default remain-on-exit off).
+session_name: example-command
 start_directory: .
 
 optmux:
   shortcuts:
-    C-M-b: gh browse .
-    C-M-m: uvx marimo edit
+    C-M-b: gh browse .                  # string shorthand = command; pane closes on exit 0
+    C-M-m: uvx marimo edit              # zoomed pane; stays until you quit
     C-M-d:
       command: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
@@ -18,17 +20,9 @@ optmux:
       new_window: true
     E:
       command: ${VISUAL:-${EDITOR:-vim}} .
-  tmux_config:
-    project-settings: |
-      set -g status-style bg=blue
+      zoom: false
 
 windows:
-  - window_name: editor
-    panes:
-      - vim .
   - window_name: shell
     panes:
       - ""
-  - window_name: logs
-    panes:
-      - tail -f /var/log/system.log

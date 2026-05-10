@@ -114,10 +114,13 @@ def generate_shortcut_line(key, value):
     else:
         detach_flag = " -d" if detached else ""
         open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
-        if "send-keys" in opts:
+        if "send-keys" in opts and not (detached and use_window):
+            # Non-detached-window: type into the pane's shell (aliases, interactive features)
             action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{sq(opts['send-keys'])}' Enter"
-        elif "command" in opts:
-            cmd = opts["command"]
+        elif "command" in opts or (detached and use_window and "send-keys" in opts):
+            # For detached windows, send-keys behaves like command (targeting is unreliable);
+            # wrap both through remain_wrap for consistent exit/hold behaviour.
+            cmd = opts.get("command") or opts["send-keys"]
             if detached and use_window:
                 cmd = remain_wrap(cmd)
             action = f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'"

@@ -1,0 +1,45 @@
+#!/usr/bin/env -S uvx optmux
+# command + detached shortcuts — focus stays on origin pane/window.
+# remain: on-error (default) — close silently on exit 0, pause with prompt on failure.
+# remain: false              — always close immediately.
+# remain: true               — always pause before closing.
+session_name: example-command-detached
+start_directory: .
+
+optmux:
+  shortcuts:
+
+    # ── pane (zoom-aware; zoom is restored after split) ────────────────────────
+    C-M-b:
+      command: gh browse .              # exits 0 → pane closes silently
+      detached: true
+    C-M-m:
+      command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
+      detached: true
+    C-M-m0:
+      command: uvx marimo edit
+      detached: true
+      remain: false                     # always close, no hold
+    C-M-m1:
+      command: uvx marimo edit
+      detached: true
+      remain: true                      # always hold open
+
+    # ── new_window ─────────────────────────────────────────────────────────────
+    C-M-d:
+      command: |-
+        hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
+        if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
+        else echo "CPU OK"
+        fi
+      new_window: true                  # exit 0 → window closes; exit 1 → hold open
+      detached: true
+    C-M-e:
+      command: ${VISUAL:-${EDITOR:-vim}} README.md
+      new_window: true
+      detached: true
+
+windows:
+  - window_name: shell
+    panes:
+      - ""
