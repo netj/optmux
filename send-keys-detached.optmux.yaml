@@ -4,7 +4,7 @@
 # raw send-keys cannot reliably target a background pane/window, so the
 # command is run via $SHELL -euc heredoc (same as command type).
 # Use send-keys here for shell expansion (aliases, $VARIABLE) or familiarity.
-session_name: example-send-keys-detached
+session_name: send-keys-detached
 start_directory: .
 
 optmux:

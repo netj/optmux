@@ -3,7 +3,7 @@
 # remain: on-error (default) — close silently on exit 0, pause with prompt on failure.
 # remain: false              — always close immediately.
 # remain: true               — always pause before closing.
-session_name: example-command-detached
+session_name: command-detached
 start_directory: .
 
 optmux:
@@ -16,11 +16,11 @@ optmux:
     C-M-m:
       command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
       detached: true
-    C-M-m0:
+    C-M-n:
       command: uvx marimo edit
       detached: true
       remain: false                     # always close, no hold
-    C-M-m1:
+    C-M-y:
       command: uvx marimo edit
       detached: true
       remain: true                      # always hold open

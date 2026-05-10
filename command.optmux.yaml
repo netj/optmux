@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uvx optmux
 # command shortcuts — command runs as the pane's direct process.
 # Pane/window closes when the command exits (default remain-on-exit off).
-session_name: example-command
+session_name: command
 start_directory: .
 
 optmux:

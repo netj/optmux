@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uvx optmux
 # send-keys shortcuts — command is typed into an interactive shell.
 # The shell stays alive after the command exits, so the pane remains open.
-session_name: example-send-keys
+session_name: send-keys
 start_directory: .
 
 optmux:
