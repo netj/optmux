@@ -86,10 +86,11 @@ def test_detached_split_no_zoom():
 
 
 def test_detached_split_send_keys():
+    # send-keys + detached pane: real send-keys to the newly created pane (:.+)
     line = generate_shortcut_line("C-M-b", {"send-keys": "make test", "detached": True})
     assert "split-window -v -d" in line
-    assert "make test" in line
-    assert "_script=$(cat <<" in line
+    assert "send-keys -t :.+ 'make test' Enter" in line
+    assert "_script=$(cat <<" not in line  # no command-style heredoc wrap
     assert "last-pane" not in line
 
 
@@ -126,6 +127,14 @@ def test_detached_window_always_open():
     assert "_script=$(cat <<" in line
     assert '"$_script" ;' in line
     assert "send-keys" not in line
+
+
+def test_detached_window_send_keys():
+    # send-keys + detached + new_window: real send-keys targeted at :{end}
+    line = generate_shortcut_line("C-M-d", {"send-keys": "echo hi", "new_window": True, "detached": True})
+    assert "new-window -d" in line
+    assert "send-keys -t :{end} 'echo hi' Enter" in line
+    assert "_script=$(cat <<" not in line
 
 
 def test_invalid_value_type():

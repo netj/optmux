@@ -1,9 +1,9 @@
 #!/usr/bin/env -S uvx optmux
-# send-keys + detached shortcuts.
-# Note: for detached shortcuts, send-keys and command behave identically —
-# raw send-keys cannot reliably target a background pane/window, so the
-# command is run via $SHELL -euc heredoc (same as command type).
-# Use send-keys here for shell expansion (aliases, $VARIABLE) or familiarity.
+# send-keys + detached shortcuts — typed into the new pane/window's shell.
+# Pane: targets the just-created pane via `:.+`.
+# Window: targets the new window via `:{end}`.
+# Shell stays alive after the command exits, so the pane/window remains open
+# (no remain-on-error semantics for send-keys; use command type for that).
 session_name: send-keys-detached
 start_directory: .
 

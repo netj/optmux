@@ -93,34 +93,37 @@ def generate_shortcut_line(key, value):
         )
 
     if detached and not use_window:
-        # Detached pane: split with -d so focus never leaves origin (no last-pane needed,
-        # no focus flicker). For zoom: capture pre-split state in @_optmux_zoom and re-zoom
-        # after; treat a single-pane window as zoomed (since it was effectively full-size).
-        cmd = opts.get("send-keys") or opts.get("command")
-        if cmd is None:
-            split_cmd = "split-window -v -d -c '#{pane_current_path}'"
-        else:
-            split_cmd = f"split-window -v -d -c '#{{pane_current_path}}' '{sq(remain_wrap(cmd))}'"
+        # Detached pane: split with -d so focus never leaves origin. For zoom: capture
+        # pre-split state in @_optmux_zoom and re-zoom after; treat a single-pane window
+        # as zoomed (since it was effectively full-size).
+        # send-keys: split empty shell pane, then send keys to the new pane via :.+
+        # command:   run command as the pane's process with remain_wrap heredoc
         parts = []
         if use_zoom:
             parts.append(
                 "set-option -F @_optmux_zoom "
                 "'#{||:#{window_zoomed_flag},#{==:#{window_panes},1}}'"
             )
-        parts.append(split_cmd)
+        if "send-keys" in opts:
+            parts.append("split-window -v -d -c '#{pane_current_path}'")
+            parts.append(f"send-keys -t :.+ '{sq(opts['send-keys'])}' Enter")
+        elif "command" in opts:
+            parts.append(f"split-window -v -d -c '#{{pane_current_path}}' '{sq(remain_wrap(opts['command']))}'")
+        else:
+            parts.append("split-window -v -d -c '#{pane_current_path}'")
         if use_zoom:
             parts.append("if -F '#{@_optmux_zoom}' 'resize-pane -Z'")
         action = " \\; ".join(parts)
     else:
         detach_flag = " -d" if detached else ""
         open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
-        if "send-keys" in opts and not (detached and use_window):
-            # Non-detached-window: type into the pane's shell (aliases, interactive features)
-            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{sq(opts['send-keys'])}' Enter"
-        elif "command" in opts or (detached and use_window and "send-keys" in opts):
-            # For detached windows, send-keys behaves like command (targeting is unreliable);
-            # wrap both through remain_wrap for consistent exit/hold behaviour.
-            cmd = opts.get("command") or opts["send-keys"]
+        if "send-keys" in opts:
+            # For detached new_window, target the newly created window via :{end};
+            # otherwise send to bind-context pane (interactive shell with aliases etc.)
+            target = " -t :{end}" if detached and use_window else ""
+            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys{target} '{sq(opts['send-keys'])}' Enter"
+        elif "command" in opts:
+            cmd = opts["command"]
             if detached and use_window:
                 cmd = remain_wrap(cmd)
             action = f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'"
