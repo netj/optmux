@@ -61,22 +61,91 @@ def generate_shortcut_line(key, value):
         opts = value
     else:
         return None
+    if "send-keys" in opts and "remain" in opts:
+        print(
+            f"optmux: ignoring shortcut {key!r}: 'remain' is incompatible with "
+            "'send-keys' (the shell stays alive after the command — send-keys "
+            "implicitly means remain: true; drop 'remain' to silence)",
+            file=sys.stderr,
+        )
+        return None
     use_window = opts.get("new_window", False)
     use_zoom = opts.get("zoom", True)
     detached = opts.get("detached", False)
-    detach_flag = " -d" if detached else ""
-    open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
-    # build the tmux action
-    if "send-keys" in opts:
-        escaped = opts["send-keys"].replace("'", "'\\''")
-        action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys '{escaped}' Enter"
-    elif "command" in opts:
-        escaped = opts["command"].replace("'", "'\\''")
-        action = f"{open_cmd} -c '#{{pane_current_path}}' '{escaped}'"
+
+    remain = opts.get("remain", "on-error") if detached else False
+
+    def sq(s):  # escape ' for single-quoted tmux string
+        return s.replace("'", "'\\''")
+
+    def remain_wrap(cmd):
+        """Wrap user's command so the pane/window can be held open after exit.
+        - never:    run cmd directly; pane/window closes on any exit
+        - on-error: run cmd via $SHELL -euc heredoc; on failure, pause with read for user
+        - always:   same heredoc, but pause unconditionally
+        Heredoc lets the user's command contain any quoting without escaping.
+        """
+        if remain is False or remain == "never":
+            return cmd
+        sep = ";" if (remain is True or remain == "always") else "||"
+        pause = (
+            'bash -c "echo; echo; '
+            "read -p '[optmux] Exit status $?. Press Return/Enter to dismiss...'\""
+        )
+        return (
+            "_script=$(cat <<'EOC'\n"
+            f"{cmd.rstrip()}\n"
+            "EOC\n"
+            ")\n"
+            f'"$SHELL" -euc "$_script" {sep} {pause}'
+        )
+
+    def send_keys_parts(text, target=""):
+        """One send-keys command per non-empty line — avoids embedded newlines that
+        break tmux.conf's bind-directive parser when more args follow the quoted string."""
+        target_flag = f" -t {target}" if target else ""
+        lines = [l for l in text.splitlines() if l.strip()] or [text]
+        return [f"send-keys{target_flag} '{sq(line)}' Enter" for line in lines]
+
+    if detached and not use_window:
+        # Detached pane: split with -d so focus never leaves origin. For zoom: capture
+        # pre-split state in @_optmux_zoom and re-zoom after; treat a single-pane window
+        # as zoomed (since it was effectively full-size).
+        # send-keys: split empty shell pane, then send keys to the new pane via :.+
+        # command:   run command as the pane's process with remain_wrap heredoc
+        parts = []
+        if use_zoom:
+            parts.append(
+                "set-option -F @_optmux_zoom "
+                "'#{||:#{window_zoomed_flag},#{==:#{window_panes},1}}'"
+            )
+        if "send-keys" in opts:
+            parts.append("split-window -v -d -c '#{pane_current_path}'")
+            parts.extend(send_keys_parts(opts["send-keys"], target=":.+"))
+        elif "command" in opts:
+            parts.append(f"split-window -v -d -c '#{{pane_current_path}}' '{sq(remain_wrap(opts['command']))}'")
+        else:
+            parts.append("split-window -v -d -c '#{pane_current_path}'")
+        if use_zoom:
+            parts.append("if -F '#{@_optmux_zoom}' 'resize-pane -Z'")
+        action = " \\; ".join(parts)
     else:
-        action = f"{open_cmd} -c '#{{pane_current_path}}'"
-    if use_zoom and not use_window and not detached:
-        action += " \\; resize-pane -Z"
+        detach_flag = " -d" if detached else ""
+        open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
+        if "send-keys" in opts:
+            target = ":$" if detached and use_window else ""  # last window in session
+            parts = [f"{open_cmd} -c '#{{pane_current_path}}'"]
+            parts.extend(send_keys_parts(opts["send-keys"], target=target))
+            action = " \\; ".join(parts)
+        elif "command" in opts:
+            cmd = opts["command"]
+            if detached and use_window:
+                cmd = remain_wrap(cmd)
+            action = f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'"
+        else:
+            action = f"{open_cmd} -c '#{{pane_current_path}}'"
+        if use_zoom and not use_window and not detached:
+            action += " \\; resize-pane -Z"
     return f"{bind} {key} {action}\n"
 
 
