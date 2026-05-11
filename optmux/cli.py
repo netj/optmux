@@ -92,6 +92,13 @@ def generate_shortcut_line(key, value):
             f'"$SHELL" -euc "$_script" {sep} {pause}'
         )
 
+    def send_keys_parts(text, target=""):
+        """One send-keys command per non-empty line — avoids embedded newlines that
+        break tmux.conf's bind-directive parser when more args follow the quoted string."""
+        target_flag = f" -t {target}" if target else ""
+        lines = [l for l in text.splitlines() if l.strip()] or [text]
+        return [f"send-keys{target_flag} '{sq(line)}' Enter" for line in lines]
+
     if detached and not use_window:
         # Detached pane: split with -d so focus never leaves origin. For zoom: capture
         # pre-split state in @_optmux_zoom and re-zoom after; treat a single-pane window
@@ -106,7 +113,7 @@ def generate_shortcut_line(key, value):
             )
         if "send-keys" in opts:
             parts.append("split-window -v -d -c '#{pane_current_path}'")
-            parts.append(f"send-keys -t :.+ '{sq(opts['send-keys'])}' Enter")
+            parts.extend(send_keys_parts(opts["send-keys"], target=":.+"))
         elif "command" in opts:
             parts.append(f"split-window -v -d -c '#{{pane_current_path}}' '{sq(remain_wrap(opts['command']))}'")
         else:
@@ -118,10 +125,10 @@ def generate_shortcut_line(key, value):
         detach_flag = " -d" if detached else ""
         open_cmd = f"new-window{detach_flag}" if use_window else f"split-window -v{detach_flag}"
         if "send-keys" in opts:
-            # For detached new_window, target the newly created window via :{end};
-            # otherwise send to bind-context pane (interactive shell with aliases etc.)
-            target = " -t :{end}" if detached and use_window else ""
-            action = f"{open_cmd} -c '#{{pane_current_path}}' \\; send-keys{target} '{sq(opts['send-keys'])}' Enter"
+            target = ":$" if detached and use_window else ""  # last window in session
+            parts = [f"{open_cmd} -c '#{{pane_current_path}}'"]
+            parts.extend(send_keys_parts(opts["send-keys"], target=target))
+            action = " \\; ".join(parts)
         elif "command" in opts:
             cmd = opts["command"]
             if detached and use_window:

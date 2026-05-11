@@ -133,7 +133,7 @@ def test_detached_window_send_keys():
     # send-keys + detached + new_window: real send-keys targeted at :{end}
     line = generate_shortcut_line("C-M-d", {"send-keys": "echo hi", "new_window": True, "detached": True})
     assert "new-window -d" in line
-    assert "send-keys -t :{end} 'echo hi' Enter" in line
+    assert "send-keys -t :$ 'echo hi' Enter" in line
     assert "_script=$(cat <<" not in line
 
 
