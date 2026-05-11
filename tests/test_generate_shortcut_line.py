@@ -139,3 +139,11 @@ def test_detached_window_send_keys():
 
 def test_invalid_value_type():
     assert generate_shortcut_line("C-M-x", 42) is None
+
+
+def test_send_keys_with_remain_rejected(capsys):
+    # send-keys implicitly keeps the shell alive; combining with remain is rejected
+    result = generate_shortcut_line("C-M-x", {"send-keys": "cmd", "remain": True, "detached": True})
+    assert result is None
+    err = capsys.readouterr().err
+    assert "send-keys" in err and "remain" in err and "C-M-x" in err

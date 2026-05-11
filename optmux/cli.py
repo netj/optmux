@@ -61,6 +61,14 @@ def generate_shortcut_line(key, value):
         opts = value
     else:
         return None
+    if "send-keys" in opts and "remain" in opts:
+        print(
+            f"optmux: ignoring shortcut {key!r}: 'remain' is incompatible with "
+            "'send-keys' (the shell stays alive after the command — send-keys "
+            "implicitly means remain: true; drop 'remain' to silence)",
+            file=sys.stderr,
+        )
+        return None
     use_window = opts.get("new_window", False)
     use_zoom = opts.get("zoom", True)
     detached = opts.get("detached", False)
