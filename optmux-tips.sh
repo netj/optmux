@@ -32,6 +32,8 @@ if ! fc-list : family 2>/dev/null | grep -qi 'Nerd Font'; then
       https://www.nerdfonts.com"
 fi
 
+tips_content="$OPTMUX_DIR/tmux/tips-content.txt"
+
 clear
 cat <<EOF
 
@@ -40,24 +42,19 @@ cat <<EOF
 
   Prefix: Ctrl+T  (C-t)
 
-  Workflow:  C-M-c  wtcode   or   C-M-f  find file to open editor
-          -> C-M-g  lazygit  to check diff/commits
-          -> C-M-o  cycle between panes   or   q  to return
-          -> C-M-s  shell in same dir (run tests, one-off commands)
+EOF
+
+if [[ -f "$tips_content" ]]; then
+    cat "$tips_content"
+else
+    echo "  (no shortcuts configured)"
+fi
+
+cat <<EOF
 
   Install:  brew install netj/tap/wtcode   https://github.com/netj/wtcode
             brew install lazygit          https://github.com/jesseduffield/lazygit
 
-  C-t C-t   last window        C-M-z         quick toggle zoom
-  C-t C-c   new window         C-M-\\         last pane
-  C-t C-n/p next/prev window   C-M-o         prev pane + zoom
-  C-t n/p   next/prev w/ bell
-  C-t z     toggle zoom        C-t F         fingers (copy URLs/paths/hashes)
-  C-t o     cycle panes        C-t h/j/k/l   navigate panes
-  C-t R     reload config      C-M-h         tips (this screen)
-
-  C-t t     send prefix to nested tmux
-  C-t T     swap prefix (for nested tmux)
   copy-mode yank auto-copies to system clipboard (OSC 52)
 ${nerd_font_tip}
 
