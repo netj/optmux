@@ -28,11 +28,15 @@ def _short_sock_path(tmux_dir: Path) -> str:
     short_dir = Path(tempfile.gettempdir()) / f"optmux-{h}"
     short_dir.mkdir(parents=True, exist_ok=True)
     short_sock = str(short_dir / "tmux.sock")
-    if natural.is_symlink():
-        natural.unlink()
-    if not natural.exists():
-        natural.symlink_to(short_sock)
+    if tmux_dir.exists():
+        if natural.is_symlink():
+            natural.unlink()
+        if not natural.exists():
+            natural.symlink_to(short_sock)
     return short_sock
+
+
+KNOWN_SUBCOMMANDS = {"start", "warp"}
 
 
 def parse_project_name(yaml_path_str):
@@ -198,59 +202,71 @@ def generate_tmux_conf_files(tmux_dir, optmux):
         (tmux_dir / f"tmux.optmux-extras.{conf_name}.conf").write_text(content)
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-
-    # if the first arg is a directory, treat it as the working directory
-    argv = list(argv)
-    if argv and Path(argv[0]).is_dir():
-        os.chdir(argv.pop(0))
-
-    if argv:
-        # optmux NAME.optmux.yaml [TMUXP_ARGS...]
-        tmuxp_yaml = argv[0]
-        remaining_args = argv[1:]
-
-        yaml_path = Path(tmuxp_yaml).resolve()
-        yaml_dir = yaml_path.parent
-
-        name = parse_project_name(tmuxp_yaml)
-
-        optmux_dir = yaml_dir / f".{name}.optmux.d"
+def resolve_paths(yaml_file):
+    """Compute session name, optmux directory, and tmux paths from a YAML filename or CWD."""
+    if yaml_file:
+        yaml_path = Path(yaml_file).resolve()
+        name = parse_project_name(yaml_file)
+        optmux_dir = yaml_path.parent / f".{name}.optmux.d"
+        # Read session_name from YAML for tmux session targeting
+        try:
+            with open(yaml_path) as f:
+                data = yaml.safe_load(f) or {}
+            session_name = data.get("session_name", name)
+        except OSError:
+            session_name = name
     else:
-        # optmux (no args) — just open tmux in cwd
+        yaml_path = None
         name = Path.cwd().name
+        session_name = name
         optmux_dir = Path.cwd() / ".optmux.d"
-
     tmux_dir = optmux_dir / "tmux"
+    sock = str(tmux_dir / "tmux.sock")
+    return {
+        "name": name,
+        "session_name": session_name,
+        "yaml_path": yaml_path,
+        "yaml_file": yaml_file,
+        "optmux_dir": optmux_dir,
+        "tmux_dir": tmux_dir,
+        "sock": sock,
+        "tmux_cmd": ["tmux", "-S", sock],
+    }
+
+
+def setup_optmux_env(resolved):
+    """Create optmux directories, seed config files, and set environment variables."""
+    tmux_dir = resolved["tmux_dir"]
+    optmux_dir = resolved["optmux_dir"]
+    name = resolved["name"]
+    yaml_path = resolved["yaml_path"]
+
     tmux_dir.mkdir(parents=True, exist_ok=True)
 
     gitignore = optmux_dir / ".gitignore"
     if not gitignore.exists():
         gitignore.write_text("*\n")
 
-    # seed bundled files if not present
     data_dir = files("optmux").joinpath("data")
     tmux_conf = tmux_dir / "tmux.conf"
-    # make writable before overwriting (it's set read-only below)
     if tmux_conf.exists():
         tmux_conf.chmod(0o644)
-    shutil.copy2(data_dir / "tmux.conf", tmux_conf)  # always regenerated; use tmux.*.conf for customizations
-    tmux_conf.chmod(0o444)  # read-only to discourage direct edits
+    shutil.copy2(data_dir / "tmux.conf", tmux_conf)
+    tmux_conf.chmod(0o444)
+
     setup_script = tmux_dir / "plugins-update.sh"
     if not setup_script.exists():
         shutil.copy2(data_dir / "plugins-update.sh", setup_script)
         setup_script.chmod(0o755)
+
     tips_script = tmux_dir / "tips.sh"
     if not tips_script.exists():
         shutil.copy2(data_dir / "tips.sh", tips_script)
         tips_script.chmod(0o755)
 
-    # generate tmux conf files from optmux YAML merged with personal config
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()
-    if argv:
+    if yaml_path:
         with open(yaml_path) as f:
             data = yaml.safe_load(f) or {}
         project = data.get("optmux") or {}
@@ -259,61 +275,231 @@ def main(argv=None):
         optmux = merge_optmux(bundled, personal)
     generate_tmux_conf_files(tmux_dir, optmux)
 
-    # ensure scripts from optmux's own venv (e.g., tmuxp) are on PATH
     venv_bin = str(Path(sys.executable).parent)
     os.environ["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
-
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
 
     sock = _short_sock_path(tmux_dir)
-    conf = str(tmux_conf)
+    resolved["sock"] = sock
+    resolved["tmux_cmd"] = ["tmux", "-S", sock]
 
-    tmux = ["tmux", "-S", sock]
+    return {
+        "conf": str(tmux_conf),
+        "setup_script": setup_script,
+        "tips_script": tips_script,
+    }
 
-    # Handle nested tmux/optmux gracefully (before plugin bootstrap, which checks $TMUX)
+
+def create_optmux_window(tmux_cmd, tips_script, setup_script):
+    """Create window 0 with tips + plugins-update panes."""
+    subprocess.run([*tmux_cmd, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
+    subprocess.run([*tmux_cmd, "split-window", "-t", "0", "-v", str(setup_script)], check=True)
+
+
+def cmd_start(resolved, remaining_args):
+    """Start or attach to an optmux session."""
+    tmux = resolved["tmux_cmd"]
+    sock = resolved["sock"]
+    name = resolved["name"]
+    session_name = resolved["session_name"]
+    yaml_path = resolved["yaml_path"]
+    yaml_file = resolved["yaml_file"]
+
     outer_tmux = os.environ.get("TMUX")
     if outer_tmux:
-        outer_sock = outer_tmux.split(",")[0]  # $TMUX format: /path/to/socket,pid,index
+        outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
-            print(f"optmux: already inside this session ({name})", file=sys.stderr)
+            print(f"optmux: already inside this session ({session_name})", file=sys.stderr)
             return
-        print(f"optmux: nesting inside outer tmux session", file=sys.stderr)
-        # unset so tmux allows nested attach with our isolated socket
+        print("optmux: nesting inside outer tmux session", file=sys.stderr)
         del os.environ["TMUX"]
 
-    # bootstrap TPM (clone only); plugin install happens inside tmux via tmux.conf
-    subprocess.run([str(setup_script)], check=True)
+    env = setup_optmux_env(resolved)
+    conf = env["conf"]
 
-    def create_optmux_window():
-        """Create window 0 with tips + plugins-update panes."""
-        subprocess.run([*tmux, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
-        subprocess.run([*tmux, "split-window", "-t", "0", "-v", str(setup_script)], check=True)
+    subprocess.run([str(env["setup_script"])], check=True)
 
-    if argv:
+    if yaml_path:
         has_session = subprocess.run(
-            [*tmux, "has-session"],
+            [*tmux, "has-session", "-t", session_name],
             capture_output=True,
         ).returncode == 0
         if has_session:
-            os.execvp(tmux[0], [*tmux, "attach-session"])
-        # Load detached so we can create the optmux window after tmuxp is done
+            os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         subprocess.run(
-            ["tmuxp", "load", "--yes", "-d", "-S", sock, "-f", conf, tmuxp_yaml, *remaining_args],
+            ["tmuxp", "load", "--yes", "-d", "-S", sock, "-f", conf,
+             yaml_file, *remaining_args],
             check=True,
         )
-        create_optmux_window()
-        os.execvp(tmux[0], [*tmux, "attach-session"])
+        create_optmux_window(tmux, env["tips_script"], env["setup_script"])
+        os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
     else:
-        # attach to existing session on this socket, or create a new one
         has_session = subprocess.run(
-            [*tmux, "has-session"],
+            [*tmux, "has-session", "-t", session_name],
             capture_output=True,
         ).returncode == 0
         if has_session:
-            os.execvp(tmux[0], [*tmux, "attach-session"])
+            os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", name], check=True)
-            create_optmux_window()
+            create_optmux_window(tmux, env["tips_script"], env["setup_script"])
             os.execvp(tmux[0], [*tmux, "attach-session"])
+
+
+def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux):
+    """Attach to a session, or switch-client if already inside the same server."""
+    if outer_tmux:
+        outer_sock = outer_tmux.split(",")[0]
+        if os.path.realpath(outer_sock) == os.path.realpath(sock):
+            os.execvp(tmux_cmd[0], [*tmux_cmd, "switch-client", "-t", session_name])
+            return
+    os.execvp(tmux_cmd[0], [*tmux_cmd, "attach-session", "-t", session_name])
+
+
+def cmd_warp(resolved, args):
+    """Create or update a warp session linking windows whose panes match a workdir."""
+    tmux = resolved["tmux_cmd"]
+    sock = resolved["sock"]
+    main_session = resolved["session_name"]
+
+    warp_name = None
+    workdir = None
+    if len(args) >= 1:
+        warp_name = args[0]
+    if len(args) >= 2:
+        workdir = args[1]
+    if len(args) > 2:
+        print("optmux warp: too many arguments", file=sys.stderr)
+        print("usage: optmux [DIR | YAML] warp [NAME] [WORKDIR]", file=sys.stderr)
+        sys.exit(1)
+
+    workdir = os.path.realpath(workdir or os.getcwd())
+    if warp_name is None:
+        warp_name = f"{main_session}//{Path(workdir).name}"
+
+    outer_tmux = os.environ.get("TMUX")
+    if outer_tmux:
+        outer_sock = outer_tmux.split(",")[0]
+        if os.path.realpath(outer_sock) != os.path.realpath(sock):
+            print("optmux: nesting inside outer tmux session", file=sys.stderr)
+            del os.environ["TMUX"]
+
+    if subprocess.run(
+        [*tmux, "has-session", "-t", main_session], capture_output=True,
+    ).returncode != 0:
+        yaml_hint = f" {resolved['yaml_file']}" if resolved["yaml_file"] else ""
+        print(f"optmux warp: session '{main_session}' is not running", file=sys.stderr)
+        print(f"optmux warp: start it first with: optmux{yaml_hint}", file=sys.stderr)
+        sys.exit(1)
+
+    result = subprocess.run(
+        [*tmux, "list-panes", "-s", "-t", main_session,
+         "-F", "#{window_id}\t#{window_index}\t#{pane_current_path}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"optmux warp: failed to list panes: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    matching_windows = {}  # window_id -> window_index
+    for line in result.stdout.strip().splitlines():
+        if not line:
+            continue
+        win_id, win_idx, pane_path = line.split("\t", 2)
+        if os.path.realpath(pane_path) == workdir:
+            matching_windows[win_id] = win_idx
+
+    if not matching_windows:
+        print(f"optmux warp: no windows in '{main_session}' have panes in {workdir}", file=sys.stderr)
+        sys.exit(1)
+
+    warp_exists = subprocess.run(
+        [*tmux, "has-session", "-t", warp_name], capture_output=True,
+    ).returncode == 0
+
+    already_linked = set()
+    if warp_exists:
+        result = subprocess.run(
+            [*tmux, "list-panes", "-s", "-t", warp_name, "-F", "#{window_id}"],
+            capture_output=True, text=True,
+        )
+        already_linked = set(result.stdout.strip().splitlines())
+
+    windows_to_link = {wid: idx for wid, idx in matching_windows.items()
+                       if wid not in already_linked}
+
+    if not windows_to_link and warp_exists:
+        _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+        return
+
+    initial_window_id = None
+    if not warp_exists:
+        result = subprocess.run(
+            [*tmux, "new-session", "-d", "-s", warp_name, "-P", "-F", "#{window_id}"],
+            capture_output=True, text=True, check=True,
+        )
+        initial_window_id = result.stdout.strip()
+
+    for win_id, win_idx in windows_to_link.items():
+        subprocess.run(
+            [*tmux, "link-window", "-s", f"{main_session}:{win_idx}", "-t", warp_name],
+            check=True,
+        )
+
+    if initial_window_id and initial_window_id not in matching_windows:
+        subprocess.run(
+            [*tmux, "kill-window", "-t", initial_window_id],
+            capture_output=True,
+        )
+
+    _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+
+
+USAGE = """\
+usage: optmux [DIR | YAML] [start | warp [NAME] [WORKDIR]]
+
+  optmux DIR              open tmux in DIR (use . for current directory)
+  optmux YAML             load a tmuxp session from YAML
+  optmux YAML start       same as above (explicit)
+  optmux YAML warp [NAME] [WORKDIR]
+                          create a warp session linking windows whose
+                          panes match WORKDIR (default: current directory)
+"""
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv:
+        print(USAGE, file=sys.stderr)
+        sys.exit(0)
+
+    argv = list(argv)
+
+    # First positional is either a directory (plain tmux) or a YAML file (tmuxp session)
+    yaml_file = None
+    if argv and argv[0] not in KNOWN_SUBCOMMANDS:
+        candidate = argv[0]
+        if Path(candidate).is_dir():
+            os.chdir(argv.pop(0))
+        elif Path(candidate).suffix in ('.yaml', '.yml'):
+            yaml_file = argv.pop(0)
+
+    if argv and argv[0] in KNOWN_SUBCOMMANDS:
+        subcommand = argv.pop(0)
+    elif argv and not argv[0].startswith('-'):
+        print(f"optmux: unknown argument: {argv[0]}", file=sys.stderr)
+        print(USAGE, file=sys.stderr)
+        sys.exit(1)
+    else:
+        subcommand = "start"
+
+    resolved = resolve_paths(yaml_file)
+
+    if subcommand == "start":
+        cmd_start(resolved, argv)
+    elif subcommand == "warp":
+        cmd_warp(resolved, argv)

@@ -64,12 +64,20 @@ def test_main_with_yaml_existing_session(mock_run, mock_execvp, project_yaml_fil
     assert len(tmuxp_calls) == 0
 
 
+def test_main_no_args_prints_help(capsys):
+    """No args: prints usage and exits 0."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(argv=[])
+    assert exc_info.value.code == 0
+    assert "usage:" in capsys.readouterr().err
+
+
 @patch("os.execvp")
 @patch("subprocess.run", side_effect=_mock_run_side_effect)
-def test_main_no_args_new_session(mock_run, mock_execvp, tmp_path, monkeypatch):
-    """No args: creates session in cwd, attaches."""
+def test_main_dot_dir_new_session(mock_run, mock_execvp, tmp_path, monkeypatch):
+    """Passing '.' as dir: creates session in cwd, attaches."""
     monkeypatch.chdir(tmp_path)
-    main(argv=[])
+    main(argv=["."])
 
     # new-session called
     new_session_calls = [c for c in mock_run.call_args_list if "new-session" in str(c)]
@@ -81,12 +89,12 @@ def test_main_no_args_new_session(mock_run, mock_execvp, tmp_path, monkeypatch):
 
 @patch("os.execvp", side_effect=_mock_execvp)
 @patch("subprocess.run")
-def test_main_no_args_existing_session(mock_run, mock_execvp, tmp_path, monkeypatch):
-    """No args, session exists: just attaches."""
+def test_main_dot_dir_existing_session(mock_run, mock_execvp, tmp_path, monkeypatch):
+    """Passing '.' with existing session: just attaches."""
     monkeypatch.chdir(tmp_path)
     mock_run.return_value = MagicMock(returncode=0)
     with pytest.raises(_ExecvpCalled):
-        main(argv=[])
+        main(argv=["."])
 
     mock_execvp.assert_called_once()
     assert "attach-session" in mock_execvp.call_args[0][1]
