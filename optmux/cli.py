@@ -349,24 +349,30 @@ def cmd_start(resolved, remaining_args):
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
-def _patch_warp_status_left(tmux, warp_name):
-    """Patch global status-left to show short name for warp sessions (no-op for main)."""
-    result = subprocess.run(
-        [*tmux, "show", "-gv", "status-left"],
-        capture_output=True, text=True,
-    )
-    raw = result.stdout.strip()
+def _patch_warp_status(tmux, warp_name):
+    """Patch global status formats to show short name for warp sessions (no-op for main)."""
     warp_fmt = "#{s|//.*|⚡warp|:session_name}"
-    if result.returncode != 0 or warp_fmt in raw or "#{session_name}" not in raw:
-        return
-    patched = raw.replace("#{session_name}", warp_fmt)
-    subprocess.run([*tmux, "set", "-g", "status-left", patched], capture_output=True)
+    for option in ("status-left", "status-right", "set-titles-string"):
+        result = subprocess.run(
+            [*tmux, "show", "-gv", option],
+            capture_output=True, text=True,
+        )
+        raw = result.stdout.strip()
+        if result.returncode != 0 or warp_fmt in raw:
+            continue
+        if "#{session_name}" in raw:
+            patched = raw.replace("#{session_name}", warp_fmt)
+        elif "#S" in raw:
+            patched = raw.replace("#S", warp_fmt)
+        else:
+            continue
+        subprocess.run([*tmux, "set", "-g", option, patched], capture_output=True)
 
 
 def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux, *, warp=False):
     """Attach to a session, or switch-client if already inside the same server."""
     if warp:
-        _patch_warp_status_left(tmux_cmd, session_name)
+        _patch_warp_status(tmux_cmd, session_name)
     if outer_tmux:
         outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
