@@ -367,12 +367,12 @@ def cmd_warp(resolved, args):
     warp_name = None
     workdir = None
     if len(args) >= 1:
-        warp_name = args[0]
+        workdir = args[0]
     if len(args) >= 2:
-        workdir = args[1]
+        warp_name = args[1]
     if len(args) > 2:
         print("optmux warp: too many arguments", file=sys.stderr)
-        print("usage: optmux [DIR | YAML] warp [NAME] [WORKDIR]", file=sys.stderr)
+        print("usage: optmux [DIR | YAML] warp [WORKDIR] [NAME]", file=sys.stderr)
         sys.exit(1)
 
     workdir = os.path.realpath(workdir or os.getcwd())
@@ -458,12 +458,12 @@ def cmd_warp(resolved, args):
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | warp [NAME] [WORKDIR]]
+usage: optmux [DIR | YAML] [start | warp [WORKDIR] [NAME]]
 
   optmux DIR              open tmux in DIR (use . for current directory)
   optmux YAML             load a tmuxp session from YAML
   optmux YAML start       same as above (explicit)
-  optmux YAML warp [NAME] [WORKDIR]
+  optmux YAML warp [WORKDIR] [NAME]
                           create a warp session linking windows whose
                           panes match WORKDIR (default: current directory)
 """
