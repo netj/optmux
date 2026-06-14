@@ -166,19 +166,19 @@ def test_nested_different_socket_unsets_tmux(mock_run, mock_execvp, project_yaml
     assert "nesting inside outer tmux session" in capsys.readouterr().err
 
 
-@patch("os.execvp")
+@patch("os.execvp", side_effect=_mock_execvp)
 @patch("subprocess.run", side_effect=_mock_run_side_effect)
-def test_nested_same_socket_exits_early(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):
-    """Running optmux inside the same optmux session prints message and returns early."""
-    # Compute the socket path that main() will use
+def test_nested_same_socket_switches_to_main(mock_run, mock_execvp, project_yaml_file, monkeypatch):
+    """Running optmux inside the same server switches to the main session."""
     yaml_path = Path(str(project_yaml_file)).resolve()
     sock = str(yaml_path.parent / ".myproject.optmux.d" / "tmux" / "tmux.sock")
     monkeypatch.setenv("TMUX", f"{sock},12345,0")
-    main(argv=[str(project_yaml_file)])
+    with pytest.raises(_ExecvpCalled):
+        main(argv=[str(project_yaml_file)])
 
-    assert "already inside this session" in capsys.readouterr().err
-    # should NOT attempt to attach or launch anything
-    mock_execvp.assert_not_called()
+    mock_execvp.assert_called_once()
+    assert "switch-client" in mock_execvp.call_args[0][1]
+    assert "myproject" in str(mock_execvp.call_args)
 
 
 @patch("os.execvp")

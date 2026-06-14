@@ -208,7 +208,7 @@ def test_warp_custom_name(warp_env):
     with patch("subprocess.run", side_effect=mock_run):
         with patch("os.execvp", side_effect=_mock_execvp):
             with pytest.raises(_ExecvpCalled):
-                cmd_warp(warp_env["resolved"], ["my-custom-warp"])
+                cmd_warp(warp_env["resolved"], [workdir, "my-custom-warp"])
 
     new_session_calls = [c for c in calls if "new-session" in c]
     assert "my-custom-warp" in str(new_session_calls[0])
@@ -227,7 +227,7 @@ def test_warp_custom_workdir(warp_env, tmp_path):
     with patch("subprocess.run", side_effect=mock_run):
         with patch("os.execvp", side_effect=_mock_execvp):
             with pytest.raises(_ExecvpCalled):
-                cmd_warp(warp_env["resolved"], [warp_name, str(custom_dir)])
+                cmd_warp(warp_env["resolved"], [str(custom_dir), warp_name])
 
     link_calls = [c for c in calls if "link-window" in c]
     assert len(link_calls) == 1

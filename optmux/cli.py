@@ -311,7 +311,8 @@ def cmd_start(resolved, remaining_args):
     if outer_tmux:
         outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
-            print(f"optmux: already inside this session ({session_name})", file=sys.stderr)
+            # Same server: switch to the main session (e.g., from a warp session)
+            os.execvp(tmux[0], [*tmux, "switch-client", "-t", session_name])
             return
         print("optmux: nesting inside outer tmux session", file=sys.stderr)
         del os.environ["TMUX"]
@@ -347,11 +348,33 @@ def cmd_start(resolved, remaining_args):
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", name], check=True)
             create_optmux_window(tmux, env["tips_script"], env["setup_script"])
-            os.execvp(tmux[0], [*tmux, "attach-session"])
+            os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
-def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux):
+def _patch_warp_status(tmux, warp_name):
+    """Patch global status formats to show short name for warp sessions (no-op for main)."""
+    warp_fmt = "#{s|//.*|⚡warp|:session_name}"
+    for option in ("status-left", "status-right", "set-titles-string"):
+        result = subprocess.run(
+            [*tmux, "show", "-gv", option],
+            capture_output=True, text=True,
+        )
+        raw = result.stdout.strip()
+        if result.returncode != 0 or warp_fmt in raw:
+            continue
+        if "#{session_name}" in raw:
+            patched = raw.replace("#{session_name}", warp_fmt)
+        elif "#S" in raw:
+            patched = raw.replace("#S", warp_fmt)
+        else:
+            continue
+        subprocess.run([*tmux, "set", "-g", option, patched], capture_output=True)
+
+
+def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux, *, warp=False):
     """Attach to a session, or switch-client if already inside the same server."""
+    if warp:
+        _patch_warp_status(tmux_cmd, session_name)
     if outer_tmux:
         outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
@@ -360,24 +383,28 @@ def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux):
     os.execvp(tmux_cmd[0], [*tmux_cmd, "attach-session", "-t", session_name])
 
 
-def cmd_warp(resolved, args):
+def cmd_warp(resolved, args, original_cwd=None):
     """Create or update a warp session linking windows whose panes match a workdir."""
     tmux = resolved["tmux_cmd"]
     sock = resolved["sock"]
     main_session = resolved["session_name"]
 
+    if original_cwd is None:
+        original_cwd = os.getcwd()
+
     warp_name = None
     workdir = None
     if len(args) >= 1:
-        warp_name = args[0]
+        workdir = args[0]
     if len(args) >= 2:
-        workdir = args[1]
+        warp_name = args[1]
     if len(args) > 2:
         print("optmux warp: too many arguments", file=sys.stderr)
-        print("usage: optmux [DIR | YAML] warp [NAME] [WORKDIR]", file=sys.stderr)
+        print("usage: optmux [DIR | YAML] warp [WORKDIR] [NAME]", file=sys.stderr)
         sys.exit(1)
 
-    workdir = os.path.realpath(workdir or os.getcwd())
+    # Resolve workdir relative to original cwd (before any chdir from DIR arg)
+    workdir = os.path.realpath(os.path.join(original_cwd, workdir or "."))
     if warp_name is None:
         warp_name = f"{main_session}//{Path(workdir).name}"
 
@@ -433,7 +460,7 @@ def cmd_warp(resolved, args):
                        if wid not in already_linked}
 
     if not windows_to_link and warp_exists:
-        _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+        _attach_or_switch(tmux, warp_name, sock, outer_tmux, warp=True)
         return
 
     initial_window_id = None
@@ -456,18 +483,18 @@ def cmd_warp(resolved, args):
             capture_output=True,
         )
 
-    _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+    _attach_or_switch(tmux, warp_name, sock, outer_tmux, warp=True)
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | warp [NAME] [WORKDIR]]
+usage: optmux [DIR | YAML] [start | warp [WORKDIR] [NAME]]
 
-  optmux DIR              open tmux in DIR (use . for current directory)
-  optmux YAML             load a tmuxp session from YAML
-  optmux YAML start       same as above (explicit)
-  optmux YAML warp [NAME] [WORKDIR]
-                          create a warp session linking windows whose
-                          panes match WORKDIR (default: current directory)
+  optmux DIR                          open tmux in DIR (use . for cwd)
+  optmux YAML                         load a tmuxp session from YAML
+  optmux YAML start                   same as above (explicit)
+  optmux [DIR | YAML] warp [WORKDIR] [NAME]
+                                      create a warp session linking windows
+                                      whose panes match WORKDIR (default: cwd)
 """
 
 
@@ -480,6 +507,7 @@ def main(argv=None):
         sys.exit(0)
 
     argv = list(argv)
+    original_cwd = os.getcwd()
 
     # First positional is either a directory (plain tmux) or a YAML file (tmuxp session)
     yaml_file = None
@@ -504,4 +532,4 @@ def main(argv=None):
     if subcommand == "start":
         cmd_start(resolved, argv)
     elif subcommand == "warp":
-        cmd_warp(resolved, argv)
+        cmd_warp(resolved, argv, original_cwd)
