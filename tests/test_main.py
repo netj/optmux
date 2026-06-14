@@ -1,10 +1,11 @@
 import os
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from optmux.cli import main
+from optmux.cli import _SOCK_PATH_LIMIT, _short_sock_path, main
 
 
 class _ExecvpCalled(Exception):
@@ -207,3 +208,43 @@ def test_no_tmux_env_no_nesting_message(mock_run, mock_execvp, project_yaml_file
     err = capsys.readouterr().err
     assert "nesting" not in err
     assert "already inside" not in err
+
+
+def test_short_sock_path_short_path():
+    """Short paths are returned as-is."""
+    short_dir = Path(tempfile.mkdtemp(prefix="om-"))
+    try:
+        tmux_dir = short_dir / "t"
+        tmux_dir.mkdir()
+        assert len(str(tmux_dir / "tmux.sock")) < _SOCK_PATH_LIMIT
+        result = _short_sock_path(tmux_dir)
+        assert result == str(tmux_dir / "tmux.sock")
+        assert not (tmux_dir / "tmux.sock").is_symlink()
+    finally:
+        import shutil
+        shutil.rmtree(short_dir, ignore_errors=True)
+
+
+def test_short_sock_path_long_path(tmp_path):
+    """Paths exceeding sun_path limit get redirected to a temp directory."""
+    padding = "x" * 200
+    tmux_dir = tmp_path / padding / "tmux"
+    tmux_dir.mkdir(parents=True)
+    natural = str(tmux_dir / "tmux.sock")
+    assert len(natural) >= _SOCK_PATH_LIMIT
+
+    result = _short_sock_path(tmux_dir)
+    assert len(result) < _SOCK_PATH_LIMIT
+    assert result.startswith(tempfile.gettempdir())
+    # symlink created at original location
+    link = tmux_dir / "tmux.sock"
+    assert link.is_symlink()
+    assert os.readlink(str(link)) == result
+
+
+def test_short_sock_path_deterministic(tmp_path):
+    """Same input always produces the same short path."""
+    padding = "x" * 200
+    tmux_dir = tmp_path / padding / "tmux"
+    tmux_dir.mkdir(parents=True)
+    assert _short_sock_path(tmux_dir) == _short_sock_path(tmux_dir)
