@@ -311,7 +311,8 @@ def cmd_start(resolved, remaining_args):
     if outer_tmux:
         outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
-            print(f"optmux: already inside this session ({session_name})", file=sys.stderr)
+            # Same server: switch to the main session (e.g., from a warp session)
+            os.execvp(tmux[0], [*tmux, "switch-client", "-t", session_name])
             return
         print("optmux: nesting inside outer tmux session", file=sys.stderr)
         del os.environ["TMUX"]
@@ -345,7 +346,7 @@ def cmd_start(resolved, remaining_args):
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", name], check=True)
             create_optmux_window(tmux, env["tips_script"], env["setup_script"])
-            os.execvp(tmux[0], [*tmux, "attach-session"])
+            os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
 def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux):
