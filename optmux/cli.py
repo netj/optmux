@@ -349,8 +349,24 @@ def cmd_start(resolved, remaining_args):
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
-def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux):
+def _patch_warp_status_left(tmux, warp_name):
+    """Patch global status-left to show short name for warp sessions (no-op for main)."""
+    result = subprocess.run(
+        [*tmux, "show", "-gv", "status-left"],
+        capture_output=True, text=True,
+    )
+    raw = result.stdout.strip()
+    warp_fmt = "#{s|//.*|⚡warp|:session_name}"
+    if result.returncode != 0 or warp_fmt in raw or "#{session_name}" not in raw:
+        return
+    patched = raw.replace("#{session_name}", warp_fmt)
+    subprocess.run([*tmux, "set", "-g", "status-left", patched], capture_output=True)
+
+
+def _attach_or_switch(tmux_cmd, session_name, sock, outer_tmux, *, warp=False):
     """Attach to a session, or switch-client if already inside the same server."""
+    if warp:
+        _patch_warp_status_left(tmux_cmd, session_name)
     if outer_tmux:
         outer_sock = outer_tmux.split(",")[0]
         if os.path.realpath(outer_sock) == os.path.realpath(sock):
@@ -436,7 +452,7 @@ def cmd_warp(resolved, args, original_cwd=None):
                        if wid not in already_linked}
 
     if not windows_to_link and warp_exists:
-        _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+        _attach_or_switch(tmux, warp_name, sock, outer_tmux, warp=True)
         return
 
     initial_window_id = None
@@ -459,20 +475,7 @@ def cmd_warp(resolved, args, original_cwd=None):
             capture_output=True,
         )
 
-    # Patch status-left for this warp session: replace #{session_name} with
-    # a substitution that shows e.g. "evwork⚡warp" instead of the full name
-    result = subprocess.run(
-        [*tmux, "show", "-gv", "status-left"],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0 and "#{session_name}" in result.stdout:
-        patched = result.stdout.strip().replace(
-            "#{session_name}",
-            "#{s%//.*%⚡warp%:session_name}",
-        )
-        subprocess.run([*tmux, "set", "-t", warp_name, "status-left", patched])
-
-    _attach_or_switch(tmux, warp_name, sock, outer_tmux)
+    _attach_or_switch(tmux, warp_name, sock, outer_tmux, warp=True)
 
 
 USAGE = """\
