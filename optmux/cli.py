@@ -459,6 +459,19 @@ def cmd_warp(resolved, args, original_cwd=None):
             capture_output=True,
         )
 
+    # Patch status-left for this warp session: replace #{session_name} with
+    # a substitution that shows e.g. "evwork⚡warp" instead of the full name
+    result = subprocess.run(
+        [*tmux, "show", "-gv", "status-left"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0 and "#{session_name}" in result.stdout:
+        patched = result.stdout.strip().replace(
+            "#{session_name}",
+            "#{s%//.*%⚡warp%:session_name}",
+        )
+        subprocess.run([*tmux, "set", "-t", warp_name, "status-left", patched])
+
     _attach_or_switch(tmux, warp_name, sock, outer_tmux)
 
 
