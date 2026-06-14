@@ -319,6 +319,8 @@ def cmd_start(resolved, remaining_args):
 
     env = setup_optmux_env(resolved)
     conf = env["conf"]
+    tmux = resolved["tmux_cmd"]
+    sock = resolved["sock"]
 
     subprocess.run([str(env["setup_script"])], check=True)
 
