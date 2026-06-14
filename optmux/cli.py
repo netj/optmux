@@ -1,11 +1,38 @@
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from importlib.resources import files
 from pathlib import Path
 
 import yaml
+
+# macOS sockaddr_un.sun_path is 104 bytes (including NUL terminator)
+_SOCK_PATH_LIMIT = 104
+
+
+def _short_sock_path(tmux_dir: Path) -> str:
+    """Return a socket path under the Unix sun_path limit.
+
+    When the natural path (.optmux.d/tmux/tmux.sock) is too long,
+    place the socket under a deterministic temp directory and leave
+    a symlink at the original location for discoverability.
+    """
+    natural = tmux_dir / "tmux.sock"
+    natural_str = str(natural)
+    if len(natural_str) < _SOCK_PATH_LIMIT:
+        return natural_str
+    h = hashlib.sha256(natural_str.encode()).hexdigest()[:12]
+    short_dir = Path(tempfile.gettempdir()) / f"optmux-{h}"
+    short_dir.mkdir(parents=True, exist_ok=True)
+    short_sock = str(short_dir / "tmux.sock")
+    if natural.is_symlink():
+        natural.unlink()
+    if not natural.exists():
+        natural.symlink_to(short_sock)
+    return short_sock
 
 
 def parse_project_name(yaml_path_str):
@@ -240,7 +267,7 @@ def main(argv=None):
     os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
 
-    sock = str(tmux_dir / "tmux.sock")
+    sock = _short_sock_path(tmux_dir)
     conf = str(tmux_conf)
 
     tmux = ["tmux", "-S", sock]
