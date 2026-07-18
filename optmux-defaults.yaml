@@ -1,9 +1,7 @@
 optmux:
   shortcuts:
     C-M-s: ""                          # empty split (new shell pane, zoomed)
-    C-M-c:
-      command: WTCODE_TMUX_MODE=split-window wtcode
-      new_window: true
+    C-M-c: WTCODE_TMUX_MODE=new-window wtcode
     C-M-f:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
     C-M-g: lazygit
