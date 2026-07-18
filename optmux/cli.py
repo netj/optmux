@@ -36,7 +36,7 @@ def _short_sock_path(tmux_dir: Path) -> str:
     return short_sock
 
 
-KNOWN_SUBCOMMANDS = {"start", "warp"}
+KNOWN_SUBCOMMANDS = {"start", "stop", "warp"}
 
 
 def parse_project_name(yaml_path_str):
@@ -218,7 +218,8 @@ def resolve_paths(yaml_file):
     else:
         yaml_path = None
         name = Path.cwd().name
-        session_name = name
+        # Strip leading dots from session name - tmux has issues parsing them in targets
+        session_name = name.lstrip('.')
         optmux_dir = Path.cwd() / ".optmux.d"
     tmux_dir = optmux_dir / "tmux"
     sock = str(tmux_dir / "tmux.sock")
@@ -292,10 +293,32 @@ def setup_optmux_env(resolved):
     }
 
 
-def create_optmux_window(tmux_cmd, tips_script, setup_script):
+def create_optmux_window(tmux_cmd, tips_script, setup_script, session_name):
     """Create window 0 with tips + plugins-update panes."""
-    subprocess.run([*tmux_cmd, "new-window", "-t", "0", "-n", "optmux", str(tips_script)], check=True)
-    subprocess.run([*tmux_cmd, "split-window", "-t", "0", "-v", str(setup_script)], check=True)
+    # Create window 0 (base-index is 1, so window 0 doesn't auto-exist)
+    target = f"{session_name}:0"
+    subprocess.run([*tmux_cmd, "new-window", "-t", target, "-n", "optmux", str(tips_script)], check=True)
+    subprocess.run([*tmux_cmd, "split-window", "-t", target, "-v", str(setup_script)], check=True)
+
+
+def cmd_stop(resolved):
+    """Stop (kill) an optmux session."""
+    # Setup environment to get correct socket path
+    setup_optmux_env(resolved)
+    tmux = resolved["tmux_cmd"]
+    session_name = resolved["session_name"]
+
+    has_session = subprocess.run(
+        [*tmux, "has-session", "-t", session_name],
+        capture_output=True,
+    ).returncode == 0
+
+    if not has_session:
+        print(f"optmux: session '{session_name}' is not running", file=sys.stderr)
+        sys.exit(1)
+
+    subprocess.run([*tmux, "kill-session", "-t", session_name], check=True)
+    print(f"optmux: killed session '{session_name}'")
 
 
 def cmd_start(resolved, remaining_args):
@@ -336,7 +359,7 @@ def cmd_start(resolved, remaining_args):
              yaml_file, *remaining_args],
             check=True,
         )
-        create_optmux_window(tmux, env["tips_script"], env["setup_script"])
+        create_optmux_window(tmux, env["tips_script"], env["setup_script"], session_name)
         os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
     else:
         has_session = subprocess.run(
@@ -346,8 +369,8 @@ def cmd_start(resolved, remaining_args):
         if has_session:
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         else:
-            subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", name], check=True)
-            create_optmux_window(tmux, env["tips_script"], env["setup_script"])
+            subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", session_name], check=True)
+            create_optmux_window(tmux, env["tips_script"], env["setup_script"], session_name)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
@@ -487,11 +510,12 @@ def cmd_warp(resolved, args, original_cwd=None):
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | warp [WORKDIR] [NAME]]
+usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME]]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
   optmux YAML start                   same as above (explicit)
+  optmux [DIR | YAML] stop            kill the tmux session
   optmux [DIR | YAML] warp [WORKDIR] [NAME]
                                       create a warp session linking windows
                                       whose panes match WORKDIR (default: cwd)
@@ -531,5 +555,7 @@ def main(argv=None):
 
     if subcommand == "start":
         cmd_start(resolved, argv)
+    elif subcommand == "stop":
+        cmd_stop(resolved)
     elif subcommand == "warp":
         cmd_warp(resolved, argv, original_cwd)
