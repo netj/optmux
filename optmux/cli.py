@@ -104,7 +104,9 @@ def generate_shortcut_line(key, value):
     use_zoom = opts.get("zoom", True)
     detached = opts.get("detached", False)
 
-    remain = opts.get("remain", "on-error") if detached else False
+    # Enable remain_wrap for detached shortcuts AND for new_window shortcuts
+    # (so windows don't close before user sees output/errors)
+    remain = opts.get("remain", "on-error") if (detached or use_window) else False
 
     def sq(s):  # escape ' for single-quoted tmux string
         return s.replace("'", "'\\''")
@@ -169,9 +171,7 @@ def generate_shortcut_line(key, value):
             parts.extend(send_keys_parts(opts["send-keys"], target=target))
             action = " \\; ".join(parts)
         elif "command" in opts:
-            cmd = opts["command"]
-            if detached and use_window:
-                cmd = remain_wrap(cmd)
+            cmd = remain_wrap(opts["command"])
             action = f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'"
         else:
             action = f"{open_cmd} -c '#{{pane_current_path}}'"
