@@ -32,6 +32,16 @@ if ! fc-list : family 2>/dev/null | grep -qi 'Nerd Font'; then
       https://www.nerdfonts.com"
 fi
 
+# terminal recommendation for OSC 52 support
+terminal_tip=""
+if [[ "$TERM_PROGRAM" == "Apple_Terminal" ]] || [[ -z "$TERM_PROGRAM" && "$OSTYPE" == darwin* ]]; then
+    terminal_tip="
+  [!] For clipboard integration (OSC 52), use a modern terminal:
+      Ghostty: https://ghostty.org
+      iTerm2:  https://iterm2.com
+      Warp:    https://warp.dev"
+fi
+
 tips_content="$OPTMUX_DIR/tmux/tips-content.txt"
 
 clear
@@ -56,7 +66,7 @@ cat <<EOF
             brew install lazygit          https://github.com/jesseduffield/lazygit
 
   copy-mode yank auto-copies to system clipboard (OSC 52)
-${nerd_font_tip}
+${nerd_font_tip}${terminal_tip}
 
   q/Enter: dismiss    d: dismiss for a week    D: dismiss forever    C-M-h: show again
 
