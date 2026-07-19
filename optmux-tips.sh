@@ -34,7 +34,7 @@ fi
 
 # terminal recommendation for OSC 52 support
 terminal_tip=""
-if [[ "$TERM_PROGRAM" == "Apple_Terminal" ]] || [[ -z "$TERM_PROGRAM" && "$OSTYPE" == darwin* ]]; then
+if [[ "$__CFBundleIdentifier" == "com.apple.Terminal" ]]; then
     terminal_tip="
   [!] For clipboard integration (OSC 52), use a modern terminal:
       Ghostty: https://ghostty.org
