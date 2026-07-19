@@ -35,8 +35,20 @@ optmux:
       tip: last window
     C-t C-c:
       tip: new window
+    C-t C-d:
+      tip: detach
+    C-t C-o:
+      tip: rotate panes forward
+    C-t o:
+      tip: rotate panes backward
+    C-t n:
+      tip: next window with bell
+    C-t p:
+      tip: prev window with bell
     C-t z:
       tip: toggle zoom
+    C-t "`":
+      tip: kill session (confirm)
     C-t R:
       tip: reload config
     C-t F:
