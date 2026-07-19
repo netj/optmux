@@ -22,6 +22,15 @@
 - `optmux.rb` is a meta-formula: installs `netj/tap/wtcode` + `lazygit`
 - Update via `gh api repos/netj/homebrew-tap/contents/optmux.rb --method PUT ...`
 
+## tmux-fingers Plugin
+
+- Plugin: `Morantron/tmux-fingers` (TPM-managed)
+- The install wizard downloads pre-built binaries from GitHub releases
+- **Critical:** Pre-built binaries require `bdw-gc` (Boehm GC) and other runtime dependencies
+- `optmux/data/plugins-update.sh` now auto-installs missing dependencies via Homebrew
+- Dependencies: `bdw-gc`, `pcre2`, `libevent`, `libyaml`
+- Config: `set -g @fingers-skip-wizard '1'` in `optmux-tmux.conf` to skip the install wizard after initial setup
+
 ## Testing
 
 ```bash
