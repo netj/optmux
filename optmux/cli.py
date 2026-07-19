@@ -89,6 +89,8 @@ def generate_shortcut_line(key, value):
     or the entry is display-only (tip field only).
     """
     bind = "bind -n" if key.startswith("C-M-") else "bind"
+    # Escape backslashes in key for tmux (C-M-\ needs to be C-M-\\)
+    tmux_key = key.replace("\\", "\\\\")
     # normalize str to dict
     if isinstance(value, str):
         opts = {"command": value} if value else {}
@@ -101,7 +103,7 @@ def generate_shortcut_line(key, value):
         return None
     # raw tmux action
     if "tmux" in opts:
-        return f"{bind} {key} {opts['tmux']}\n"
+        return f"{bind} {tmux_key} {opts['tmux']}\n"
     if "send-keys" in opts and "remain" in opts:
         print(
             f"optmux: ignoring shortcut {key!r}: 'remain' is incompatible with "
@@ -182,39 +184,64 @@ def generate_shortcut_line(key, value):
             action = f"{open_cmd} -c '#{{pane_current_path}}'"
         if use_zoom and not use_window and not detached:
             action += " \\; resize-pane -Z"
-    return f"{bind} {key} {action}\n"
+    return f"{bind} {tmux_key} {action}\n"
 
 
-def generate_tips_content(shortcuts):
-    """Generate formatted tips text from shortcuts with tip fields."""
-    entries = []
-    for key, value in shortcuts.items():
-        if isinstance(value, str):
-            tip = value if value else None
-        elif isinstance(value, dict):
-            tip = value.get("tip")
-            if tip is None:
-                tip = value.get("command") or value.get("send-keys")
-        else:
-            continue
-        if not tip:
-            continue
-        # display key: non-C-M- keys without spaces get C-t prefix
-        if not key.startswith("C-M-") and " " not in key and "/" not in key:
-            display_key = f"C-t {key}"
-        else:
-            display_key = key
-        entries.append((display_key, tip))
-    if not entries:
+def generate_tips_content(shortcuts, bundled_keys=None):
+    """Generate formatted tips text from shortcuts with tip fields.
+
+    If bundled_keys is provided, separates user-defined shortcuts into a second section.
+    """
+    if bundled_keys is None:
+        bundled_keys = set()
+
+    def extract_entries(shortcut_dict, keys_filter=None):
+        entries = []
+        for key, value in shortcut_dict.items():
+            if keys_filter is not None and (key in keys_filter) != (keys_filter == bundled_keys):
+                continue
+            if isinstance(value, str):
+                tip = value if value else None
+            elif isinstance(value, dict):
+                tip = value.get("tip")
+                if tip is None:
+                    tip = value.get("command") or value.get("send-keys")
+            else:
+                continue
+            if not tip:
+                continue
+            # display key: non-C-M- keys without spaces get C-t prefix
+            if not key.startswith("C-M-") and " " not in key and "/" not in key:
+                display_key = f"C-t {key}"
+            else:
+                display_key = key
+            entries.append((display_key, tip))
+        return entries
+
+    builtin = extract_entries(shortcuts, bundled_keys if bundled_keys else None)
+    user = extract_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys}, set()) if bundled_keys else []
+
+    all_entries = builtin + user
+    if not all_entries:
         return ""
-    key_width = max(len(k) for k, _ in entries) + 2
+
+    key_width = max(len(k) for k, _ in all_entries) + 2
     lines = []
-    for display_key, tip in entries:
-        lines.append(f"  {display_key:<{key_width}}  {tip}")
+
+    if builtin:
+        for display_key, tip in builtin:
+            lines.append(f"  {display_key:<{key_width}}  {tip}")
+
+    if user:
+        if builtin:
+            lines.append("")
+        for display_key, tip in user:
+            lines.append(f"  {display_key:<{key_width}}  {tip}")
+
     return "\n".join(lines) + "\n"
 
 
-def generate_tmux_conf_files(tmux_dir, optmux):
+def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     """Generate tmux conf files from merged optmux config."""
     # clear all managed files first to avoid stale configs
     for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
@@ -229,7 +256,8 @@ def generate_tmux_conf_files(tmux_dir, optmux):
             if line is not None:
                 lines.append(line)
         (tmux_dir / "tmux.optmux-shortcuts.conf").write_text("".join(lines))
-        tips_content = generate_tips_content(shortcuts)
+        bundled_keys = set(bundled_shortcuts.keys()) if bundled_shortcuts else None
+        tips_content = generate_tips_content(shortcuts, bundled_keys)
         if tips_content:
             (tmux_dir / "tips-content.txt").write_text(tips_content)
 
@@ -312,7 +340,7 @@ def setup_optmux_env(resolved):
         optmux = merge_optmux(bundled, project, personal)
     else:
         optmux = merge_optmux(bundled, personal)
-    generate_tmux_conf_files(tmux_dir, optmux)
+    generate_tmux_conf_files(tmux_dir, optmux, bundled.get("shortcuts"))
 
     venv_bin = str(Path(sys.executable).parent)
     os.environ["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
