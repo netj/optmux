@@ -147,3 +147,30 @@ def test_send_keys_with_remain_rejected(capsys):
     assert result is None
     err = capsys.readouterr().err
     assert "send-keys" in err and "remain" in err and "C-M-x" in err
+
+
+def test_tmux_raw_action():
+    line = generate_shortcut_line("C-M-z", {"tmux": "resize-pane -Z"})
+    assert line == "bind -n C-M-z resize-pane -Z\n"
+
+
+def test_tmux_raw_action_regular_key():
+    line = generate_shortcut_line("z", {"tmux": "resize-pane -Z"})
+    assert line == "bind z resize-pane -Z\n"
+
+
+def test_tip_only_returns_none():
+    assert generate_shortcut_line("C-t C-t", {"tip": "last window"}) is None
+
+
+def test_tip_field_ignored_in_bind():
+    line = generate_shortcut_line("C-M-g", {"command": "lazygit", "tip": "git UI"})
+    assert "'lazygit'" in line
+    assert "tip" not in line
+
+
+def test_empty_command_with_tip():
+    line = generate_shortcut_line("C-M-s", {"command": "", "tip": "shell"})
+    assert "split-window -v" in line
+    assert "resize-pane -Z" in line
+    assert "''" not in line
