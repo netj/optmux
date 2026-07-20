@@ -329,7 +329,7 @@ def setup_optmux_env(resolved):
     if tips_script.exists():
         tips_script.chmod(0o644)
     shutil.copy2(data_dir / "tips.sh", tips_script)
-    tips_script.chmod(0o444)
+    tips_script.chmod(0o555)  # read+execute for all (not writable)
 
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()
