@@ -47,7 +47,7 @@ optmux:
       tip: prev window with bell
     C-t z:
       tip: toggle zoom
-    C-t "`":
+    "C-t `":
       tip: kill session (confirm)
     C-t R:
       tip: reload config
