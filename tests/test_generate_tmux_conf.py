@@ -47,6 +47,29 @@ def test_tmux_config_extras(tmp_path, sample_optmux_config):
     assert extras.read_text() == "set -g status-style bg=blue\n"
 
 
+def test_tips_content_generated(tmp_path):
+    """Tips content file generated from shortcuts with tip fields."""
+    config = load_bundled_defaults()
+    generate_tmux_conf_files(tmp_path, config)
+    tips = tmp_path / "tips-content.txt"
+    assert tips.exists()
+    content = tips.read_text()
+    assert "wtcode" in content
+    assert "lazygit" in content
+    assert "C-M-z" in content
+    assert "last window" in content
+
+
+def test_tips_content_not_generated_without_tips(tmp_path):
+    """No tips file when shortcuts have no tip fields."""
+    config = {"shortcuts": {"C-M-g": "lazygit"}}
+    generate_tmux_conf_files(tmp_path, config)
+    tips = tmp_path / "tips-content.txt"
+    # lazygit falls back as tip text from command name
+    assert tips.exists()
+    assert "lazygit" in tips.read_text()
+
+
 def test_shortcuts_with_various_types(tmp_path, sample_optmux_config):
     """Config with mixed shortcut types generates valid conf."""
     generate_tmux_conf_files(tmp_path, sample_optmux_config)

@@ -1,13 +1,62 @@
 optmux:
   shortcuts:
-    C-M-s: ""                          # empty split (new shell pane, zoomed)
+    # Workflow
     C-M-c:
       command: WTCODE_TMUX_MODE=split-window wtcode
       new_window: true
       remain: false
+      tip: wtcode
     C-M-f:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
-    C-M-g: lazygit
+      tip: find file to edit
+    C-M-g:
+      command: lazygit
+      tip: lazygit
+    C-M-s:
+      command: ""
+      tip: shell in same dir
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true
+      tip: tips (this screen)
+
+    # Quick access (raw tmux actions)
+    C-M-z:
+      tmux: resize-pane -Z
+      tip: quick toggle zoom
+    "C-M-\\":
+      tmux: select-pane -l \; resize-pane -Z
+      tip: last pane + zoom
+    C-M-o:
+      tmux: select-pane -t :.- \; resize-pane -Z
+      tip: prev pane + zoom
+
+    # Reference (display-only, bound in tmux.conf or plugins)
+    C-t C-t:
+      tip: last window
+    C-t C-c:
+      tip: new window
+    C-t C-d:
+      tip: detach
+    C-t C-o:
+      tip: rotate panes forward
+    C-t o:
+      tip: rotate panes backward
+    C-t n:
+      tip: next window with bell
+    C-t p:
+      tip: prev window with bell
+    C-t z:
+      tip: toggle zoom
+    "C-t `":
+      tip: kill session (confirm)
+    C-t R:
+      tip: reload config
+    C-t F:
+      tip: fingers (copy URLs/paths/hashes)
+    C-t h/j/k/l:
+      tip: navigate panes
+    C-t t:
+      tip: send prefix to nested tmux
+    C-t T:
+      tip: swap prefix (nested tmux)

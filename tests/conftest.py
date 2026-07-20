@@ -8,13 +8,13 @@ skip_no_tmux = pytest.mark.skipif(not HAS_TMUX, reason="tmux not found on PATH")
 
 @pytest.fixture
 def bundled_defaults():
-    """Mirrors optmux-defaults.yaml content."""
+    """Mirrors optmux-defaults.yaml content (subset for testing)."""
     return {
         "shortcuts": {
-            "C-M-s": "",
-            "C-M-c": {"command": "wtcode", "new_window": True},
-            "C-M-f": {"command": "${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)"},
-            "C-M-g": "lazygit",
+            "C-M-c": {"command": "wtcode", "new_window": True, "tip": "wtcode"},
+            "C-M-f": {"command": "${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)", "tip": "find file to edit"},
+            "C-M-g": {"command": "lazygit", "tip": "lazygit"},
+            "C-M-s": {"command": "", "tip": "shell in same dir"},
         }
     }
 

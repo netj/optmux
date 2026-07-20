@@ -57,6 +57,26 @@ if [[ -n "${TMUX:-}" ]]; then
     tmux source-file "$OPTMUX_DIR/tmux/tmux.conf"
 fi
 
+# Ensure tmux-fingers runtime dependencies are installed
+# The plugin may use either a statically-linked binary (from GitHub releases) or
+# a dynamically-linked one (from Homebrew). The Homebrew version needs bdw-gc, etc.
+if [[ -d "$TMUX_PLUGIN_MANAGER_PATH/Morantron/tmux-fingers" ]]; then
+    _fingers_bin="$TMUX_PLUGIN_MANAGER_PATH/Morantron/tmux-fingers/bin/tmux-fingers"
+    if [[ -x "$_fingers_bin" ]]; then
+        # Check if the binary can run (has all dependencies)
+        if ! "$_fingers_bin" version &>/dev/null 2>&1; then
+            # Binary exists but can't run - likely missing dependencies
+            if command -v brew &>/dev/null && command -v otool &>/dev/null; then
+                # Check if it needs bdw-gc (dynamically linked Homebrew binary)
+                if otool -L "$_fingers_bin" 2>/dev/null | grep -q "bdw-gc"; then
+                    echo "optmux: tmux-fingers requires runtime dependencies, installing..."
+                    brew install bdw-gc pcre2 libevent libyaml 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+fi
+
 # Populate shared cache from installed plugins for future projects
 if [[ -d "$TMUX_PLUGIN_MANAGER_PATH" ]]; then
     [[ -d "$_optmux_git_cache" ]] || git init --bare "$_optmux_git_cache" 2>/dev/null
