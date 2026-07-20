@@ -221,21 +221,21 @@ def generate_tips_content(shortcuts, bundled_keys=None):
     builtin = extract_entries(shortcuts, bundled_keys if bundled_keys else None)
     user = extract_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys}, set()) if bundled_keys else []
 
-    all_entries = builtin + user
+    all_entries = user + builtin
     if not all_entries:
         return ""
 
     key_width = max(len(k) for k, _ in all_entries) + 2
     lines = []
 
-    if builtin:
-        for display_key, tip in builtin:
+    if user:
+        for display_key, tip in user:
             lines.append(f"  {display_key:<{key_width}}  {tip}")
 
-    if user:
-        if builtin:
+    if builtin:
+        if user:
             lines.append("")
-        for display_key, tip in user:
+        for display_key, tip in builtin:
             lines.append(f"  {display_key:<{key_width}}  {tip}")
 
     return "\n".join(lines) + "\n"
