@@ -74,16 +74,15 @@ def test_shortcuts_with_various_types(tmp_path, sample_optmux_config):
     """Config with mixed shortcut types generates valid conf."""
     generate_tmux_conf_files(tmp_path, sample_optmux_config)
     content = (tmp_path / "tmux.optmux-shortcuts.conf").read_text()
-    lines = content.strip().split("\n")
-    assert len(lines) == 4
     # C-M-s: empty split with zoom
-    assert lines[0].startswith("bind -n C-M-s split-window")
-    assert "resize-pane -Z" in lines[0]
-    # C-M-g: command string
-    assert "'lazygit'" in lines[1]
-    # C-M-e: new_window command
-    assert "new-window" in lines[2]
+    assert "bind -n C-M-s split-window" in content
+    assert content.count("resize-pane -Z") == 2  # C-M-s and C-M-g
+    # C-M-g: command string with zoom
+    assert "'lazygit'" in content
+    # C-M-e: new_window command with remain_wrap (heredoc)
+    assert "bind -n C-M-e new-window" in content
+    assert "'vim README.md'" in content or "vim README.md\n" in content  # in heredoc
+    assert "_script=$(cat <<" in content  # remain_wrap for new_window
     # E: send-keys without zoom
-    assert lines[3].startswith("bind E")
-    assert "send-keys" in lines[3]
-    assert "resize-pane -Z" not in lines[3]
+    assert "bind E" in content
+    assert "send-keys" in content and "'vim .'" in content

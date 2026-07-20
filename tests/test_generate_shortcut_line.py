@@ -31,6 +31,10 @@ def test_new_window():
     assert "split-window" not in line
     # new_window should NOT get resize-pane -Z
     assert "resize-pane -Z" not in line
+    # new_window SHOULD get remain_wrap (heredoc + pause on error)
+    assert "_script=$(cat <<" in line
+    assert "$SHELL" in line and "-euc" in line
+    assert "||" in line and "read -p" in line
 
 
 def test_send_keys():

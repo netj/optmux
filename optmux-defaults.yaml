@@ -2,8 +2,9 @@ optmux:
   shortcuts:
     # Workflow
     C-M-c:
-      command: wtcode
+      command: WTCODE_TMUX_MODE=split-window wtcode
       new_window: true
+      remain: false
       tip: wtcode
     C-M-f:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
