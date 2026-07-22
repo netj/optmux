@@ -68,6 +68,13 @@ def tmux_env(e2e_yaml):
         shutil.copy2(data_dir / "plugins-update.sh", setup_script)
         setup_script.chmod(0o755)
 
+    # tmux.conf invokes TPM on reload. A no-op stub keeps config reload tests
+    # isolated from network/plugin installation.
+    tpm = tmux_dir / "plugins" / "netj" / "tpm" / "tpm"
+    tpm.parent.mkdir(parents=True, exist_ok=True)
+    tpm.write_text("#!/bin/sh\nexit 0\n")
+    tpm.chmod(0o755)
+
     # Generate config
     bundled = load_bundled_defaults()
     with open(yaml_path) as f:
@@ -89,6 +96,10 @@ def tmux_env(e2e_yaml):
     env["OPTMUX_DIR"] = str(optmux_dir)
     env["OPTMUX_NAME"] = name
     env["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
+    # Clipboard relay is opt-in. Keep inherited machine-local settings from
+    # changing the default-behavior tests.
+    env.pop("OPTMUX_COPY_COMMAND", None)
+    env.pop("OPTMUX_PBCOPY_SOCKET", None)
     # Remove TMUX to avoid "sessions should be nested" error
     env.pop("TMUX", None)
 
@@ -215,3 +226,86 @@ def test_e2e_reattach(tmux_env):
     )
     lines = [l for l in result.stdout.strip().split("\n") if l]
     assert len(lines) == 1
+
+
+def test_e2e_preserves_tmux_yank_autodetection_without_relay(tmux_env):
+    """Do not override tmux-yank's cross-platform clipboard detection by default."""
+    subprocess.run(
+        [*tmux_env["tmux_cmd"], "-f", tmux_env["conf"], "new-session", "-d", "-s", "e2etest"],
+        check=True,
+        capture_output=True,
+        env=tmux_env["env"],
+    )
+
+    result = subprocess.run(
+        [*tmux_env["tmux_cmd"], "show-option", "-gqv", "@override_copy_command"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=tmux_env["env"],
+    )
+
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("relay_variable", "relay_value"),
+    [
+        ("OPTMUX_COPY_COMMAND", "cat >/dev/null"),
+        ("OPTMUX_PBCOPY_SOCKET", "/tmp/optmux-test-pbcopy.sock"),
+    ],
+)
+def test_e2e_enables_and_removes_optmux_owned_clipboard_relay(tmux_env, relay_variable, relay_value):
+    """Enable the relay explicitly and restore native detection when it is removed."""
+    env = tmux_env["env"].copy()
+    env[relay_variable] = relay_value
+    tmux = tmux_env["tmux_cmd"]
+
+    subprocess.run(
+        [*tmux, "-f", tmux_env["conf"], "new-session", "-d", "-s", "e2etest"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    enabled = subprocess.run(
+        [*tmux, "show-option", "-gqv", "@override_copy_command"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert enabled.stdout.strip() == 'sh "$OPTMUX_DIR/tmux/copy.sh"'
+
+    subprocess.run([*tmux, "set-environment", "-gu", relay_variable], check=True, env=env)
+    subprocess.run([*tmux, "source-file", tmux_env["conf"]], check=True, env=env)
+    disabled = subprocess.run(
+        [*tmux, "show-option", "-gqv", "@override_copy_command"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert disabled.stdout == ""
+
+
+def test_e2e_preserves_user_owned_tmux_yank_override(tmux_env):
+    """Reloading without a relay must not remove a user's custom tmux-yank command."""
+    tmux = tmux_env["tmux_cmd"]
+    env = tmux_env["env"]
+    subprocess.run(
+        [*tmux, "-f", tmux_env["conf"], "new-session", "-d", "-s", "e2etest"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run([*tmux, "set-option", "-g", "@override_copy_command", "custom-copy"], check=True, env=env)
+    subprocess.run([*tmux, "source-file", tmux_env["conf"]], check=True, env=env)
+
+    result = subprocess.run(
+        [*tmux, "show-option", "-gqv", "@override_copy_command"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.stdout.strip() == "custom-copy"

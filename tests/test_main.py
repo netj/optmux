@@ -122,6 +122,25 @@ def test_main_creates_optmux_dir(mock_run, mock_execvp, project_yaml_file):
     assert optmux_dir.is_dir()
     assert (optmux_dir / "tmux").is_dir()
     assert (optmux_dir / "tmux" / "tmux.conf").exists()
+    assert os.access(optmux_dir / "tmux" / "copy.sh", os.X_OK)
+    assert not os.access(optmux_dir / "tmux" / "copy.sh", os.W_OK)
+
+
+@patch("os.execvp")
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_main_refreshes_read_only_copy_helper(mock_run, mock_execvp, project_yaml_file):
+    """A later optmux run upgrades the managed helper even when it is read-only."""
+    main(argv=[str(project_yaml_file)])
+    copy_script = project_yaml_file.parent / ".myproject.optmux.d" / "tmux" / "copy.sh"
+    copy_script.chmod(0o644)
+    copy_script.write_text("stale helper\n")
+    copy_script.chmod(0o555)
+
+    main(argv=[str(project_yaml_file)])
+
+    assert "clipboard relay" in copy_script.read_text()
+    assert os.access(copy_script, os.X_OK)
+    assert not os.access(copy_script, os.W_OK)
 
 
 @patch("os.execvp")

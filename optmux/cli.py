@@ -332,6 +332,12 @@ def setup_optmux_env(resolved):
     shutil.copy2(data_dir / "tips.sh", tips_script)
     tips_script.chmod(0o555)  # read+execute for all (not writable)
 
+    copy_script = tmux_dir / "copy.sh"
+    if copy_script.exists():
+        copy_script.chmod(0o644)
+    shutil.copy2(data_dir / "copy.sh", copy_script)
+    copy_script.chmod(0o555)
+
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()
     if yaml_path:
