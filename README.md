@@ -117,6 +117,7 @@ Each project gets its own `.$NAME.optmux.d/` directory:
 | `tmux/tmux.sock` | Tmux server socket (isolates this project) |
 | `tmux/plugins/` | TPM plugin directory |
 | `tmux/plugins-update.sh` | Run manually to update all plugins |
+| `tmux/copy.sh` | Managed helper for optional clipboard relays |
 
 ## optmux YAML config
 
@@ -183,6 +184,26 @@ optmux sets these before launching tmux/tmuxp:
 | `OPTMUX_DIR` | Absolute path to the `.$NAME.optmux.d/` directory |
 | `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
+
+### Optional clipboard relay
+
+By default, optmux leaves clipboard selection to tmux and `tmux-yank`, including
+their native platform detection. Set one of these variables only when clipboard
+contents need to be relayed through an explicit backend:
+
+| Variable | Purpose |
+|---|---|
+| `OPTMUX_COPY_COMMAND` | Trusted POSIX shell command that receives clipboard content on standard input |
+| `OPTMUX_PBCOPY_SOCKET` | Unix socket that receives clipboard content, typically through SSH `RemoteForward` |
+
+`OPTMUX_COPY_COMMAND` takes precedence if both are set. A configured backend's
+failure is terminal, so clipboard data is never partially consumed and replayed
+into a different destination. Pass the selected variable to the tmux server with
+`tmux set-environment -g`, then reload the config.
+
+See [SSH Clipboard Relay](https://github.com/netj/optmux/blob/main/SSH-CLIPBOARD.md)
+for a private, owner-only Unix socket setup that forwards copies from a remote
+optmux session to a local Mac.
 
 ## Development
 

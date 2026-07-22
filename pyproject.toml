@@ -35,3 +35,4 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = ""
+source-include = ["SSH-CLIPBOARD.md"]
