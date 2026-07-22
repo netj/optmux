@@ -111,23 +111,34 @@ ls -l "$HOME/Library/Caches/optmux/pbcopy.sock"
 
 ## 3. Configure SSH on the local Mac
 
-Add the forwarding rule to the relevant host entry in `~/.ssh/config`. Replace
-`YOUR_REMOTE_USER` and the host values. OpenSSH expands `%d` to the local home
-directory and `%r` to the remote username.
+First, create a private parent directory on the remote host and print the
+absolute remote home path:
+
+```sh
+install -d -m 700 "$HOME/.cache/optmux"
+printf '%s\n' "$HOME"
+```
+
+Then add the forwarding rule to the relevant host entry in `~/.ssh/config` on
+the local Mac. Replace `YOUR_REMOTE_USER`, `YOUR_REMOTE_HOME`, and the host
+values. `YOUR_REMOTE_HOME` must be the absolute path printed above. OpenSSH
+expands `%d` to the local home directory.
 
 ```sshconfig
 Host your-remote
   HostName your.remote.host
   User YOUR_REMOTE_USER
-  RemoteForward /tmp/optmux-%r-pbcopy.sock %d/Library/Caches/optmux/pbcopy.sock
+  RemoteForward YOUR_REMOTE_HOME/.cache/optmux/pbcopy.sock %d/Library/Caches/optmux/pbcopy.sock
   StreamLocalBindMask 0177
   StreamLocalBindUnlink yes
   ExitOnForwardFailure yes
 ```
 
-`StreamLocalBindMask 0177` makes the remote forwarding socket owner-only. No
-private key path, password, token, or credential belongs in this setup guide or
-in the optmux repository.
+The mode-0700 remote parent directory prevents other remote users from reaching
+the forwarding socket even on systems that do not enforce Unix-socket mode
+bits. `StreamLocalBindMask 0177` provides an additional owner-only restriction
+where supported. No private key path, password, token, or credential belongs in
+this setup guide or in the optmux repository.
 
 Reconnect after changing the SSH configuration:
 
@@ -140,7 +151,7 @@ ssh your-remote
 Inside the remote SSH session:
 
 ```sh
-export OPTMUX_PBCOPY_SOCKET="/tmp/optmux-$(id -un)-pbcopy.sock"
+export OPTMUX_PBCOPY_SOCKET="$HOME/.cache/optmux/pbcopy.sock"
 tmux set-environment -g OPTMUX_PBCOPY_SOCKET "$OPTMUX_PBCOPY_SOCKET"
 tmux source-file "$OPTMUX_DIR/tmux/tmux.conf"
 ```
@@ -161,7 +172,7 @@ remote shell configuration only when an SSH connection is present:
 
 ```sh
 if [[ -n "${SSH_CONNECTION:-}" ]]; then
-  export OPTMUX_PBCOPY_SOCKET="/tmp/optmux-$(id -un)-pbcopy.sock"
+  export OPTMUX_PBCOPY_SOCKET="$HOME/.cache/optmux/pbcopy.sock"
 fi
 ```
 
@@ -209,7 +220,8 @@ tail -50 "$HOME/Library/Logs/optmux/pbcopy-listener.err"
 Check the remote forwarding socket and tmux environment:
 
 ```sh
-relay_socket="/tmp/optmux-$(id -un)-pbcopy.sock"
+relay_socket="$HOME/.cache/optmux/pbcopy.sock"
+ls -ld "$HOME/.cache/optmux"
 ls -l "$relay_socket"
 tmux show-environment -g OPTMUX_PBCOPY_SOCKET
 ```
