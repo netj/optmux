@@ -56,6 +56,7 @@ def test_tip_shown_for_terminal_app(tmp_path):
         __CFBundleIdentifier="com.apple.Terminal",
     )
     assert "Terminal.app has no OSC 52 support" in out
+    assert "Allow Mouse Reporting" in out  # the native-selection workaround
     assert "ghostty.org" in out
 
 

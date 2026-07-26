@@ -196,6 +196,21 @@ This requires a terminal that implements OSC 52.
 
 This bites hardest **over SSH**, where OSC 52 is the only mechanism that works without extra infrastructure. optmux deliberately does not ship a clipboard relay to work around it: that would mean a socket listener on your laptop accepting arbitrary bytes into your pasteboard, plus SSH forwarding setup on both ends, to replace something modern terminals already do natively and securely.
 
+#### Workaround: Terminal's own selection
+
+If you're stuck on Terminal.app, you can bypass tmux entirely and copy with Terminal's native selection, which goes straight to the macOS pasteboard with `⌘C`. optmux enables `mouse on`, so tmux normally grabs every mouse event — including drags — for its own selection. Two ways to take the mouse back:
+
+- **Hold `Fn` while dragging** — a one-off native selection, nothing to undo.
+- **`⌘R` (View → Allow Mouse Reporting) to toggle it off** — better for repeated copying, or when you also want native scrolling back. Press `⌘R` again to return the mouse to tmux.
+
+Caveats, since this is the terminal selecting pixels rather than tmux selecting buffer contents:
+
+- You only get **what's currently on screen**. Scroll back with tmux copy-mode first (`prefix + [` or `M-Up`) to bring the text into view, then select it.
+- **Split panes are selected across.** A vertical split means every line you drag through includes the neighboring pane's text. Zoom the pane first with `prefix + z`.
+- Long lines that tmux wrapped are copied **with the wrap**, as newlines.
+
+None of this applies over SSH any differently — it's a purely local operation on what your terminal is already displaying, which is exactly why it works when OSC 52 doesn't.
+
 **Recommendation:** use a terminal with OSC 52 support:
 
 | Terminal | |
