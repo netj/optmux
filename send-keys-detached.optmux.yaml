@@ -1,8 +1,8 @@
 #!/usr/bin/env -S uvx optmux
-# send-keys + detached shortcuts — typed into the new pane/window's shell.
-# Pane: targets the just-created pane via `:.+`.
-# Window: targets the new window via `:{end}`.
-# Shell stays alive after the command exits, so the pane/window remains open
+# send-keys + detached shortcuts — typed into the new window's shell.
+# detached always opens a background window (the current window, zoom included,
+# is left untouched); the keys target it via `:$`.
+# Shell stays alive after the command exits, so the window remains open
 # (no remain-on-error semantics for send-keys; use command type for that).
 session_name: send-keys-detached
 start_directory: .
@@ -10,7 +10,7 @@ start_directory: .
 optmux:
   shortcuts:
 
-    # ── pane ──────────────────────────────────────────────────────────────────
+    # ── detached alone ─────────────────────────────────────────────────────────
     C-M-b:
       send-keys: gh browse .
       detached: true
@@ -18,7 +18,7 @@ optmux:
       send-keys: uvx marimo edit
       detached: true
 
-    # ── new_window ─────────────────────────────────────────────────────────────
+    # ── explicit new_window (redundant with detached, but harmless) ────────────
     C-M-d:
       send-keys: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')

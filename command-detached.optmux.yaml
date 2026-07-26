@@ -1,17 +1,20 @@
 #!/usr/bin/env -S uvx optmux
-# command + detached shortcuts — focus stays on origin pane/window.
+# command + detached shortcuts — always a background window, focus stays put.
+# The current window is never touched (its layout and zoom survive), so
+# new_window is implied; it only matters for non-detached shortcuts.
 # remain: on-error (default) — close silently on exit 0, pause with prompt on failure.
 # remain: false              — always close immediately.
 # remain: true               — always pause before closing.
+# A pause rings the bell (BEL), so tmux flags the background window for you.
 session_name: command-detached
 start_directory: .
 
 optmux:
   shortcuts:
 
-    # ── pane (zoom-aware; zoom is restored after split) ────────────────────────
+    # ── remain variants ────────────────────────────────────────────────────────
     C-M-b:
-      command: gh browse .              # exits 0 → pane closes silently
+      command: gh browse .              # exits 0 → window closes silently
       detached: true
     C-M-m:
       command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
@@ -25,7 +28,7 @@ optmux:
       detached: true
       remain: true                      # always hold open
 
-    # ── new_window ─────────────────────────────────────────────────────────────
+    # ── explicit new_window (redundant with detached, but harmless) ────────────
     C-M-d:
       command: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
