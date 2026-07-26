@@ -6,3 +6,6 @@ dist/
 tags
 
 *.optmux.d/
+
+/.claude/settings.json
+/.claude/settings.local.json
