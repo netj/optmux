@@ -65,51 +65,67 @@ def test_single_quote_escaping():
     assert "'echo '\\''hello'\\'''" in line
 
 
-def test_detached_split():
+def test_detached_uses_background_window_not_split():
     # default remain: on-error → wrap cmd in heredoc; pause with read on failure.
-    # split with -d (focus stays on origin, no last-pane needed, no flicker).
-    # zoom captured in @_optmux_zoom (also true when window has only one pane).
+    # detached always opens a background window: a detached split pane would lose
+    # the origin pane's zoom, since tmux unzooms a window when any of its panes dies.
     line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True})
-    assert "split-window -v -d" in line
+    assert "new-window -d" in line
+    assert "split-window" not in line
     assert "_script=$(cat <<" in line
     assert "$SHELL" in line and "-euc" in line
     assert "||" in line and "read -p" in line
     assert "last-pane" not in line
-    assert "set-option -F @_optmux_zoom" in line
-    assert "#{window_panes},1" in line
-    assert "if -F '#{@_optmux_zoom}' 'resize-pane -Z'" in line
+    assert "@_optmux_zoom" not in line
+    assert "resize-pane -Z" not in line
 
 
-def test_detached_split_no_zoom():
+def test_detached_pause_rings_bell():
+    # the pause happens out of sight in a background window → BEL flags it in the
+    # status line; only the pause branch rings, a clean exit closes silently
+    line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True})
+    # single quotes are escaped for the surrounding tmux '...' argument
+    assert """|| bash -c "printf '\\''\\a'\\''; echo;""" in line
+
+
+def test_non_detached_window_pause_does_not_ring_bell():
+    # the window is in front of the user already
+    line = generate_shortcut_line("C-M-c", {"command": "wtcode", "new_window": True})
+    assert "read -p" in line
+    assert "\\a" not in line
+
+
+def test_detached_zoom_option_is_moot():
+    # zoom is untouched either way — the origin window is never modified
     line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True, "zoom": False})
-    assert "split-window -v -d" in line
+    assert "new-window -d" in line
     assert "_script=$(cat <<" in line
     assert "last-pane" not in line
     assert "@_optmux_zoom" not in line
     assert "resize-pane -Z" not in line
 
 
-def test_detached_split_send_keys():
-    # send-keys + detached pane: real send-keys to the newly created pane (:.+)
+def test_detached_send_keys():
+    # send-keys + detached: real send-keys to the newly created window (:$)
     line = generate_shortcut_line("C-M-b", {"send-keys": "make test", "detached": True})
-    assert "split-window -v -d" in line
-    assert "send-keys -t :.+ 'make test' Enter" in line
+    assert "new-window -d" in line
+    assert "send-keys -t :$ 'make test' Enter" in line
     assert "_script=$(cat <<" not in line  # no command-style heredoc wrap
     assert "last-pane" not in line
 
 
-def test_detached_split_always_close():
+def test_detached_always_close():
     line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True, "remain": False})
-    assert "split-window -v -d" in line
+    assert "new-window -d" in line
     assert "_script=$(cat <<" not in line
     assert "read -p" not in line
     assert "last-pane" not in line
 
 
-def test_detached_split_always_open():
+def test_detached_always_open():
     # remain: true → always pause (semicolon, not || )
     line = generate_shortcut_line("C-M-b", {"command": "htop", "detached": True, "remain": True})
-    assert "split-window -v -d" in line
+    assert "new-window -d" in line
     assert "_script=$(cat <<" in line
     assert '"$_script" ;' in line
     assert "read -p" in line

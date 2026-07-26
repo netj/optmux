@@ -147,6 +147,7 @@ Shortcuts bind tmux keys to commands:
 - **`send-keys:`** sends the command to a new shell (supports shell expansion)
 - **`window: true`** opens in a new window instead of a split
 - **`zoom: false`** disables auto-zoom on splits (default: true)
+- **`detached: true`** runs in a background window without stealing focus — the current window is left completely alone, zoom included. If the command fails, the window stays open with a prompt and rings the bell so tmux flags it in the status line
 
 ### tmux_config
 
