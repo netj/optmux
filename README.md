@@ -184,43 +184,17 @@ optmux sets these before launching tmux/tmuxp:
 | `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
 
-## Clipboard integration (OSC 52)
+## Clipboard integration
 
-optmux sets `set-clipboard on` and `allow-passthrough on`, so yanking in copy-mode puts the text on your **system** clipboard — the same way whether tmux is running locally, on a remote host over SSH, or nested inside another tmux. There is no relay, agent, or daemon involved: tmux emits an [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape sequence and your terminal writes it to the clipboard.
+optmux ships [tmux-yank](https://github.com/netj/tmux-yank) and sets `set-clipboard on` + `allow-passthrough on`, so yanking in copy-mode lands on your system clipboard. Locally that goes through `pbcopy`/`xclip`. **Over SSH, [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) is the only mechanism** — the remote tmux emits an escape sequence and your local terminal writes it to the clipboard, with no relay, agent, or daemon in between.
 
-This requires a terminal that implements OSC 52.
+### macOS Terminal.app has no OSC 52 support
 
-### Limitation: macOS Terminal.app
+Local copying still works, but **copying from a remote optmux session over SSH will not reach your pasteboard** — Terminal.app discards the escape sequence, and no tmux configuration can change that. optmux deliberately doesn't ship a clipboard relay to work around it; that means a socket on your laptop accepting arbitrary bytes into your pasteboard, to replace what modern terminals already do natively.
 
-**Terminal.app does not support OSC 52** and never has. Copies from tmux will not reach the macOS pasteboard, and no amount of tmux configuration can change that — the escape sequence is simply discarded by the terminal.
+**Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
-This bites hardest **over SSH**, where OSC 52 is the only mechanism that works without extra infrastructure. optmux deliberately does not ship a clipboard relay to work around it: that would mean a socket listener on your laptop accepting arbitrary bytes into your pasteboard, plus SSH forwarding setup on both ends, to replace something modern terminals already do natively and securely.
-
-#### Workaround: Terminal's own selection
-
-If you're stuck on Terminal.app, you can bypass tmux entirely and copy with Terminal's native selection, which goes straight to the macOS pasteboard with `⌘C`. optmux enables `mouse on`, so tmux normally grabs every mouse event — including drags — for its own selection. Two ways to take the mouse back:
-
-- **Hold `Fn` while dragging** — a one-off native selection, nothing to undo.
-- **`⌘R` (View → Allow Mouse Reporting) to toggle it off** — better for repeated copying, or when you also want native scrolling back. Press `⌘R` again to return the mouse to tmux.
-
-Caveats, since this is the terminal selecting pixels rather than tmux selecting buffer contents:
-
-- You only get **what's currently on screen**. Scroll back with tmux copy-mode first (`prefix + [` or `M-Up`) to bring the text into view, then select it.
-- **Split panes are selected across.** A vertical split means every line you drag through includes the neighboring pane's text. Zoom the pane first with `prefix + z`.
-- Long lines that tmux wrapped are copied **with the wrap**, as newlines.
-
-None of this applies over SSH any differently — it's a purely local operation on what your terminal is already displaying, which is exactly why it works when OSC 52 doesn't.
-
-**Recommendation:** use a terminal with OSC 52 support:
-
-| Terminal | |
-|---|---|
-| [Ghostty](https://ghostty.org) | fast, native macOS, recommended |
-| [iTerm2](https://iterm2.com) | mature, highly configurable |
-| [Warp](https://warp.dev) | |
-| [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), [Alacritty](https://alacritty.org) | cross-platform |
-
-The optmux tips screen (window 0, or `C-M-h`) shows this recommendation unless it can confirm your terminal supports OSC 52. Detection uses the attached client's `TERM_PROGRAM` and terminal type; over SSH only the terminal type survives, so terminals that set a distinctive `TERM` (Ghostty's `xterm-ghostty`, kitty's `xterm-kitty`, …) are still recognized on remote hosts.
+**Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (window 0, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
 
 ## Development
 

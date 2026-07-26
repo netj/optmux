@@ -60,12 +60,10 @@ esac
 terminal_tip=""
 if [[ "$osc52_known" != true ]]; then
     if [[ "$term_program" == "Apple_Terminal" || "${__CFBundleIdentifier:-}" == "com.apple.Terminal" ]]; then
-        terminal_tip_why="  [!] Terminal.app has no OSC 52 support — clipboard sync will not work
-      Workaround: ⌘R (View > Allow Mouse Reporting) off — or just hold Fn —
-                  to drag-select on-screen text with Terminal's own selection
-                  and ⌘C to copy; ⌘R again to give the mouse back to tmux"
+        terminal_tip_why="  [!] Terminal.app has no OSC 52 support — clipboard sync will not work over SSH
+      Workaround: ⌘R (View > Allow Mouse Reporting) off, then drag-select and ⌘C"
     else
-        terminal_tip_why="  [!] Could not confirm this terminal supports OSC 52 clipboard"
+        terminal_tip_why="  [!] Could not confirm OSC 52 support — clipboard sync may not work over SSH"
     fi
     terminal_tip="
 ${terminal_tip_why}
