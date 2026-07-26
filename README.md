@@ -184,6 +184,29 @@ optmux sets these before launching tmux/tmuxp:
 | `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
 
+## Clipboard integration (OSC 52)
+
+optmux sets `set-clipboard on` and `allow-passthrough on`, so yanking in copy-mode puts the text on your **system** clipboard — the same way whether tmux is running locally, on a remote host over SSH, or nested inside another tmux. There is no relay, agent, or daemon involved: tmux emits an [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape sequence and your terminal writes it to the clipboard.
+
+This requires a terminal that implements OSC 52.
+
+### Limitation: macOS Terminal.app
+
+**Terminal.app does not support OSC 52** and never has. Copies from tmux will not reach the macOS pasteboard, and no amount of tmux configuration can change that — the escape sequence is simply discarded by the terminal.
+
+This bites hardest **over SSH**, where OSC 52 is the only mechanism that works without extra infrastructure. optmux deliberately does not ship a clipboard relay to work around it: that would mean a socket listener on your laptop accepting arbitrary bytes into your pasteboard, plus SSH forwarding setup on both ends, to replace something modern terminals already do natively and securely.
+
+**Recommendation:** use a terminal with OSC 52 support:
+
+| Terminal | |
+|---|---|
+| [Ghostty](https://ghostty.org) | fast, native macOS, recommended |
+| [iTerm2](https://iterm2.com) | mature, highly configurable |
+| [Warp](https://warp.dev) | |
+| [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), [Alacritty](https://alacritty.org) | cross-platform |
+
+The optmux tips screen (window 0, or `C-M-h`) shows this recommendation unless it can confirm your terminal supports OSC 52. Detection uses the attached client's `TERM_PROGRAM` and terminal type; over SSH only the terminal type survives, so terminals that set a distinctive `TERM` (Ghostty's `xterm-ghostty`, kitty's `xterm-kitty`, …) are still recognized on remote hosts.
+
 ## Development
 
 ```bash
