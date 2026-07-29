@@ -233,10 +233,17 @@ def generate_tips_content(shortcuts, bundled_keys=None):
 
 
 def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
-    """Generate tmux conf files from merged optmux config."""
+    """Generate tmux conf files from merged optmux config.
+
+    Returns True if the set/content of tmux.optmux-*.conf files changed.
+    """
+    old_files = {p.name: p.read_bytes() for p in tmux_dir.glob("tmux.optmux-*.conf")}
+
     # clear all managed files first to avoid stale configs
     for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
         conf_file.unlink()
+
+    new_files = {}
 
     # optmux.shortcuts → tmux.optmux-shortcuts.conf + tips-content.txt
     shortcuts = optmux.get("shortcuts") or {}
@@ -246,7 +253,9 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
             line = generate_shortcut_line(key, value)
             if line is not None:
                 lines.append(line)
-        (tmux_dir / "tmux.optmux-shortcuts.conf").write_text("".join(lines))
+        shortcuts_content = "".join(lines)
+        new_files["tmux.optmux-shortcuts.conf"] = shortcuts_content.encode()
+        (tmux_dir / "tmux.optmux-shortcuts.conf").write_text(shortcuts_content)
         bundled_keys = set(bundled_shortcuts.keys()) if bundled_shortcuts else None
         tips_content = generate_tips_content(shortcuts, bundled_keys)
         if tips_content:
@@ -255,7 +264,11 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
     tmux_config = optmux.get("tmux_config") or {}
     for conf_name, content in tmux_config.items():
-        (tmux_dir / f"tmux.optmux-extras.{conf_name}.conf").write_text(content)
+        filename = f"tmux.optmux-extras.{conf_name}.conf"
+        new_files[filename] = content.encode()
+        (tmux_dir / filename).write_text(content)
+
+    return old_files != new_files
 
 
 def resolve_paths(yaml_file):
@@ -306,9 +319,11 @@ def setup_optmux_env(resolved):
 
     data_dir = files("optmux").joinpath("data")
     tmux_conf = tmux_dir / "tmux.conf"
+    new_tmux_conf_bytes = (data_dir / "tmux.conf").read_bytes()
+    tmux_conf_changed = not tmux_conf.exists() or tmux_conf.read_bytes() != new_tmux_conf_bytes
     if tmux_conf.exists():
         tmux_conf.chmod(0o644)
-    shutil.copy2(data_dir / "tmux.conf", tmux_conf)
+    tmux_conf.write_bytes(new_tmux_conf_bytes)
     tmux_conf.chmod(0o444)
 
     setup_script = tmux_dir / "plugins-update.sh"
@@ -331,7 +346,8 @@ def setup_optmux_env(resolved):
         optmux = merge_optmux(bundled, project, personal)
     else:
         optmux = merge_optmux(bundled, personal)
-    generate_tmux_conf_files(tmux_dir, optmux, bundled.get("shortcuts"))
+    conf_files_changed = generate_tmux_conf_files(tmux_dir, optmux, bundled.get("shortcuts"))
+    config_changed = tmux_conf_changed or conf_files_changed
 
     venv_bin = str(Path(sys.executable).parent)
     os.environ["PATH"] = venv_bin + os.pathsep + os.environ.get("PATH", "")
@@ -347,6 +363,7 @@ def setup_optmux_env(resolved):
         "conf": str(tmux_conf),
         "setup_script": setup_script,
         "tips_script": tips_script,
+        "config_changed": config_changed,
     }
 
 
@@ -376,6 +393,15 @@ def cmd_stop(resolved):
 
     subprocess.run([*tmux, "kill-session", "-t", session_name], check=True)
     print(f"optmux: killed session '{session_name}'")
+
+
+def _notify_config_changed(tmux, session_name):
+    """Remind an already-running session's client to reload the config."""
+    subprocess.run(
+        [*tmux, "display-message", "-t", session_name, "-d", "0",
+         "optmux: config changed — press C-t R to reload"],
+        capture_output=True,
+    )
 
 
 def cmd_start(resolved, remaining_args):
@@ -410,6 +436,8 @@ def cmd_start(resolved, remaining_args):
             capture_output=True,
         ).returncode == 0
         if has_session:
+            if env["config_changed"]:
+                _notify_config_changed(tmux, session_name)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         subprocess.run(
             ["tmuxp", "load", "--yes", "-d", "-S", sock, "-f", conf,
@@ -424,6 +452,8 @@ def cmd_start(resolved, remaining_args):
             capture_output=True,
         ).returncode == 0
         if has_session:
+            if env["config_changed"]:
+                _notify_config_changed(tmux, session_name)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", session_name], check=True)
