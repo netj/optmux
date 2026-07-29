@@ -145,9 +145,30 @@ Shortcuts bind tmux keys to commands:
 - **Other keys** require the tmux prefix (`C-t`)
 - **`command:`** executes directly (default for string values)
 - **`send-keys:`** sends the command to a new shell (supports shell expansion)
-- **`window: true`** opens in a new window instead of a split
+- **`new_window: true`** opens in a new window instead of a split
+- **`float_window: true`** opens in a floating pane (tmux 3.7+) — see [detached shortcuts](#detached-shortcuts) below
 - **`zoom: false`** disables auto-zoom on splits (default: true)
-- **`detached: true`** runs in a background window without stealing focus — the current window is left completely alone, zoom included. If the command fails, the window stays open with a prompt and rings the bell so tmux flags it in the status line
+- **`detached: true`** runs it without stealing focus, and holds it open on failure (see [`remain`](#detached-shortcuts))
+
+### Detached shortcuts
+
+`detached: true` runs a command without moving your cursor — handy for things like `open -R .git` or `gh browse .` that do their real work elsewhere. It comes in three flavors:
+
+| | where it runs | when it finishes |
+|---|---|---|
+| `detached: true` | a split pane in the current window | **drops the window's zoom** (see below) |
+| `detached` + `float_window: true` | a floating pane over the current window | disappears, layout and zoom untouched |
+| `detached` + `new_window: true` | a background window | nothing on screen changes |
+
+`remain` controls what happens on exit: `on-error` (the default) closes silently on success and holds the pane open with a dismiss prompt on failure, `false` always closes, `true` always holds. Whenever a detached shortcut holds itself open it rings the bell, so tmux flags the window in the status line rather than leaving you to find it.
+
+**Known issue: a quick detached split loses your zoom.** tmux unzooms a window whenever any pane in it dies, so a detached split pane drops the origin pane's zoom the moment the command finishes. The binding does re-zoom when it opens the split, and that holds for as long as the command runs — but nothing survives to re-apply it afterwards (a `pane-exited` hook fires *before* tmux fixes the layout, so it cannot help). Long-running commands are unaffected in practice; short ones like `open -R .git` unzoom you.
+
+Workarounds, in order of preference:
+
+1. **`float_window: true`** — a floating pane sits outside the layout, so opening and closing it never touches the zoom. Best fit for quick commands, and it works whatever state the window is in: because tmux 3.7b crashes if a float is created while the window is zoomed, the binding checks at press time and falls back to a background window in exactly that case, which leaves the zoom alone too. Requires tmux 3.7+; see [TROUBLESHOOTING-tmux-floating-panes.md](TROUBLESHOOTING-tmux-floating-panes.md) for the details.
+2. **`new_window: true`** — always safe, at the cost of the command living in a separate window you may be surprised to find later.
+3. **`remain: true`** — the pane never dies, so the zoom never drops; you dismiss it by hand. Note that each invocation leaves a pane behind, and once the window is full the split fails *and* the zoom is lost anyway.
 
 ### tmux_config
 

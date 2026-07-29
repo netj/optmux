@@ -1,20 +1,25 @@
 #!/usr/bin/env -S uvx optmux
-# command + detached shortcuts — always a background window, focus stays put.
-# The current window is never touched (its layout and zoom survive), so
-# new_window is implied; it only matters for non-detached shortcuts.
+# command + detached shortcuts — focus stays on the origin pane/window.
+# Where it runs:  bare        → split pane in the current window
+#                 float_window → floating pane over it (tmux 3.7+, leaves zoom alone)
+#                 new_window   → background window
 # remain: on-error (default) — close silently on exit 0, pause with prompt on failure.
 # remain: false              — always close immediately.
 # remain: true               — always pause before closing.
-# A pause rings the bell (BEL), so tmux flags the background window for you.
+# A pause rings the bell (BEL), so tmux flags the window for you.
+#
+# KNOWN ISSUE: a detached split pane drops the window's zoom when the command exits
+# (tmux unzooms whenever any pane dies), so quick commands unzoom you. Use
+# float_window: true — see TROUBLESHOOTING-tmux-floating-panes.md for its caveats.
 session_name: command-detached
 start_directory: .
 
 optmux:
   shortcuts:
 
-    # ── remain variants ────────────────────────────────────────────────────────
+    # ── remain variants (split pane in the current window) ─────────────────────
     C-M-b:
-      command: gh browse .              # exits 0 → window closes silently
+      command: gh browse .              # exits 0 → pane closes silently
       detached: true
     C-M-m:
       command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
@@ -28,7 +33,17 @@ optmux:
       detached: true
       remain: true                      # always hold open
 
-    # ── explicit new_window (redundant with detached, but harmless) ────────────
+    # ── float_window: quick commands that must not disturb the layout ──────────
+    C-M-a:
+      command: open -R .git             # done in a blink → float pops and vanishes
+      detached: true
+      float_window: true                # zoom survives, unlike a detached split
+    C-M-t:
+      command: uvx marimo edit          # long-running is fine too: it floats on top
+      detached: true
+      float_window: true
+
+    # ── new_window: runs off in its own window ─────────────────────────────────
     C-M-d:
       command: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
