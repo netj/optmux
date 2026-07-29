@@ -189,21 +189,39 @@ def generate_shortcut_line(key, value):
     # pane's zoom (also true of a lone pane) so the split can restore it.
     preserve_zoom = is_split and detached and use_zoom
 
+    def open_with(cmd_name):
+        if opts.get("command"):
+            return (
+                f"{cmd_name} -c '#{{pane_current_path}}' "
+                f"'{sq(remain_wrap(opts['command']))}'"
+            )
+        return f"{cmd_name} -c '#{{pane_current_path}}'"
+
     parts = []
     if preserve_zoom:
         parts.append(
             "set-option -F @_optmux_zoom "
             "'#{||:#{window_zoomed_flag},#{==:#{window_panes},1}}'"
         )
-    if "send-keys" in opts:
+    if use_float:
+        # tmux 3.7b: a floating pane created while the window is zoomed gets a
+        # broken layout cell and segfaults the server whenever it later closes —
+        # the zoom state at close time is irrelevant. Unzooming first cannot help
+        # from within one command list, where new-pane still sees the window as
+        # zoomed and quietly makes an ordinary split instead. So pick at press
+        # time: while zoomed, fall back to a background window, which leaves the
+        # zoom alone just as well. See TROUBLESHOOTING-tmux-floating-panes.md.
+        parts.append(
+            "if -F '#{window_zoomed_flag}' "
+            f"{{ {open_with(f'new-window{detach_flag}')} }} "
+            f"{{ {open_with(open_cmd)} }}"
+        )
+    elif "send-keys" in opts:
         target = (":$" if use_window else ":.+") if detached else ""
         parts.append(f"{open_cmd} -c '#{{pane_current_path}}'")
         parts.extend(send_keys_parts(opts["send-keys"], target=target))
-    elif opts.get("command"):
-        cmd = remain_wrap(opts["command"])
-        parts.append(f"{open_cmd} -c '#{{pane_current_path}}' '{sq(cmd)}'")
     else:
-        parts.append(f"{open_cmd} -c '#{{pane_current_path}}'")
+        parts.append(open_with(open_cmd))
     if preserve_zoom:
         parts.append("if -F '#{@_optmux_zoom}' 'resize-pane -Z'")
     elif is_split and use_zoom:

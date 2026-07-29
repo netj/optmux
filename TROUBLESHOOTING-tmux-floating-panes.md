@@ -21,15 +21,25 @@ not exist and the binding fails to load.
 These are upstream tmux bugs, not optmux behavior. They are expected to disappear as
 tmux stabilizes floating panes; until then, this is what to expect.
 
-### A floating pane closing in a zoomed window crashes the server
+### A float created in a zoomed window crashes the server when it closes
 
-If the window is zoomed at the moment a floating pane closes, the tmux **server
-segfaults** and every session on it is lost.
+A floating pane created while the window is **zoomed** apparently never gets a proper
+layout cell, and destroying it later segfaults the tmux **server**, taking every
+session on it with it.
 
 ```
 EXC_BAD_ACCESS (SIGSEGV)
   layout_destroy_cell ← layout_close_pane ← server_destroy_pane
 ```
+
+What matters is the zoom state when the pane is **created**, not when it closes:
+
+| created | closed | result |
+|---|---|---|
+| unzoomed | unzoomed | fine |
+| unzoomed | zoomed (zoomed in meanwhile) | fine |
+| zoomed | zoomed | **segfault** |
+| zoomed | unzoomed (unzoomed in meanwhile) | **segfault** |
 
 Minimal reproduction — **use a scratch socket**, this kills the whole server:
 
@@ -39,10 +49,19 @@ tmux -S /tmp/x.sock new-pane -d 'date; sleep 2; date'
 sleep 4; tmux -S /tmp/x.sock list-panes   # → no server running
 ```
 
-Unzoomed windows are unaffected, and the floating pane is fine while it runs — only
-its *closing* while zoomed is fatal. Since the zoomed case is exactly what
-`float_window` is meant to fix, treat `float_window` as unsafe on 3.7b if you live in
-zoomed windows, and prefer `new_window: true` until it is fixed.
+**optmux works around this**, so `float_window: true` is safe to use meanwhile: the
+generated binding checks the zoom at press time and opens a background window instead
+of a float while zoomed, which leaves the layout and zoom alone just as well.
+
+```tmux
+bind -n C-M-a if -F '#{window_zoomed_flag}' { new-window -d ... } { new-pane -d ... }
+```
+
+Unzooming first and re-zooming afterwards — the obvious fix — does not work from
+inside one binding: tmux applies the unzoom only once the whole command list has run,
+so `new-pane` still sees a zoomed window and quietly creates an ordinary split pane
+instead of a float. `new-pane -dZ` does create a real float and keeps the zoom, but
+crashes on close just the same.
 
 ### A focused floating pane silently becomes a split when the window is zoomed
 

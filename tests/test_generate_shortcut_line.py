@@ -132,10 +132,14 @@ def test_detached_split_always_open():
 
 
 def test_float_window():
-    # a floating pane is outside the layout: no split, no zoom bookkeeping at all
+    # a floating pane is outside the layout: no split, no zoom bookkeeping at all.
+    # while zoomed it falls back to a background window, since tmux 3.7b segfaults
+    # when a float created in a zoomed window later closes
     line = generate_shortcut_line("C-M-b", {"command": "htop", "float_window": True, "detached": True})
+    assert line.startswith("bind -n C-M-b if -F '#{window_zoomed_flag}' {")
     assert "new-pane -d -c '#{pane_current_path}'" in line
-    assert "split-window" not in line and "new-window" not in line
+    assert "new-window -d -c '#{pane_current_path}'" in line
+    assert "split-window" not in line
     assert "_script=$(cat <<" in line
     assert "@_optmux_zoom" not in line
     assert "resize-pane -Z" not in line
@@ -144,10 +148,19 @@ def test_float_window():
 def test_float_window_not_detached():
     # focus moves to the float; still held open on error since it is a new pane
     line = generate_shortcut_line("C-M-b", {"command": "htop", "float_window": True})
-    assert line.startswith("bind -n C-M-b new-pane -c '#{pane_current_path}'")
-    assert "-d" not in line.split("'")[0]
+    assert "{ new-pane -c '#{pane_current_path}'" in line
+    assert "{ new-window -c '#{pane_current_path}'" in line
+    assert "new-pane -d" not in line and "new-window -d" not in line
     assert "read -p" in line
     assert "\\a" not in line  # only detached shortcuts ring
+
+
+def test_float_window_fallback_runs_the_same_command():
+    # both branches must carry the user's command, not just the float one
+    line = generate_shortcut_line("C-M-b", {"command": "htop", "float_window": True, "detached": True})
+    assert line.count("htop") == 2
+    zoomed_branch, float_branch = line.split("{ new-pane")[0], line.split("{ new-pane")[1]
+    assert "htop" in zoomed_branch and "htop" in float_branch
 
 
 def test_float_window_send_keys_rejected(capsys):
@@ -161,8 +174,8 @@ def test_float_window_send_keys_rejected(capsys):
 
 def test_float_window_wins_over_new_window(capsys):
     line = generate_shortcut_line("C-M-b", {"command": "htop", "float_window": True, "new_window": True})
-    assert "new-pane" in line
-    assert "new-window" not in line
+    assert "new-pane" in line  # floats, rather than opening a window outright
+    assert line.startswith("bind -n C-M-b if -F '#{window_zoomed_flag}' {")
     err = capsys.readouterr().err
     assert "mutually exclusive" in err and "C-M-b" in err
 

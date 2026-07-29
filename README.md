@@ -166,7 +166,7 @@ Shortcuts bind tmux keys to commands:
 
 Workarounds, in order of preference:
 
-1. **`float_window: true`** — a floating pane sits outside the layout, so opening and closing it never touches the zoom. Best fit for quick commands. Requires tmux 3.7+, and has caveats worth reading in [TROUBLESHOOTING-tmux-floating-panes.md](TROUBLESHOOTING-tmux-floating-panes.md) — including a tmux 3.7b crash.
+1. **`float_window: true`** — a floating pane sits outside the layout, so opening and closing it never touches the zoom. Best fit for quick commands, and it works whatever state the window is in: because tmux 3.7b crashes if a float is created while the window is zoomed, the binding checks at press time and falls back to a background window in exactly that case, which leaves the zoom alone too. Requires tmux 3.7+; see [TROUBLESHOOTING-tmux-floating-panes.md](TROUBLESHOOTING-tmux-floating-panes.md) for the details.
 2. **`new_window: true`** — always safe, at the cost of the command living in a separate window you may be surprised to find later.
 3. **`remain: true`** — the pane never dies, so the zoom never drops; you dismiss it by hand. Note that each invocation leaves a pane behind, and once the window is full the split fails *and* the zoom is lost anyway.
 
