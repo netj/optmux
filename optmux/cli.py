@@ -395,11 +395,18 @@ def cmd_stop(resolved):
     print(f"optmux: killed session '{session_name}'")
 
 
-def _notify_config_changed(tmux, session_name):
-    """Remind an already-running session's client to reload the config."""
+def _notify_config_changed(tmux):
+    """Remind the next client to attach to this session to reload the config.
+
+    display-message can't be shown directly here: in the common workflow
+    (detach, edit config, rerun) no client is attached yet at this point —
+    we're about to become the client via the attach-session that follows.
+    A one-shot client-attached hook fires once that attach happens.
+    """
     subprocess.run(
-        [*tmux, "display-message", "-t", session_name, "-d", "0",
-         "optmux: config changed — press C-t R to reload"],
+        [*tmux, "set-hook", "-g", "client-attached",
+         'display-message -d 0 "optmux: config changed — press C-t R to reload" ; '
+         "set-hook -gu client-attached"],
         capture_output=True,
     )
 
@@ -437,7 +444,7 @@ def cmd_start(resolved, remaining_args):
         ).returncode == 0
         if has_session:
             if env["config_changed"]:
-                _notify_config_changed(tmux, session_name)
+                _notify_config_changed(tmux)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         subprocess.run(
             ["tmuxp", "load", "--yes", "-d", "-S", sock, "-f", conf,
@@ -453,7 +460,7 @@ def cmd_start(resolved, remaining_args):
         ).returncode == 0
         if has_session:
             if env["config_changed"]:
-                _notify_config_changed(tmux, session_name)
+                _notify_config_changed(tmux)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", session_name], check=True)
