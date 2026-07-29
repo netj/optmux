@@ -20,7 +20,7 @@ optmux:
       command: ${VISUAL:-${EDITOR:-vim}} .
   tmux_config:
     project-settings: |
-      set -g status-style bg=blue
+      set -g @claritmux_color_host 'cyan'
 
 windows:
   - window_name: editor
