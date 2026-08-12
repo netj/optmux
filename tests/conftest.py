@@ -27,7 +27,7 @@ def sample_optmux_config():
             "C-M-s": "",
             "C-M-g": "lazygit",
             "C-M-e": {"command": "vim README.md", "new_window": True},
-            "E": {"send-keys": "vim .", "zoom": False},
+            "E": {"send_keys": "vim .", "zoom": False},
         },
         "tmux_config": {
             "project-settings": "set -g status-style bg=blue\n",

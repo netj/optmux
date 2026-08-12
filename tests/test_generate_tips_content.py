@@ -20,7 +20,7 @@ def test_fallback_to_command():
 
 
 def test_fallback_to_send_keys():
-    shortcuts = {"E": {"send-keys": "vim ."}}
+    shortcuts = {"E": {"send_keys": "vim ."}}
     result = generate_tips_content(shortcuts)
     assert "vim ." in result
 
