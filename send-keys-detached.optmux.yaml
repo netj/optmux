@@ -14,15 +14,15 @@ optmux:
 
     # ── split pane in the current window ───────────────────────────────────────
     C-M-b:
-      send-keys: gh browse .
+      send_keys: gh browse .
       detached: true
     C-M-m:
-      send-keys: uvx marimo edit
+      send_keys: uvx marimo edit
       detached: true
 
     # ── new_window: runs off in its own window ─────────────────────────────────
     C-M-d:
-      send-keys: |-
+      send_keys: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
         if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
         else echo "CPU OK"
@@ -30,7 +30,7 @@ optmux:
       new_window: true
       detached: true
     C-M-e:
-      send-keys: ${VISUAL:-${EDITOR:-vim}} README.md
+      send_keys: ${VISUAL:-${EDITOR:-vim}} README.md
       new_window: true
       detached: true
 

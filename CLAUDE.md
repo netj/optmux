@@ -6,6 +6,10 @@
 - Entry point: `optmux/cli.py` → `optmux.cli:main`
 - Build system: `uv_build` (see `pyproject.toml`)
 
+## YAML Style
+
+- README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
+
 ## Release Checklist
 
 1. Bump `version` in `pyproject.toml`

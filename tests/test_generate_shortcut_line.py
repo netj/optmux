@@ -38,13 +38,13 @@ def test_new_window():
 
 
 def test_send_keys():
-    line = generate_shortcut_line("E", {"send-keys": "vim ."})
+    line = generate_shortcut_line("E", {"send_keys": "vim ."})
     assert "send-keys 'vim .'" in line
     assert "Enter" in line
 
 
 def test_zoom_false():
-    line = generate_shortcut_line("E", {"send-keys": "vim", "zoom": False})
+    line = generate_shortcut_line("E", {"send_keys": "vim", "zoom": False})
     assert "resize-pane -Z" not in line
 
 
@@ -105,8 +105,8 @@ def test_detached_split_no_zoom():
 
 
 def test_detached_split_send_keys():
-    # send-keys + detached pane: real send-keys to the newly created pane (:.+)
-    line = generate_shortcut_line("C-M-b", {"send-keys": "make test", "detached": True})
+    # send_keys + detached pane: real send-keys to the newly created pane (:.+)
+    line = generate_shortcut_line("C-M-b", {"send_keys": "make test", "detached": True})
     assert "split-window -v -d" in line
     assert "send-keys -t :.+ 'make test' Enter" in line
     assert "_script=$(cat <<" not in line  # no command-style heredoc wrap
@@ -166,10 +166,10 @@ def test_float_window_fallback_runs_the_same_command():
 def test_float_window_send_keys_rejected(capsys):
     # no target names a floating pane, and creating one focused (so untargeted
     # send-keys would reach it) silently degrades to a split in a zoomed window
-    result = generate_shortcut_line("C-M-b", {"send-keys": "make test", "float_window": True})
+    result = generate_shortcut_line("C-M-b", {"send_keys": "make test", "float_window": True})
     assert result is None
     err = capsys.readouterr().err
-    assert "send-keys" in err and "float_window" in err and "C-M-b" in err
+    assert "send_keys" in err and "float_window" in err and "C-M-b" in err
 
 
 def test_float_window_wins_over_new_window(capsys):
@@ -198,8 +198,8 @@ def test_detached_window_always_open():
 
 
 def test_detached_window_send_keys():
-    # send-keys + detached + new_window: real send-keys targeted at :{end}
-    line = generate_shortcut_line("C-M-d", {"send-keys": "echo hi", "new_window": True, "detached": True})
+    # send_keys + detached + new_window: real send-keys targeted at :{end}
+    line = generate_shortcut_line("C-M-d", {"send_keys": "echo hi", "new_window": True, "detached": True})
     assert "new-window -d" in line
     assert "send-keys -t :$ 'echo hi' Enter" in line
     assert "_script=$(cat <<" not in line
@@ -210,11 +210,11 @@ def test_invalid_value_type():
 
 
 def test_send_keys_with_remain_rejected(capsys):
-    # send-keys implicitly keeps the shell alive; combining with remain is rejected
-    result = generate_shortcut_line("C-M-x", {"send-keys": "cmd", "remain": True, "detached": True})
+    # send_keys implicitly keeps the shell alive; combining with remain is rejected
+    result = generate_shortcut_line("C-M-x", {"send_keys": "cmd", "remain": True, "detached": True})
     assert result is None
     err = capsys.readouterr().err
-    assert "send-keys" in err and "remain" in err and "C-M-x" in err
+    assert "send_keys" in err and "remain" in err and "C-M-x" in err
 
 
 def test_tmux_raw_action():

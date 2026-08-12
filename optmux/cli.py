@@ -36,7 +36,7 @@ def _short_sock_path(tmux_dir: Path) -> str:
     return short_sock
 
 
-KNOWN_SUBCOMMANDS = {"start", "stop", "warp"}
+KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux"}
 
 
 def parse_project_name(yaml_path_str):
@@ -46,6 +46,33 @@ def parse_project_name(yaml_path_str):
         if name.endswith(suffix):
             name = name[: -len(suffix)]
     return name
+
+
+KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config"}
+KNOWN_SHORTCUT_KEYS = {
+    "tmux", "send_keys", "command", "new_window", "float_window",
+    "zoom", "detached", "remain", "tip",
+}
+
+
+def _warn_unknown_keys(keys, allowed, context):
+    """Print a warning for keys not in allowed (ignoring keys starting with '_')."""
+    unknown = [k for k in keys if k not in allowed and not str(k).startswith("_")]
+    if unknown:
+        allowed_list = ", ".join(sorted(allowed))
+        for key in unknown:
+            print(
+                f"optmux: {context}: unrecognized key {key!r} (allowed: {allowed_list})",
+                file=sys.stderr,
+            )
+
+
+def _validate_optmux_section(optmux, source):
+    """Warn about unrecognized keys in an optmux: section and its shortcuts."""
+    _warn_unknown_keys(optmux.keys(), KNOWN_OPTMUX_KEYS, source)
+    for key, value in (optmux.get("shortcuts") or {}).items():
+        if isinstance(value, dict):
+            _warn_unknown_keys(value.keys(), KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
 
 
 def load_bundled_defaults():
@@ -63,7 +90,9 @@ def load_optmux_conf(conf_path=None):
     if conf_path.exists():
         with open(conf_path) as f:
             data = yaml.safe_load(f) or {}
-        return data.get("optmux") or {}
+        optmux = data.get("optmux") or {}
+        _validate_optmux_section(optmux, str(conf_path))
+        return optmux
     return {}
 
 
@@ -104,10 +133,10 @@ def generate_shortcut_line(key, value):
     # raw tmux action
     if "tmux" in opts:
         return f"{bind} {tmux_key} {opts['tmux']}\n"
-    if "send-keys" in opts and "remain" in opts:
+    if "send_keys" in opts and "remain" in opts:
         print(
             f"optmux: ignoring shortcut {key!r}: 'remain' is incompatible with "
-            "'send-keys' (the shell stays alive after the command — send-keys "
+            "'send_keys' (the shell stays alive after the command — send_keys "
             "implicitly means remain: true; drop 'remain' to silence)",
             file=sys.stderr,
         )
@@ -123,9 +152,9 @@ def generate_shortcut_line(key, value):
             file=sys.stderr,
         )
         use_window = False
-    if use_float and "send-keys" in opts:
+    if use_float and "send_keys" in opts:
         print(
-            f"optmux: ignoring shortcut {key!r}: 'send-keys' is incompatible with "
+            f"optmux: ignoring shortcut {key!r}: 'send_keys' is incompatible with "
             "'float_window' (no tmux target names a floating pane — it is appended "
             "past ':.+' and sits outside the layout that '{bottom}' & co. walk; use "
             "'command:' instead, or 'new_window: true')",
@@ -216,10 +245,10 @@ def generate_shortcut_line(key, value):
             f"{{ {open_with(f'new-window{detach_flag}')} }} "
             f"{{ {open_with(open_cmd)} }}"
         )
-    elif "send-keys" in opts:
+    elif "send_keys" in opts:
         target = (":$" if use_window else ":.+") if detached else ""
         parts.append(f"{open_cmd} -c '#{{pane_current_path}}'")
-        parts.extend(send_keys_parts(opts["send-keys"], target=target))
+        parts.extend(send_keys_parts(opts["send_keys"], target=target))
     else:
         parts.append(open_with(open_cmd))
     if preserve_zoom:
@@ -247,7 +276,7 @@ def generate_tips_content(shortcuts, bundled_keys=None):
             elif isinstance(value, dict):
                 tip = value.get("tip")
                 if tip is None:
-                    tip = value.get("command") or value.get("send-keys")
+                    tip = value.get("command") or value.get("send_keys")
             else:
                 continue
             if not tip:
@@ -394,6 +423,7 @@ def setup_optmux_env(resolved):
         with open(yaml_path) as f:
             data = yaml.safe_load(f) or {}
         project = data.get("optmux") or {}
+        _validate_optmux_section(project, str(yaml_path))
         optmux = merge_optmux(bundled, project, personal)
     else:
         optmux = merge_optmux(bundled, personal)
@@ -444,6 +474,17 @@ def cmd_stop(resolved):
 
     subprocess.run([*tmux, "kill-session", "-t", session_name], check=True)
     print(f"optmux: killed session '{session_name}'")
+
+
+def cmd_tmux(resolved, args):
+    """Low-level passthrough to the tmux server backing this project.
+
+    Bypasses tmuxp/session bootstrapping entirely, for when you need direct
+    access (e.g. `optmux . tmux ls`) instead of hand-rolling `-S <sock>`.
+    """
+    setup_optmux_env(resolved)
+    tmux = resolved["tmux_cmd"]
+    os.execvp(tmux[0], [*tmux, *args])
 
 
 def _notify_config_changed(tmux):
@@ -655,7 +696,7 @@ def cmd_warp(resolved, args, original_cwd=None):
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME]]
+usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
@@ -664,6 +705,8 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME]]
   optmux [DIR | YAML] warp [WORKDIR] [NAME]
                                       create a warp session linking windows
                                       whose panes match WORKDIR (default: cwd)
+  optmux [DIR | YAML] tmux ARGS...    run a raw tmux command against this
+                                      project's tmux server (e.g. `optmux . tmux ls`)
 """
 
 
@@ -704,3 +747,5 @@ def main(argv=None):
         cmd_stop(resolved)
     elif subcommand == "warp":
         cmd_warp(resolved, argv, original_cwd)
+    elif subcommand == "tmux":
+        cmd_tmux(resolved, argv)

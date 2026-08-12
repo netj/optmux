@@ -12,7 +12,7 @@ A [tmuxp](https://tmuxp.git-pull.com) wrapper that creates per-project tmux conf
 
 ```bash
 # run optmux anywhere (installs on first use via uv)
-uvx optmux
+uvx optmux .
 
 # strongly recommended: install wtcode + lazygit for the full experience
 brew install netj/tap/optmux
@@ -43,13 +43,22 @@ optmux myproject.optmux.yaml
 optmux myproject.tmuxp.yaml
 ```
 
+### With a directory
+
+```bash
+optmux .
+optmux /path/to/project
+```
+
+Opens plain `tmux` using `.optmux.d/` in that directory (`.` for the current directory) — useful for a quick, isolated tmux session with the bundled config.
+
 ### Without arguments
 
 ```bash
 optmux
 ```
 
-Opens plain `tmux` using `.optmux.d/` in the current directory — useful for a quick, isolated tmux session with the bundled config.
+Prints usage and exits.
 
 ### As a shebang
 
@@ -59,18 +68,43 @@ Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the 
 #!/usr/bin/env -S uvx optmux
 session_name: myproject
 windows:
-  - window_name: editor
-    panes:
-      - vim .
-  - window_name: shell
-    panes:
-      - ""
+- window_name: editor
+  panes:
+  - vim .
+- window_name: shell
+  panes:
+  - ""
 ```
 
 ```bash
 chmod +x myproject.optmux.yaml
 ./myproject.optmux.yaml
 ```
+
+### Stopping a session
+
+```bash
+optmux myproject.optmux.yaml stop
+optmux . stop
+```
+
+Kills the tmux session tied to that YAML file or directory.
+
+### Warp sessions
+
+```bash
+optmux [DIR | YAML] warp [WORKDIR] [NAME]
+```
+
+Creates (or updates) a secondary session — named `<main-session>//<workdir-name>` unless you pass `NAME` — that links in only the windows from the main session whose panes are running in `WORKDIR` (defaults to the current directory). Handy when a project spans multiple git worktrees: run `optmux warp` from inside a worktree to get a session showing just that worktree's windows. Windows are linked, not copied, so they stay in sync with the main session.
+
+### Raw tmux access
+
+```bash
+optmux [DIR | YAML] tmux ARGS...
+```
+
+Runs `tmux ARGS...` directly against this project's isolated tmux server — no tmuxp bootstrapping, no session creation. Useful for one-off inspection or scripting without hand-rolling the `-S <sock>` path yourself, e.g. `optmux . tmux ls` or `optmux . tmux kill-server`.
 
 ## Example tmuxp YAML
 
@@ -86,24 +120,24 @@ optmux:
     C-M-b: gh browse .
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
-      window: true                                  # in a new-window
+      new_window: true                              # in a new-window
     E:
-      send-keys: ${VISUAL:-${EDITOR:-vim}} .        # send-keys (given command is run in a new shell)
+      send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (command is run in a new shell)
       zoom: false                                   # do not zoom (defaults to zoom when split-window)
   tmux_config:
     project-settings: |
       set -g status-style bg=blue
 
 windows:
-  - window_name: editor
-    panes:
-      - vim .
-  - window_name: shell
-    panes:
-      - ""
-  - window_name: logs
-    panes:
-      - tail -f /var/log/system.log
+- window_name: editor
+  panes:
+  - vim .
+- window_name: shell
+  panes:
+  - ""
+- window_name: logs
+  panes:
+  - tail -f /var/log/system.log
 ```
 
 ## Config directory
@@ -128,9 +162,9 @@ optmux:
     C-M-b: gh browse .                              # Ctrl-Alt-b: run command directly
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
-      window: true                                  # open in a new-window
+      new_window: true                              # open in a new-window
     E:
-      send-keys: ${VISUAL:-${EDITOR:-vim}} .        # send-keys (runs in a new shell)
+      send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (runs in a new shell)
       zoom: false                                   # do not zoom (default: true for splits)
   tmux_config:
     project-settings: |
@@ -144,7 +178,7 @@ Shortcuts bind tmux keys to commands:
 - **`C-M-*` keys** are bound globally (no prefix needed)
 - **Other keys** require the tmux prefix (`C-t`)
 - **`command:`** executes directly (default for string values)
-- **`send-keys:`** sends the command to a new shell (supports shell expansion)
+- **`send_keys:`** sends the command to a new shell (supports shell expansion)
 - **`new_window: true`** opens in a new window instead of a split
 - **`float_window: true`** opens in a floating pane (tmux 3.7+) — see [detached shortcuts](#detached-shortcuts) below
 - **`zoom: false`** disables auto-zoom on splits (default: true)

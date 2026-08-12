@@ -198,6 +198,24 @@ def test_main_dir_arg_as_workdir(mock_run, mock_execvp, tmp_path, monkeypatch):
     assert "attach-session" in mock_execvp.call_args[0][1]
 
 
+@patch("os.execvp", side_effect=_mock_execvp)
+@patch("subprocess.run", side_effect=_mock_run_side_effect)
+def test_main_tmux_passthrough(mock_run, mock_execvp, tmp_path, monkeypatch):
+    """`optmux DIR tmux ARGS...` execs tmux directly with the resolved socket, bypassing tmuxp."""
+    monkeypatch.chdir("/")
+    with pytest.raises(_ExecvpCalled) as exc_info:
+        main(argv=[str(tmp_path), "tmux", "list-sessions"])
+
+    args = exc_info.value.args[0]
+    assert args[0] == "tmux"
+    argv_passed = args[1]
+    assert argv_passed[0] == "tmux"
+    assert "-S" in argv_passed
+    assert argv_passed[-1] == "list-sessions"
+    # no tmuxp load, no new-session, no attach — a pure passthrough
+    assert not any("new-session" in str(c) for c in mock_run.call_args_list)
+
+
 @patch("os.execvp")
 @patch("subprocess.run", side_effect=_mock_run_side_effect)
 def test_no_tmux_env_no_nesting_message(mock_run, mock_execvp, project_yaml_file, monkeypatch, capsys):

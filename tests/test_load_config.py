@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from optmux.cli import load_bundled_defaults, load_optmux_conf
+from optmux.cli import _validate_optmux_section, load_bundled_defaults, load_optmux_conf
 
 
 def test_load_bundled_defaults():
@@ -37,3 +37,30 @@ def test_load_optmux_conf_no_optmux_key(tmp_path):
     p.write_text("something_else:\n  key: value\n")
     result = load_optmux_conf(conf_path=p)
     assert result == {}
+
+
+def test_load_optmux_conf_warns_on_unknown_top_level_key(tmp_path, capsys):
+    """Unrecognized top-level optmux: key prints a warning."""
+    p = tmp_path / ".optmux.yaml"
+    p.write_text("optmux:\n  shortcuuts:\n    C-M-x: htop\n")
+    load_optmux_conf(conf_path=p)
+    err = capsys.readouterr().err
+    assert "shortcuuts" in err
+
+
+def test_validate_optmux_section_warns_on_unknown_shortcut_key(capsys):
+    """Unrecognized key inside a shortcut dict prints a warning naming the shortcut."""
+    optmux = {"shortcuts": {"C-M-x": {"comand": "htop"}}}
+    _validate_optmux_section(optmux, "test-source")
+    err = capsys.readouterr().err
+    assert "comand" in err
+    assert "C-M-x" in err
+    assert "test-source" in err
+
+
+def test_validate_optmux_section_ignores_underscore_prefixed_keys(capsys):
+    """Keys starting with '_' (e.g. YAML anchors used as scratch data) are not warned about."""
+    optmux = {"_anchors": {"foo": "bar"}, "shortcuts": {"C-M-x": {"_note": "personal reminder", "command": "htop"}}}
+    _validate_optmux_section(optmux, "test-source")
+    err = capsys.readouterr().err
+    assert err == ""

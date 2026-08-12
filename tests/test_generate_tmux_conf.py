@@ -83,6 +83,6 @@ def test_shortcuts_with_various_types(tmp_path, sample_optmux_config):
     assert "bind -n C-M-e new-window" in content
     assert "'vim README.md'" in content or "vim README.md\n" in content  # in heredoc
     assert "_script=$(cat <<" in content  # remain_wrap for new_window
-    # E: send-keys without zoom
+    # E: send_keys without zoom
     assert "bind E" in content
     assert "send-keys" in content and "'vim .'" in content

@@ -72,8 +72,8 @@ window. This is why `float_window` is most useful together with `detached`.
 
 ### `send-keys` cannot target a floating pane
 
-optmux rejects `send-keys:` combined with `float_window:` and tells you so. No tmux
+optmux rejects `send_keys:` combined with `float_window:` and tells you so. No tmux
 target names a floating pane: it is appended past `:.+`, and `{bottom}`, `{top}` and
 friends only walk the layout, which a floating pane is not part of. Targets are not
 format-expanded either, so `:.#{window_panes}` does not work. Use `command:` instead,
-or `new_window: true` if you need `send-keys`.
+or `new_window: true` if you need `send_keys`.
