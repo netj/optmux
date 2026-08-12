@@ -18,6 +18,8 @@ uvx optmux .
 brew install netj/tap/optmux
 ```
 
+`brew install netj/tap/optmux` pulls in [wtcode](https://github.com/netj/wtcode) and [lazygit](https://github.com/jesseduffield/lazygit) as dependencies.
+
 Try the included example:
 
 ```bash
