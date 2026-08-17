@@ -122,6 +122,10 @@ def test_main_creates_optmux_dir(mock_run, mock_execvp, project_yaml_file):
     assert optmux_dir.is_dir()
     assert (optmux_dir / "tmux").is_dir()
     assert (optmux_dir / "tmux" / "tmux.conf").exists()
+    pane_menu_script = optmux_dir / "tmux" / "pane-menu.py"
+    assert pane_menu_script.exists()
+    assert pane_menu_script.stat().st_mode & 0o111
+    assert not pane_menu_script.stat().st_mode & 0o222
 
 
 @patch("os.execvp")

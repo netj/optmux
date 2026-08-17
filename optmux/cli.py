@@ -417,6 +417,12 @@ def setup_optmux_env(resolved):
     shutil.copy2(data_dir / "tips.sh", tips_script)
     tips_script.chmod(0o555)  # read+execute for all (not writable)
 
+    pane_menu_script = tmux_dir / "pane-menu.py"
+    if pane_menu_script.exists():
+        pane_menu_script.chmod(0o644)
+    shutil.copy2(files("optmux").joinpath("pane_menu.py"), pane_menu_script)
+    pane_menu_script.chmod(0o555)
+
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()
     if yaml_path:
