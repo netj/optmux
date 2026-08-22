@@ -210,6 +210,33 @@ Workarounds, in order of preference:
 
 Entries under `tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.
 
+### Menu
+
+tmux has no API for editing its built-in right-click menus (session, window,
+pane) — the only way to change one is to redefine it whole. `menu:` lets you
+do that from YAML: list the items you want, in order, and optmux compiles a
+static `bind`/`display-menu` config for you. A bare `"*"` pulls in the rest
+of tmux's own default items for that menu, unchanged, so you only spell out
+what you're adding or reordering:
+
+```yaml
+optmux:
+  menu:
+    pane:
+      - key: w
+        title: New Window (C-t c)
+        new_window: true      # bundled default: adds "New Window" ahead of tmux's own items
+      - "*"
+```
+
+- **`key:` / `title:`** — the accelerator and label for a custom item
+- **`command:`** — shell command, run via `new-window` (default) or `split-window -v` with `new_window: false`; omit for a bare shell
+- **`tmux:`** — a raw tmux command, run as-is
+- **`default: <name>`** (or a bare string) — reuses one of tmux's own items by name; add `title:`/`key:` alongside it to retitle or remap that item without changing what it does
+- **`separator`** (or `""`) — a divider line
+
+A context left out of `menu:` entirely keeps tmux's untouched default. Supported contexts: `session`, `window`, `pane`.
+
 ### Personal config (`~/.optmux.yaml`)
 
 Create `~/.optmux.yaml` to define personal defaults that apply to all optmux sessions:

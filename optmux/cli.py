@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from optmux import menu as menu_compiler
+
 # macOS sockaddr_un.sun_path is 104 bytes (including NUL terminator)
 _SOCK_PATH_LIMIT = 104
 
@@ -48,11 +50,12 @@ def parse_project_name(yaml_path_str):
     return name
 
 
-KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config"}
+KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu"}
 KNOWN_SHORTCUT_KEYS = {
     "tmux", "send_keys", "command", "new_window", "float_window",
     "zoom", "detached", "remain", "tip",
 }
+KNOWN_MENU_ITEM_KEYS = {"default", "title", "key", "tmux", "command", "new_window"}
 
 
 def _warn_unknown_keys(keys, allowed, context):
@@ -68,11 +71,24 @@ def _warn_unknown_keys(keys, allowed, context):
 
 
 def _validate_optmux_section(optmux, source):
-    """Warn about unrecognized keys in an optmux: section and its shortcuts."""
+    """Warn about unrecognized keys in an optmux: section, its shortcuts, and its menu."""
     _warn_unknown_keys(optmux.keys(), KNOWN_OPTMUX_KEYS, source)
     for key, value in (optmux.get("shortcuts") or {}).items():
         if isinstance(value, dict):
             _warn_unknown_keys(value.keys(), KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
+    for context, entries in (optmux.get("menu") or {}).items():
+        if context not in menu_compiler.CONTEXTS:
+            print(
+                f"optmux: {source}: menu: unrecognized context {context!r} "
+                f"(allowed: {', '.join(menu_compiler.CONTEXTS)})",
+                file=sys.stderr,
+            )
+            continue
+        for entry in entries or []:
+            if isinstance(entry, dict):
+                _warn_unknown_keys(
+                    entry.keys(), KNOWN_MENU_ITEM_KEYS, f"{source}: menu.{context} item {entry!r}"
+                )
 
 
 def load_bundled_defaults():
@@ -99,7 +115,7 @@ def load_optmux_conf(conf_path=None):
 def merge_optmux(*layers):
     """Merge optmux config layers (later layers win)."""
     merged = {}
-    for key in ("shortcuts", "tmux_config"):
+    for key in ("shortcuts", "tmux_config", "menu"):
         combined = {}
         for layer in layers:
             combined.update(layer.get(key) or {})
@@ -348,6 +364,14 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
         new_files[filename] = content.encode()
         (tmux_dir / filename).write_text(content)
 
+    # optmux.menu → tmux.optmux-menu.conf (compiled display-menu bindings)
+    menu_cfg = optmux.get("menu") or {}
+    if menu_cfg:
+        menu_content = menu_compiler.generate_menu_conf(menu_cfg, source="optmux: menu")
+        if menu_content:
+            new_files["tmux.optmux-menu.conf"] = menu_content.encode()
+            (tmux_dir / "tmux.optmux-menu.conf").write_text(menu_content)
+
     return old_files != new_files
 
 
@@ -416,12 +440,6 @@ def setup_optmux_env(resolved):
         tips_script.chmod(0o644)
     shutil.copy2(data_dir / "tips.sh", tips_script)
     tips_script.chmod(0o555)  # read+execute for all (not writable)
-
-    pane_menu_script = tmux_dir / "pane-menu.py"
-    if pane_menu_script.exists():
-        pane_menu_script.chmod(0o644)
-    shutil.copy2(files("optmux").joinpath("pane_menu.py"), pane_menu_script)
-    pane_menu_script.chmod(0o555)
 
     bundled = load_bundled_defaults()
     personal = load_optmux_conf()

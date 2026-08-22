@@ -60,3 +60,10 @@ optmux:
       tip: send prefix to nested tmux
     C-t T:
       tip: swap prefix (nested tmux)
+
+  menu:
+    pane:
+      - key: w
+        title: New Window (C-t c)
+        new_window: true
+      - "*"

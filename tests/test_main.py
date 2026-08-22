@@ -122,10 +122,9 @@ def test_main_creates_optmux_dir(mock_run, mock_execvp, project_yaml_file):
     assert optmux_dir.is_dir()
     assert (optmux_dir / "tmux").is_dir()
     assert (optmux_dir / "tmux" / "tmux.conf").exists()
-    pane_menu_script = optmux_dir / "tmux" / "pane-menu.py"
-    assert pane_menu_script.exists()
-    assert pane_menu_script.stat().st_mode & 0o111
-    assert not pane_menu_script.stat().st_mode & 0o222
+    menu_conf = optmux_dir / "tmux" / "tmux.optmux-menu.conf"
+    assert menu_conf.exists()
+    assert "New Window (C-t c)" in menu_conf.read_text()
 
 
 @patch("os.execvp")
