@@ -52,15 +52,21 @@ def test_render_context_custom_item_with_command_opens_new_window():
 
 
 def test_render_context_custom_item_with_shell_command():
+    # command: shares the shortcuts vocabulary, so it gets the same on-error
+    # remain_wrap heredoc a `command:` shortcut would (new_window defaults true).
     items = menu.render_context("pane", [{"key": "e", "title": "Edit", "command": "vim"}])
-    assert items == "'Edit' 'e' { new-window -c '#{pane_current_path}' 'vim' }"
+    assert items.startswith("'Edit' 'e' { new-window -c '#{pane_current_path}' '")
+    assert "_script=$(cat <<" in items
+    assert "$SHELL" in items and "-euc" in items
+    assert items.endswith("}")
 
 
 def test_render_context_custom_item_split_instead_of_window():
+    # A split (not a new window) gets shortcuts' default auto-zoom too.
     items = menu.render_context(
         "pane", [{"key": "e", "title": "Edit", "command": "vim", "new_window": False}]
     )
-    assert items == "'Edit' 'e' { split-window -v -c '#{pane_current_path}' 'vim' }"
+    assert items == "'Edit' 'e' { split-window -v -c '#{pane_current_path}' 'vim' ; resize-pane -Z }"
 
 
 def test_render_context_custom_item_raw_tmux():

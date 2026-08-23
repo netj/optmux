@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from optmux import actions
 from optmux import menu as menu_compiler
 
 # macOS sockaddr_un.sun_path is 104 bytes (including NUL terminator)
@@ -55,7 +56,9 @@ KNOWN_SHORTCUT_KEYS = {
     "tmux", "send_keys", "command", "new_window", "float_window",
     "zoom", "detached", "remain", "tip",
 }
-KNOWN_MENU_ITEM_KEYS = {"default", "title", "key", "tmux", "command", "new_window"}
+# menu items share the shortcuts action vocabulary (command/tmux/send_keys/...),
+# plus their own default/title/key fields; only "tip" doesn't apply to a menu item.
+KNOWN_MENU_ITEM_KEYS = {"default", "title", "key"} | (KNOWN_SHORTCUT_KEYS - {"tip"})
 
 
 def _warn_unknown_keys(keys, allowed, context):
@@ -149,128 +152,9 @@ def generate_shortcut_line(key, value):
     # raw tmux action
     if "tmux" in opts:
         return f"{bind} {tmux_key} {opts['tmux']}\n"
-    if "send_keys" in opts and "remain" in opts:
-        print(
-            f"optmux: ignoring shortcut {key!r}: 'remain' is incompatible with "
-            "'send_keys' (the shell stays alive after the command — send_keys "
-            "implicitly means remain: true; drop 'remain' to silence)",
-            file=sys.stderr,
-        )
+    parts = actions.build_action_parts(opts, f"shortcut {key!r}")
+    if parts is None:
         return None
-    use_window = opts.get("new_window", False)
-    use_float = opts.get("float_window", False)
-    use_zoom = opts.get("zoom", True)
-    detached = opts.get("detached", False)
-    if use_float and use_window:
-        print(
-            f"optmux: shortcut {key!r}: 'float_window' and 'new_window' are mutually "
-            "exclusive — using float_window",
-            file=sys.stderr,
-        )
-        use_window = False
-    if use_float and "send_keys" in opts:
-        print(
-            f"optmux: ignoring shortcut {key!r}: 'send_keys' is incompatible with "
-            "'float_window' (no tmux target names a floating pane — it is appended "
-            "past ':.+' and sits outside the layout that '{bottom}' & co. walk; use "
-            "'command:' instead, or 'new_window: true')",
-            file=sys.stderr,
-        )
-        return None
-    is_split = not (use_window or use_float)
-
-    # Enable remain_wrap for detached shortcuts AND for new_window/float_window
-    # shortcuts (so they don't close before user sees output/errors)
-    remain = (
-        opts.get("remain", "on-error") if (detached or use_window or use_float) else False
-    )
-
-    def sq(s):  # escape ' for single-quoted tmux string
-        return s.replace("'", "'\\''")
-
-    def remain_wrap(cmd):
-        """Wrap user's command so the pane/window can be held open after exit.
-        - never:    run cmd directly; pane/window closes on any exit
-        - on-error: run cmd via $SHELL -euc heredoc; on failure, pause with read for user
-        - always:   same heredoc, but pause unconditionally
-        Heredoc lets the user's command contain any quoting without escaping.
-        """
-        if remain is False or remain == "never":
-            return cmd
-        sep = ";" if (remain is True or remain == "always") else "||"
-        # A detached pane/window pauses out of sight, so ring the terminal bell —
-        # tmux flags the window in the status line (monitor-bell) to point at it.
-        bel = "printf '\\a'; " if detached else ""
-        pause = (
-            f'bash -c "{bel}echo; echo; '
-            "read -p '[optmux] Exit status $?. Press Return/Enter to dismiss...'\""
-        )
-        return (
-            "_script=$(cat <<'EOC'\n"
-            f"{cmd.rstrip()}\n"
-            "EOC\n"
-            ")\n"
-            f'"$SHELL" -euc "$_script" {sep} {pause}'
-        )
-
-    def send_keys_parts(text, target=""):
-        """One send-keys command per non-empty line — avoids embedded newlines that
-        break tmux.conf's bind-directive parser when more args follow the quoted string."""
-        target_flag = f" -t {target}" if target else ""
-        lines = [l for l in text.splitlines() if l.strip()] or [text]
-        return [f"send-keys{target_flag} '{sq(line)}' Enter" for line in lines]
-
-    detach_flag = " -d" if detached else ""
-    if use_float:
-        # A floating pane (tmux 3.7+) sits outside the window layout, so it neither
-        # rearranges the layout nor drops the origin pane's zoom when it closes.
-        open_cmd = f"new-pane{detach_flag}"
-    elif use_window:
-        open_cmd = f"new-window{detach_flag}"
-    else:
-        open_cmd = f"split-window -v{detach_flag}"
-    # A detached split unzooms the window twice over: split-window unzooms as it
-    # makes room, and tmux unzooms again when the pane dies. Capture the origin
-    # pane's zoom (also true of a lone pane) so the split can restore it.
-    preserve_zoom = is_split and detached and use_zoom
-
-    def open_with(cmd_name):
-        if opts.get("command"):
-            return (
-                f"{cmd_name} -c '#{{pane_current_path}}' "
-                f"'{sq(remain_wrap(opts['command']))}'"
-            )
-        return f"{cmd_name} -c '#{{pane_current_path}}'"
-
-    parts = []
-    if preserve_zoom:
-        parts.append(
-            "set-option -F @_optmux_zoom "
-            "'#{||:#{window_zoomed_flag},#{==:#{window_panes},1}}'"
-        )
-    if use_float:
-        # tmux 3.7b: a floating pane created while the window is zoomed gets a
-        # broken layout cell and segfaults the server whenever it later closes —
-        # the zoom state at close time is irrelevant. Unzooming first cannot help
-        # from within one command list, where new-pane still sees the window as
-        # zoomed and quietly makes an ordinary split instead. So pick at press
-        # time: while zoomed, fall back to a background window, which leaves the
-        # zoom alone just as well. See TROUBLESHOOTING-tmux-floating-panes.md.
-        parts.append(
-            "if -F '#{window_zoomed_flag}' "
-            f"{{ {open_with(f'new-window{detach_flag}')} }} "
-            f"{{ {open_with(open_cmd)} }}"
-        )
-    elif "send_keys" in opts:
-        target = (":$" if use_window else ":.+") if detached else ""
-        parts.append(f"{open_cmd} -c '#{{pane_current_path}}'")
-        parts.extend(send_keys_parts(opts["send_keys"], target=target))
-    else:
-        parts.append(open_with(open_cmd))
-    if preserve_zoom:
-        parts.append("if -F '#{@_optmux_zoom}' 'resize-pane -Z'")
-    elif is_split and use_zoom:
-        parts.append("resize-pane -Z")
     return f"{bind} {tmux_key} {' \\; '.join(parts)}\n"
 
 

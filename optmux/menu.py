@@ -18,6 +18,8 @@ CONTEXTS if a future tmux adds move/move-resize/empty menus for real).
 import sys
 from collections import namedtuple
 
+from optmux import actions
+
 DefaultItem = namedtuple("DefaultItem", "name title key command")
 
 CONTEXTS = ("session", "window", "pane")
@@ -39,7 +41,7 @@ DEFAULT_MENUS = {
         _item("Renumber", "'Renumber'", "'N'", "{move-window -r}"),
         _item(
             "Rename", "'Rename'", "'r'",
-            "{command-prompt -I \"#S\" {rename-session -- '%%'}}",
+            """{command-prompt -I "#S" {rename-session -- '%%'}}""",
         ),
         _item("Detach", "'Detach'", "'d'", "{detach-client}"),
         _sep(),
@@ -67,7 +69,7 @@ DEFAULT_MENUS = {
         _item("Mark", "'#{?pane_marked,Unmark,Mark}'", "'m'", "{select-pane -m}"),
         _item(
             "Rename", "'Rename'", "'n'",
-            "{command-prompt -FI \"#W\" {rename-window -t '#{window_id}' -- '%%'}}",
+            """{command-prompt -FI "#W" {rename-window -t '#{window_id}' -- '%%'}}""",
         ),
         _sep(),
         _item("New After", "'New After'", "'w'", "{new-window -a}"),
@@ -96,37 +98,37 @@ DEFAULT_MENUS = {
             "Search For",
             "'#{?mouse_word,Search For #[underscore]#{=/9/...:mouse_word},}'",
             "'C-r'",
-            "{if -F '#{?#{m/r:(copy|view)-mode,#{pane_mode}},0,1}' "
-            "'copy-mode -t='; send -Xt= search-backward -- \"#{q:mouse_word}\"}",
+            """{if -F '#{?#{m/r:(copy|view)-mode,#{pane_mode}},0,1}' """
+            """'copy-mode -t='; send -Xt= search-backward -- "#{q:mouse_word}"}""",
         ),
         _item(
             "Type",
             "'#{?mouse_word,Type #[underscore]#{=/9/...:mouse_word},}'",
             "'C-y'",
-            "{copy-mode -q; send-keys -l -- \"#{q:mouse_word}\"}",
+            """{copy-mode -q; send-keys -l -- "#{q:mouse_word}"}""",
         ),
         _item(
             "Copy",
             "'#{?mouse_word,Copy #[underscore]#{=/9/...:mouse_word},}'",
             "'c'",
-            "{copy-mode -q; set-buffer -- \"#{q:mouse_word}\"}",
+            """{copy-mode -q; set-buffer -- "#{q:mouse_word}"}""",
         ),
         _item(
             "Copy Line", "'#{?mouse_line,Copy Line,}'", "'l'",
-            "{copy-mode -q; set-buffer -- \"#{q:mouse_line}\"}",
+            """{copy-mode -q; set-buffer -- "#{q:mouse_line}"}""",
         ),
         _sep(),
         _item(
             "Type Hyperlink",
             "'#{?mouse_hyperlink,Type #[underscore]#{=/9/...:mouse_hyperlink},}'",
             "'C-h'",
-            "{copy-mode -q; send-keys -l -- \"#{q:mouse_hyperlink}\"}",
+            """{copy-mode -q; send-keys -l -- "#{q:mouse_hyperlink}"}""",
         ),
         _item(
             "Copy Hyperlink",
             "'#{?mouse_hyperlink,Copy #[underscore]#{=/9/...:mouse_hyperlink},}'",
             "'h'",
-            "{copy-mode -q; set-buffer -- \"#{q:mouse_hyperlink}\"}",
+            """{copy-mode -q; set-buffer -- "#{q:mouse_hyperlink}"}""",
         ),
         _sep(),
         _item(
@@ -167,10 +169,6 @@ DEFAULT_MENUS = {
 }
 
 
-def _sq(s):  # escape ' for single-quoted tmux string
-    return s.replace("'", "'\\''")
-
-
 def _chunk(item):
     if item.key is None:
         return item.title  # separator: bare '' with no key/command
@@ -183,27 +181,34 @@ def _apply_overrides(item, title=None, key=None):
         if item.name in new_title:
             new_title = new_title.replace(item.name, title, 1)
         else:
-            new_title = f"'{_sq(title)}'"
-    new_key = f"'{_sq(key)}'" if key is not None else item.key
+            new_title = "'%s'" % actions.sq(title)
+    new_key = "'%s'" % actions.sq(key) if key is not None else item.key
     return item._replace(title=new_title, key=new_key)
 
 
-def _custom_item(entry):
+def _custom_item(entry, context):
+    """Build a menu item from a custom (non-default-referencing) entry.
+
+    Shares the shortcuts action vocabulary (command/tmux/send_keys/
+    new_window/float_window/zoom/detached/remain) via actions.build_action_parts,
+    so a menu item can do anything a shortcut can. Unlike shortcuts, a bare
+    item with no action fields at all defaults to opening a new window.
+    """
     key = entry.get("key")
     if not key:
         return None
     title = entry.get("title", key)
+    label = "menu.%s item %r" % (context, title)
     if "tmux" in entry:
-        command = "{ " + entry["tmux"] + " }"
+        command = "{ %s }" % entry["tmux"]
     else:
-        cmd = entry.get("command") or ""
-        new_window = entry.get("new_window", True)
-        opener = "new-window" if new_window else "split-window -v"
-        if cmd:
-            command = f"{{ {opener} -c '#{{pane_current_path}}' '{_sq(cmd)}' }}"
-        else:
-            command = f"{{ {opener} -c '#{{pane_current_path}}' }}"
-    return f"'{_sq(title)}' '{_sq(key)}' {command}"
+        opts = dict(entry)
+        opts.setdefault("new_window", True)
+        parts = actions.build_action_parts(opts, label)
+        if parts is None:
+            return None
+        command = "{ %s }" % " ; ".join(parts)
+    return "'%s' '%s' %s" % (actions.sq(title), actions.sq(key), command)
 
 
 def render_context(context, entries, source="<menu>"):
@@ -241,7 +246,7 @@ def render_context(context, entries, source="<menu>"):
             chunks.append(_chunk(_apply_overrides(item, entry.get("title"), entry.get("key"))))
             used.add(name)
             continue
-        chunk = _custom_item(entry)
+        chunk = _custom_item(entry, context)
         if chunk is None:
             print(
                 f"optmux: {source}: menu.{context}: item {entry!r} needs a 'key'",
@@ -253,34 +258,37 @@ def render_context(context, entries, source="<menu>"):
 
 
 def _session_lines(items):
-    menu = f"display-menu -t= -xM -yW -T '#[align=centre]#{{session_name}}' {items}"
+    menu = "display-menu -t= -xM -yW -T '#[align=centre]#{session_name}' %s" % items
     return [
-        f"bind -n MouseDown3StatusLeft {{ {menu} }}",
-        f"bind -n M-MouseDown3StatusLeft {{ {menu} }}",
+        "bind -n MouseDown3StatusLeft { %s }" % menu,
+        "bind -n M-MouseDown3StatusLeft { %s }" % menu,
     ]
 
 
 def _window_lines(items):
     title = "#[align=centre]#{window_index}:#{window_name}"
+    prefix_menu = "display-menu -xW -yW -T '%s' %s" % (title, items)
+    mouse_menu = "display-menu -t= -xW -yW -T '%s' %s" % (title, items)
     return [
-        f"bind -N 'Display window menu' < {{ display-menu -xW -yW -T '{title}' {items} }}",
-        f"bind -n MouseDown3Status {{ display-menu -t= -xW -yW -T '{title}' {items} }}",
-        f"bind -n M-MouseDown3Status {{ display-menu -t= -xW -yW -T '{title}' {items} }}",
+        "bind -N 'Display window menu' < { %s }" % prefix_menu,
+        "bind -n MouseDown3Status { %s }" % mouse_menu,
+        "bind -n M-MouseDown3Status { %s }" % mouse_menu,
     ]
 
 
 def _pane_lines(items):
     title = "#[align=centre]#{pane_index} (#{pane_id})"
+    prefix_menu = "display-menu -xP -yP -T '%s' %s" % (title, items)
+    mouse_menu = "display-menu -t= -xM -yM -T '%s' %s" % (title, items)
+    click_passthrough_guard = (
+        "if -Ft= '#{||:#{mouse_any_flag},#{&&:#{pane_in_mode},"
+        "#{?#{m/r:(copy|view)-mode,#{pane_mode}},0,1}}}' "
+        "{ select-pane -t=; send -M } "
+    )
     return [
-        f"bind -N 'Display pane menu' > {{ display-menu -xP -yP -T '{title}' {items} }}",
-        (
-            "bind -n MouseDown3Pane { if -Ft= "
-            "'#{||:#{mouse_any_flag},#{&&:#{pane_in_mode},"
-            "#{?#{m/r:(copy|view)-mode,#{pane_mode}},0,1}}}' "
-            "{ select-pane -t=; send -M } "
-            f"{{ display-menu -t= -xM -yM -T '{title}' {items} }} }}"
-        ),
-        f"bind -n M-MouseDown3Pane {{ display-menu -t= -xM -yM -T '{title}' {items} }}",
+        "bind -N 'Display pane menu' > { %s }" % prefix_menu,
+        "bind -n MouseDown3Pane { %s{ %s } }" % (click_passthrough_guard, mouse_menu),
+        "bind -n M-MouseDown3Pane { %s }" % mouse_menu,
     ]
 
 
