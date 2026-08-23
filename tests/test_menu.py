@@ -69,6 +69,17 @@ def test_render_context_custom_item_split_instead_of_window():
     assert items == "'Edit' 'e' { split-window -v -c '#{pane_current_path}' 'vim' ; resize-pane -Z }"
 
 
+def test_render_context_custom_item_float_window_no_spurious_warning(capsys):
+    # An explicit float_window: true must not collide with the implicit
+    # new_window default for items that name neither -- regression test for
+    # a bug where every float_window item warned "mutually exclusive".
+    items = menu.render_context(
+        "pane", [{"key": "g", "title": "lazygit", "command": "lazygit", "float_window": True}]
+    )
+    assert items != ""
+    assert capsys.readouterr().err == ""
+
+
 def test_render_context_custom_item_raw_tmux():
     items = menu.render_context("pane", [{"key": "z", "title": "Zoom", "tmux": "resize-pane -Z"}])
     assert items == "'Zoom' 'z' { resize-pane -Z }"

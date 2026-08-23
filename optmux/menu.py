@@ -191,8 +191,9 @@ def _custom_item(entry, context):
 
     Shares the shortcuts action vocabulary (command/tmux/send_keys/
     new_window/float_window/zoom/detached/remain) via actions.build_action_parts,
-    so a menu item can do anything a shortcut can. Unlike shortcuts, a bare
-    item with no action fields at all defaults to opening a new window.
+    so a menu item can do anything a shortcut can. Unlike shortcuts, an item
+    that names neither new_window nor float_window defaults to a new window
+    (shortcuts default to a split) -- that's the common case for a menu item.
     """
     key = entry.get("key")
     if not key:
@@ -203,7 +204,8 @@ def _custom_item(entry, context):
         command = "{ %s }" % entry["tmux"]
     else:
         opts = dict(entry)
-        opts.setdefault("new_window", True)
+        if "new_window" not in opts and "float_window" not in opts:
+            opts["new_window"] = True
         parts = actions.build_action_parts(opts, label)
         if parts is None:
             return None
