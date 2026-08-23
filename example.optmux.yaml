@@ -21,6 +21,17 @@ optmux:
   tmux_config:
     project-settings: |
       set -g @claritmux_color_host 'cyan'
+  menu:
+    pane:
+      - key: e
+        title: Edit README
+        command: ${VISUAL:-${EDITOR:-vim}} README.md
+      - "*"
+    window:
+      - default: Kill
+        title: Close Window
+        key: q
+      - "*"
 
 windows:
   - window_name: editor
