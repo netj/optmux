@@ -289,13 +289,18 @@ optmux:
         key: q
       - "*"
 
-    # Session menu: replace Detach with a confirm-before version. No "*" here --
-    # confirm-before *replaces* the item at 'd', so the rest is spelled out in
-    # tmux's own order to keep Detach's original binding from also showing up.
+    # Session menu: replace Detach with a confirm-before version, and add
+    # tmux's own window/pane picker (normally only reachable via prefix w).
+    # No "*" here -- confirm-before *replaces* the item at 'd', so the rest
+    # is spelled out in tmux's own order to keep Detach's original binding
+    # from also showing up. 'T' avoids colliding with New Window's 'w'.
     session:
       - key: d
         title: Detach (confirm)
         tmux: confirm-before -p "detach? (y/n)" detach-client
+      - key: T
+        title: Windows/Panes
+        tmux: choose-tree -Zw
       - Next
       - Previous
       - separator

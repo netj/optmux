@@ -32,6 +32,11 @@ optmux:
         title: Close Window
         key: q
       - "*"
+    session:
+      - key: T
+        title: Windows/Panes
+        tmux: choose-tree -Zw
+      - "*"
 
 windows:
   - window_name: editor
