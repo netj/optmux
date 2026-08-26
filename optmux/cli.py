@@ -719,6 +719,7 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     if not argv:
+        print(f"optmux {__version__}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
         sys.exit(0)
 
