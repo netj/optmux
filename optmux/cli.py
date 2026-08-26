@@ -4,10 +4,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from importlib.metadata import version as _pkg_version
 from importlib.resources import files
 from pathlib import Path
 
 import yaml
+
+__version__ = _pkg_version("optmux")
 
 # macOS sockaddr_un.sun_path is 104 bytes (including NUL terminator)
 _SOCK_PATH_LIMIT = 104
@@ -700,13 +703,14 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
-  optmux YAML start                   same as above (explicit)
+  optmux [DIR | YAML] start           same as above (explicit)
   optmux [DIR | YAML] stop            kill the tmux session
   optmux [DIR | YAML] warp [WORKDIR] [NAME]
                                       create a warp session linking windows
                                       whose panes match WORKDIR (default: cwd)
   optmux [DIR | YAML] tmux ARGS...    run a raw tmux command against this
                                       project's tmux server (e.g. `optmux . tmux ls`)
+  optmux -v | --version | version     print the optmux version
 """
 
 
@@ -715,7 +719,12 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     if not argv:
+        print(f"optmux {__version__}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
+        sys.exit(0)
+
+    if argv[0] in ("-v", "--version", "version"):
+        print(f"optmux {__version__}")
         sys.exit(0)
 
     argv = list(argv)
