@@ -703,7 +703,7 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
-  optmux YAML start                   same as above (explicit)
+  optmux [DIR | YAML] start           same as above (explicit)
   optmux [DIR | YAML] stop            kill the tmux session
   optmux [DIR | YAML] warp [WORKDIR] [NAME]
                                       create a warp session linking windows
