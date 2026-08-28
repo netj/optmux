@@ -66,4 +66,10 @@ optmux:
       - key: w
         title: New Window (C-t c)
         new_window: true
+      - key: b
+        title: "#{?monitor-bell,Disable,Enable} Bell Alert"
+        tmux: if-shell -F "#{monitor-bell}" "set -w monitor-bell off" "set -w monitor-bell on"
+      - key: q
+        title: "#{?#{>:#{monitor-silence},0},Disable,Enable} Silence Alert"
+        tmux: if-shell -F "#{>:#{monitor-silence},0}" "set -w monitor-silence 0" "set -w monitor-silence 15"
       - "*"
