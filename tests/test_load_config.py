@@ -64,3 +64,26 @@ def test_validate_optmux_section_ignores_underscore_prefixed_keys(capsys):
     _validate_optmux_section(optmux, "test-source")
     err = capsys.readouterr().err
     assert err == ""
+
+
+def test_validate_optmux_section_warns_on_unknown_menu_context(capsys):
+    """Unrecognized menu: context prints a warning naming the context."""
+    optmux = {"menu": {"pane_wrong": ["*"]}}
+    _validate_optmux_section(optmux, "test-source")
+    err = capsys.readouterr().err
+    assert "pane_wrong" in err
+    assert "test-source" in err
+
+
+def test_validate_optmux_section_warns_on_unknown_menu_item_key(capsys):
+    """Unrecognized key inside a menu item dict prints a warning."""
+    optmux = {"menu": {"pane": [{"key": "w", "titel": "New Window"}]}}
+    _validate_optmux_section(optmux, "test-source")
+    err = capsys.readouterr().err
+    assert "titel" in err
+    assert "test-source" in err
+
+
+def test_validate_optmux_section_accepts_known_menu_config():
+    optmux = {"menu": {"pane": [{"key": "w", "title": "New Window"}, "*"]}}
+    _validate_optmux_section(optmux, "test-source")  # should not raise

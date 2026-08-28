@@ -1,8 +1,14 @@
 """End-to-end tests that launch real tmux sessions."""
 
+import fcntl
 import os
+import pty
+import select
 import shutil
+import struct
 import subprocess
+import tempfile
+import termios
 import time
 from pathlib import Path
 
@@ -78,7 +84,6 @@ def tmux_env(e2e_yaml):
 
     # Unix domain sockets have a ~104 char path limit on macOS,
     # so use a short path in /tmp for the socket
-    import tempfile
     sock_dir = tempfile.mkdtemp(prefix="optmux-e2e-")
     sock = os.path.join(sock_dir, "tmux.sock")
     conf = str(tmux_conf)
@@ -167,6 +172,215 @@ def test_e2e_shortcuts_bound(tmux_env):
     assert "C-M-s" in result.stdout
     # Project shortcut
     assert "C-M-b" in result.stdout
+
+
+def test_e2e_pane_menu_preserves_tmux_default_and_reload_is_idempotent(tmux_env):
+    """The compiled menu carries our item plus the rest of tmux's own defaults, and
+    reloading the config recompiles it to the exact same binding."""
+    env = tmux_env["env"]
+    tmux = tmux_env["tmux_cmd"]
+    conf = tmux_env["conf"]
+
+    subprocess.run(
+        [*tmux, "-f", conf, "new-session", "-d", "-s", "e2etest"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+    def mouse_down3_pane_binding():
+        # `list-keys -T root MouseDown3Pane` (positional key arg) returns nothing
+        # for mouse-event bindings on this tmux; list all and filter instead.
+        all_keys = subprocess.run(
+            [*tmux, "list-keys", "-T", "root"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.splitlines()
+        return next(line for line in all_keys if " MouseDown3Pane " in line)
+
+    binding = mouse_down3_pane_binding()
+
+    # Our custom item is present, and so are unrelated stock defaults ("*" pulled them in).
+    assert "New Window (C-t c)" in binding
+    assert "Horizontal Split" in binding
+    assert "Kill" in binding
+
+    # Reload just the compiled menu file (not the full tmux.conf, which also
+    # re-triggers TPM's plugin bootstrap -- out of scope for this test).
+    menu_conf = tmux_env["tmux_dir"] / "tmux.optmux-menu.conf"
+    subprocess.run(
+        [*tmux, "source-file", str(menu_conf)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    assert mouse_down3_pane_binding() == binding
+
+
+def test_e2e_pane_menu_new_window_uses_clicked_pane_cwd(tmux_env, tmp_path):
+    """A real right-click menu selection targets the clicked, inactive pane."""
+    env = tmux_env["env"]
+    tmux = tmux_env["tmux_cmd"]
+    conf = tmux_env["conf"]
+    active_dir = tmp_path / "active"
+    clicked_dir = tmp_path / "clicked"
+    active_dir.mkdir()
+    clicked_dir.mkdir()
+
+    subprocess.run(
+        [
+            *tmux,
+            "-f",
+            conf,
+            "new-session",
+            "-d",
+            "-s",
+            "e2etest",
+            "-c",
+            str(active_dir),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    active_pane = subprocess.run(
+        [*tmux, "display-message", "-p", "#{pane_id}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    clicked_pane = subprocess.run(
+        [
+            *tmux,
+            "split-window",
+            "-h",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-c",
+            str(clicked_dir),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    subprocess.run(
+        [*tmux, "select-pane", "-t", active_pane],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+    panes = subprocess.run(
+        [
+            *tmux,
+            "list-panes",
+            "-F",
+            "#{pane_id}\t#{pane_active}\t#{pane_left}\t#{pane_top}"
+            "\t#{pane_width}\t#{pane_height}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip().splitlines()
+    pane_fields = {line.split("\t")[0]: line.split("\t") for line in panes}
+    clicked = pane_fields[clicked_pane]
+    assert clicked[1] == "0"
+    mouse_x = int(clicked[2]) + int(clicked[4]) // 2 + 1
+    mouse_y = int(clicked[3]) + int(clicked[5]) // 2 + 1
+
+    master_fd, slave_fd = pty.openpty()
+    fcntl.ioctl(
+        slave_fd,
+        termios.TIOCSWINSZ,
+        struct.pack("HHHH", 24, 100, 0, 0),
+    )
+    client_env = env.copy()
+    client_env["TERM"] = "xterm-256color"
+    client = subprocess.Popen(
+        [*tmux, "attach-session", "-t", "e2etest"],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        env=client_env,
+        start_new_session=True,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    os.set_blocking(master_fd, False)
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            clients = subprocess.run(
+                [*tmux, "list-clients", "-F", "#{client_tty}"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if clients.stdout.strip():
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail("tmux PTY client did not attach")
+
+        # Drain the initial screen so the assertion below observes this menu open.
+        time.sleep(0.1)
+        while select.select([master_fd], [], [], 0)[0]:
+            try:
+                os.read(master_fd, 65536)
+            except BlockingIOError:
+                break
+
+        # SGR mouse button 2 is a right-click. Coordinates are one-based.
+        os.write(master_fd, f"\x1b[<2;{mouse_x};{mouse_y}M".encode())
+        menu_output = b""
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and b"New Window" not in menu_output:
+            if select.select([master_fd], [], [], 0.1)[0]:
+                try:
+                    menu_output += os.read(master_fd, 65536)
+                except BlockingIOError:
+                    pass
+        assert b"New Window" in menu_output
+
+        # Select the displayed menu item's accelerator, not its underlying command.
+        os.write(master_fd, b"w")
+        deadline = time.monotonic() + 3
+        windows = []
+        while time.monotonic() < deadline:
+            output = subprocess.run(
+                [
+                    *tmux,
+                    "list-windows",
+                    "-F",
+                    "#{window_active}\t#{pane_current_path}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            ).stdout.strip()
+            windows = [line.split("\t", 1) for line in output.splitlines() if line]
+            if len(windows) == 2:
+                break
+            time.sleep(0.05)
+
+        assert len(windows) == 2
+        new_window = next(fields for fields in windows if fields[0] == "1")
+        assert os.path.realpath(new_window[1]) == os.path.realpath(clicked_dir)
+    finally:
+        subprocess.run([*tmux, "kill-server"], capture_output=True, env=env)
+        try:
+            client.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            client.kill()
+            client.wait()
+        os.close(master_fd)
 
 
 def test_e2e_generated_files(tmux_env):
