@@ -121,12 +121,18 @@ def load_optmux_conf(conf_path=None):
 def merge_optmux(*layers):
     """Merge optmux config layers (later layers win)."""
     merged = {}
-    for key in ("shortcuts", "tmux_config", "menu"):
+    for key in ("shortcuts", "tmux_config"):
         combined = {}
         for layer in layers:
             combined.update(layer.get(key) or {})
         if combined:
             merged[key] = combined
+    menu_combined = {}
+    for layer in layers:
+        for context, entries in (layer.get("menu") or {}).items():
+            menu_combined.setdefault(context, []).extend(entries or [])
+    if menu_combined:
+        merged["menu"] = menu_combined
     return merged
 
 

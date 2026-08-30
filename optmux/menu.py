@@ -214,21 +214,39 @@ def _custom_item(entry, context):
 
 
 def render_context(context, entries, source="<menu>"):
-    """Render one context's YAML entries into a tmux display-menu items string."""
+    """Render one context's (already layer-merged) YAML entries into a tmux
+    display-menu items string.
+
+    Entries typically come from concatenating multiple config layers
+    (bundled defaults, project, personal), so a 'default' reference to a
+    name already placed by an earlier layer (e.g. via '*') updates that
+    item in place instead of appending a duplicate -- that's what lets a
+    later layer retitle/remap an item an earlier layer already surfaced.
+    """
     defaults = DEFAULT_MENUS[context]
     by_name = {d.name: d for d in defaults if d.name}
     used = set()
+    positions = {}
     chunks = []
     for entry in entries or []:
         if entry == "*":
+            pending_sep = False
             for d in defaults:
-                if d.name is None or d.name not in used:
-                    chunks.append(_chunk(d))
-                    if d.name:
-                        used.add(d.name)
+                if d.name is None:
+                    pending_sep = True
+                    continue
+                if d.name in used:
+                    continue
+                if pending_sep and chunks and chunks[-1] != "''":
+                    chunks.append("''")
+                pending_sep = False
+                positions[d.name] = len(chunks)
+                used.add(d.name)
+                chunks.append(_chunk(d))
             continue
         if entry in ("separator", ""):
-            chunks.append("''")
+            if not chunks or chunks[-1] != "''":
+                chunks.append("''")
             continue
         if isinstance(entry, str):
             entry = {"default": entry}
@@ -245,7 +263,12 @@ def render_context(context, entries, source="<menu>"):
                     file=sys.stderr,
                 )
                 continue
-            chunks.append(_chunk(_apply_overrides(item, entry.get("title"), entry.get("key"))))
+            chunk = _chunk(_apply_overrides(item, entry.get("title"), entry.get("key")))
+            if name in positions:
+                chunks[positions[name]] = chunk
+            else:
+                positions[name] = len(chunks)
+                chunks.append(chunk)
             used.add(name)
             continue
         chunk = _custom_item(entry, context)
