@@ -74,4 +74,5 @@ optmux:
       - key: q
         title: "#{?#{>:#{monitor-silence},0},Disable,Enable} Silence Alert"
         tmux: if-shell -F "#{>:#{monitor-silence},0}" "set -w monitor-silence 0" "set -w monitor-silence 15"
+      - separator
       - "*"
