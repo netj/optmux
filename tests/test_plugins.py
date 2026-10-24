@@ -78,15 +78,15 @@ def test_plugins_tips_file_written_and_removed(tmp_path):
 
 
 def test_underscore_keys_are_metadata_not_options():
-    out = generate_plugins_conf({"a/x": {"_url": "https://v/1", "opt": 1}})
-    assert "_url" not in out and 'set -g @opt "1"' in out
+    out = generate_plugins_conf({"a/x": {"_tip_url": "https://v/1", "opt": 1}})
+    assert "_tip_url" not in out and 'set -g @opt "1"' in out
 
 
 def test_plugins_tips_showcase_urls():
     from optmux.cli import generate_plugins_tips
     out = generate_plugins_tips({
-        "a/x": {"_url": "https://v/1", "o": 1},
-        "bb/y": {"_url": ["https://p/1", "https://p/2"]},
+        "a/x": {"_tip_url": "https://v/1", "o": 1},
+        "bb/y": {"_tip_url": ["https://p/1", "https://p/2"]},
         "c/z": None,
     })
     assert out == (

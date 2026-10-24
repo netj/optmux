@@ -242,7 +242,7 @@ def generate_plugins_conf(plugins):
 
     A plugin's value may be empty, a string or list of raw tmux config lines, or a
     dict of option -> value (written as `set -g @option "value"`; the `@` is optional,
-    `$VAR` still expands, and booleans become on/off; `_`-prefixed keys such as `_url`
+    `$VAR` still expands, and booleans become on/off; `_`-prefixed keys such as `_tip_url`
     are metadata, not options).
     `false` drops the plugin (to disable a bundled one).
     """
@@ -280,8 +280,8 @@ def plugin_url(plugin):
 
 
 def plugin_showcase_urls(config):
-    """Extra links (a great page, a video) from a plugin's `_url`: a string or a list."""
-    urls = config.get("_url") if isinstance(config, dict) else None
+    """Extra links (a great page, a video) from a plugin's `_tip_url`: a string or a list."""
+    urls = config.get("_tip_url") if isinstance(config, dict) else None
     if not urls:
         return []
     return [urls] if isinstance(urls, str) else [str(u) for u in urls]
@@ -289,7 +289,7 @@ def plugin_showcase_urls(config):
 
 def generate_plugins_tips(plugins):
     """Generate a `name  url` line per enabled plugin for the tips screen,
-    followed by an indented line for each showcase link in its `_url`."""
+    followed by an indented line for each showcase link in its `_tip_url`."""
     enabled = {p: config for p, config in plugins.items() if config is not False}
     if not enabled:
         return ""
