@@ -41,10 +41,13 @@ jobs:
           d=Path('$d/tmux'); b=load_bundled_defaults()
           generate_tmux_conf_files(d, merge_optmux(b), b.get('shortcuts'))"
           export OPTMUX_DIR=$d TMUX_PLUGIN_MANAGER_PATH=$d/tmux/plugins; unset TMUX
+          set +e
           T="tmux -S $d/s"
           $T -f /dev/null new-session -d 'sleep 60'
-          for f in $d/tmux/tmux.conf $d/tmux/tmux.optmux-shortcuts.conf; do echo "== $f"; $T source-file $f; done
-          $T list-keys | grep -E "C-M-s|C-M-b" || echo "no C-M-s/C-M-b bound"
+          ls $d/tmux
+          for f in $d/tmux/tmux.conf $d/tmux/tmux.optmux-shortcuts.conf; do echo "== $f"; $T source-file $f 2>&1; echo "rc=$?"; done
+          $T list-keys 2>&1 | grep -E "C-M-s|C-M-b" || echo "no C-M-s/C-M-b bound"
+          true
 
   build:
     name: build and smoke-test wheel
