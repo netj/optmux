@@ -19,9 +19,9 @@ jobs:
     env:
       TERM: xterm-256color
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Python comes from .python-version (what dev uses); optmux is a CLI, not a library
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       # e2e tests skip themselves when tmux is missing, so a failed install must fail the job
       - name: Install tmux
         run: |
@@ -34,8 +34,8 @@ jobs:
     name: build and smoke-test wheel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv build
       - name: Run the built wheel in a clean environment
         run: uv run --isolated --no-project --with dist/*.whl optmux --version
