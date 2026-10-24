@@ -1,4 +1,25 @@
 optmux:
+  # tmux plugins (TPM): plugin -> tmux config lines for its options (empty for none).
+  # A later layer's entry replaces the whole entry; `false` disables a plugin.
+  plugins:
+    tmux-plugins/tmux-sensible:      # hx limit, mouse, C-n/C-p over awkward n/p
+    tmux-plugins/tmux-pain-control:  # move around panes with j and k, a bit like vim; resize panes like vim
+    Morantron/tmux-fingers:          # prefix+F to highlight and copy URLs/paths/hashes/IPs
+      fingers-skip-wizard: 1
+    netj/tmux-yank:
+    tmux-plugins/tmux-resurrect:
+      resurrect-strategy-vim: session
+      resurrect-capture-pane-contents: true
+      # isolate saved state per optmux session, not shared ~/.local/share/tmux/resurrect
+      resurrect-dir: $OPTMUX_DIR/tmux/resurrect
+    #tmux-plugins/tmux-continuum:
+    #  continuum-restore: true
+    netj/claritmux:
+      claritmux_status_workdir: 0
+      claritmux_status_date: 0
+      claritmux_status_time: 0
+      claritmux_status_hostname: 1
+
   shortcuts:
     # Workflow
     C-M-c:

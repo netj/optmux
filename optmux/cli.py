@@ -54,7 +54,7 @@ def parse_project_name(yaml_path_str):
     return name
 
 
-KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu"}
+KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins"}
 KNOWN_SHORTCUT_KEYS = {
     "tmux", "send_keys", "command", "new_window", "float_window",
     "zoom", "detached", "remain", "tip",
@@ -127,6 +127,11 @@ def merge_optmux(*layers):
             combined.update(layer.get(key) or {})
         if combined:
             merged[key] = combined
+    plugins_combined = {}
+    for layer in layers:
+        plugins_combined.update(layer.get("plugins") or {})
+    if plugins_combined:
+        merged["plugins"] = plugins_combined
     menu_combined = {}
     for layer in layers:
         for context, entries in (layer.get("menu") or {}).items():
@@ -221,18 +226,105 @@ def generate_tips_content(shortcuts, bundled_keys=None):
     return "\n".join(lines) + "\n"
 
 
+PLUGINS_CONF = "optmux-plugins.conf"
+
+
+def _plugin_option_line(name, value):
+    name = str(name)
+    if isinstance(value, bool):
+        value = "on" if value else "off"
+    value = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'set -g {name if name.startswith("@") else "@" + name} "{value}"'
+
+
+def generate_plugins_conf(plugins):
+    """Generate tmux @plugin declarations from optmux.plugins (plugin -> config lines).
+
+    A plugin's value may be empty, a string or list of raw tmux config lines, or a
+    dict of option -> value (written as `set -g @option "value"`; the `@` is optional,
+    `$VAR` still expands, and booleans become on/off; `_`-prefixed keys such as `_tip_url`
+    are metadata, not options).
+    `false` drops the plugin (to disable a bundled one).
+    """
+    lines = []
+    enabled = [plugin for plugin, config in plugins.items() if config is not False]
+    if enabled:
+        # TPM can't expand $OPTMUX_DIR in the source-file path, so it would never see the
+        # @plugin lines below; @tpm_plugins is the list it reads straight from tmux.
+        lines.append(f"set -g @tpm_plugins '{' '.join(enabled)}'\n")
+    for plugin, config in plugins.items():
+        if config is False:
+            continue
+        lines.append(f"set -g @plugin '{plugin}'\n")
+        if isinstance(config, dict):
+            config = [
+                _plugin_option_line(k, v)
+                for k, v in config.items()
+                if not str(k).startswith("_")
+            ]
+        elif isinstance(config, str):
+            config = config.splitlines()
+        for line in config or []:
+            lines.append(f"{line}\n")
+    return "".join(lines)
+
+
+PLUGINS_TIPS = "tips-plugins.txt"
+
+
+def plugin_url(plugin):
+    """Homepage URL for a TPM plugin spec (user/repo on GitHub, or a full git URL)."""
+    if "://" in plugin or plugin.startswith("git@"):
+        return plugin
+    return f"https://github.com/{plugin}"
+
+
+def plugin_showcase_urls(config):
+    """Extra links (a great page, a video) from a plugin's `_tip_url`: a string or a list."""
+    urls = config.get("_tip_url") if isinstance(config, dict) else None
+    if not urls:
+        return []
+    return [urls] if isinstance(urls, str) else [str(u) for u in urls]
+
+
+def generate_plugins_tips(plugins):
+    """Generate a `name  url` line per enabled plugin for the tips screen,
+    followed by an indented line for each showcase link in its `_tip_url`."""
+    enabled = {p: config for p, config in plugins.items() if config is not False}
+    if not enabled:
+        return ""
+    width = max(len(n) for n in enabled) + 2
+    lines = []
+    for name, config in enabled.items():
+        lines.append(f"  {name:<{width}}{plugin_url(name)}\n")
+        lines.extend(f"  {'':<{width}}-> {u}\n" for u in plugin_showcase_urls(config))
+    return "".join(lines)
+
+
 def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     """Generate tmux conf files from merged optmux config.
 
-    Returns True if the set/content of tmux.optmux-*.conf files changed.
+    Returns True if the set/content of the managed conf files changed.
     """
-    old_files = {p.name: p.read_bytes() for p in tmux_dir.glob("tmux.optmux-*.conf")}
+    managed = [*tmux_dir.glob("tmux.optmux-*.conf"), *tmux_dir.glob(PLUGINS_CONF)]
+    old_files = {p.name: p.read_bytes() for p in managed}
 
     # clear all managed files first to avoid stale configs
-    for conf_file in tmux_dir.glob("tmux.optmux-*.conf"):
+    for conf_file in managed:
         conf_file.unlink()
 
     new_files = {}
+
+    # optmux.plugins → optmux-plugins.conf (sourced by tmux.conf before TPM runs)
+    plugins_content = generate_plugins_conf(optmux.get("plugins") or {})
+    if plugins_content:
+        new_files[PLUGINS_CONF] = plugins_content.encode()
+        (tmux_dir / PLUGINS_CONF).write_text(plugins_content)
+    plugins_tips = generate_plugins_tips(optmux.get("plugins") or {})
+    if plugins_tips:
+        (tmux_dir / PLUGINS_TIPS).write_text(plugins_tips)
+    else:
+        (tmux_dir / PLUGINS_TIPS).unlink(missing_ok=True)
 
     # optmux.shortcuts → tmux.optmux-shortcuts.conf + tips-content.txt
     shortcuts = optmux.get("shortcuts") or {}
