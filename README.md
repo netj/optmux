@@ -64,7 +64,7 @@ Prints usage and exits.
 
 ### As a shebang
 
-Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable:
+Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable. This needs `optmux` on your `PATH` (e.g. `brew install netj/tap/optmux`):
 
 ```yaml
 #!/usr/bin/env optmux
