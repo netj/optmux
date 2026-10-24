@@ -29,6 +29,20 @@ def _mock_run_side_effect(*args, **kwargs):
     return result
 
 
+@pytest.mark.parametrize("flag", ["-h", "--help", "help"])
+def test_main_help_flag_prints_usage_without_starting(flag, capsys, tmp_path, monkeypatch):
+    """-h/--help print usage to stdout, exit 0, and don't set up or start anything."""
+    monkeypatch.chdir(tmp_path)
+    with patch("subprocess.run") as mock_run, patch("os.execvp") as mock_execvp:
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv=[flag])
+    assert exc_info.value.code == 0
+    assert "usage:" in capsys.readouterr().out
+    mock_run.assert_not_called()
+    mock_execvp.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
 @patch("os.execvp")
 @patch("subprocess.run", side_effect=_mock_run_side_effect)
 def test_main_with_yaml_new_session(mock_run, mock_execvp, project_yaml_file):

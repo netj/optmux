@@ -717,6 +717,7 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
   optmux [DIR | YAML] tmux ARGS...    run a raw tmux command against this
                                       project's tmux server (e.g. `optmux . tmux ls`)
   optmux -v | --version | version     print the optmux version
+  optmux -h | --help | help           print this help
 """
 
 
@@ -727,6 +728,10 @@ def main(argv=None):
     if not argv:
         print(f"optmux {__version__}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
+        sys.exit(0)
+
+    if argv[0] in ("-h", "--help", "help"):
+        print(USAGE)
         sys.exit(0)
 
     if argv[0] in ("-v", "--version", "version"):
