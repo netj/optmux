@@ -18,12 +18,12 @@
 4. Clean old builds: `rm dist/optmux-0.1.* ...` (keep only current version to avoid re-uploading old ones)
 5. `uv publish --token "$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('$HOME/.pypirc'); print(c['pypi']['password'])")"`
 6. `gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes dist/*`
-7. Update `netj/homebrew-tap/optmux.rb` (after step 6, since it installs the release wheel): new `url`/`version`, wheel sha256 (`curl -sL WHEEL_URL | shasum -a 256`), and any `resource` pins that changed in `uv.lock` (tmuxp, libtmux, pyyaml). Homepage stays `https://pypi.org/project/optmux/`
+7. Update `netj/homebrew-tap/optmux.rb`: new `url`/`version`, tarball sha256 (`curl -sL TARBALL_URL | shasum -a 256`). Homepage stays `https://pypi.org/project/optmux/`
 
 ## Homebrew Tap
 
 - Repo: `netj/homebrew-tap` (on GitHub)
-- `optmux.rb` installs the release wheel plus pinned `resource` wheels into a private venv (no uv/uvx, nothing fetched at runtime), and depends on `netj/tap/wtcode` + `lazygit`
+- `optmux.rb` runs `uv sync --frozen --no-dev --no-editable` at install time into `libexec` (deps pinned by `uv.lock`, nothing fetched at runtime), and depends on `netj/tap/wtcode` + `lazygit`
 - Shebangs recommended as `#!/usr/bin/env optmux` (not `uvx`, which hits PyPI on every run)
 - Update via `gh api repos/netj/homebrew-tap/contents/optmux.rb --method PUT ...`
 
