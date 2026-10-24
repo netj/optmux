@@ -31,6 +31,20 @@ jobs:
           tmux -V
       - run: uv sync --locked
       - run: uv run pytest -rs
+      - name: DEBUG tmux config errors
+        if: failure() && runner.os == 'Linux'
+        run: |
+          d=$(mktemp -d); mkdir -p $d/tmux; cp optmux/data/tmux.conf $d/tmux/
+          uv run python -c "
+          from pathlib import Path
+          from optmux.cli import *
+          d=Path('$d/tmux'); b=load_bundled_defaults()
+          generate_tmux_conf_files(d, merge_optmux(b), b.get('shortcuts'))"
+          export OPTMUX_DIR=$d TMUX_PLUGIN_MANAGER_PATH=$d/tmux/plugins; unset TMUX
+          T="tmux -S $d/s"
+          $T -f /dev/null new-session -d 'sleep 60'
+          for f in $d/tmux/tmux.conf $d/tmux/tmux.optmux-shortcuts.conf; do echo "== $f"; $T source-file $f; done
+          $T list-keys | grep -E "C-M-s|C-M-b" || echo "no C-M-s/C-M-b bound"
 
   build:
     name: build and smoke-test wheel
@@ -40,4 +54,4 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv build
       - name: Run the built wheel in a clean environment
-        run: uv run --isolated --no-project --with dist/*.whl optmux --help
+        run: uv run --isolated --no-project --with dist/*.whl optmux --version
