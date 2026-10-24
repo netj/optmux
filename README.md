@@ -240,7 +240,17 @@ optmux:
     Morantron/tmux-fingers: false    # disable a bundled plugin
 ```
 
-Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole. See `optmux/data/optmux-defaults.yaml` for the bundled list.
+A dict entry may also carry `_url:` (a string or a list) to showcase a great page or video; keys starting with `_` are metadata, not options. The tips screen lists every plugin with its GitHub URL (derived from `user/repo`) plus any `_url` links beneath it:
+
+```yaml
+optmux:
+  plugins:
+    laktak/extrakto:
+      _url: https://www.youtube.com/watch?v=VIDEO_ID
+      extrakto_key: X
+```
+
+Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole (including `_url`). See `optmux/data/optmux-defaults.yaml` for the bundled list.
 
 ### tmux_config
 

@@ -242,7 +242,8 @@ def generate_plugins_conf(plugins):
 
     A plugin's value may be empty, a string or list of raw tmux config lines, or a
     dict of option -> value (written as `set -g @option "value"`; the `@` is optional,
-    `$VAR` still expands, and booleans become on/off).
+    `$VAR` still expands, and booleans become on/off; `_`-prefixed keys such as `_url`
+    are metadata, not options).
     `false` drops the plugin (to disable a bundled one).
     """
     lines = []
@@ -256,11 +257,47 @@ def generate_plugins_conf(plugins):
             continue
         lines.append(f"set -g @plugin '{plugin}'\n")
         if isinstance(config, dict):
-            config = [_plugin_option_line(k, v) for k, v in config.items()]
+            config = [
+                _plugin_option_line(k, v)
+                for k, v in config.items()
+                if not str(k).startswith("_")
+            ]
         elif isinstance(config, str):
             config = config.splitlines()
         for line in config or []:
             lines.append(f"{line}\n")
+    return "".join(lines)
+
+
+PLUGINS_TIPS = "tips-plugins.txt"
+
+
+def plugin_url(plugin):
+    """Homepage URL for a TPM plugin spec (user/repo on GitHub, or a full git URL)."""
+    if "://" in plugin or plugin.startswith("git@"):
+        return plugin
+    return f"https://github.com/{plugin}"
+
+
+def plugin_showcase_urls(config):
+    """Extra links (a great page, a video) from a plugin's `_url`: a string or a list."""
+    urls = config.get("_url") if isinstance(config, dict) else None
+    if not urls:
+        return []
+    return [urls] if isinstance(urls, str) else [str(u) for u in urls]
+
+
+def generate_plugins_tips(plugins):
+    """Generate a `name  url` line per enabled plugin for the tips screen,
+    followed by an indented line for each showcase link in its `_url`."""
+    enabled = {p: config for p, config in plugins.items() if config is not False}
+    if not enabled:
+        return ""
+    width = max(len(n) for n in enabled) + 2
+    lines = []
+    for name, config in enabled.items():
+        lines.append(f"  {name:<{width}}{plugin_url(name)}\n")
+        lines.extend(f"  {'':<{width}}-> {u}\n" for u in plugin_showcase_urls(config))
     return "".join(lines)
 
 
@@ -283,6 +320,11 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     if plugins_content:
         new_files[PLUGINS_CONF] = plugins_content.encode()
         (tmux_dir / PLUGINS_CONF).write_text(plugins_content)
+    plugins_tips = generate_plugins_tips(optmux.get("plugins") or {})
+    if plugins_tips:
+        (tmux_dir / PLUGINS_TIPS).write_text(plugins_tips)
+    else:
+        (tmux_dir / PLUGINS_TIPS).unlink(missing_ok=True)
 
     # optmux.shortcuts → tmux.optmux-shortcuts.conf + tips-content.txt
     shortcuts = optmux.get("shortcuts") or {}

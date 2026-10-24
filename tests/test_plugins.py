@@ -51,3 +51,49 @@ def test_generate_plugins_conf_dict_options():
         'set -g @x_n "5"\n'
         'set -g @x_q "say \\"hi\\""\n'
     )
+
+
+def test_plugin_url_github_and_full_url():
+    from optmux.cli import plugin_url
+    assert plugin_url("laktak/extrakto") == "https://github.com/laktak/extrakto"
+    assert plugin_url("https://example.com/x/y.git") == "https://example.com/x/y.git"
+    assert plugin_url("git@github.com:x/y.git") == "git@github.com:x/y.git"
+
+
+def test_generate_plugins_tips_aligned_and_skips_disabled():
+    from optmux.cli import generate_plugins_tips
+    out = generate_plugins_tips({"a/x": None, "bb/yyy": {"o": 1}, "c/z": False})
+    assert out == (
+        "  a/x     https://github.com/a/x\n"
+        "  bb/yyy  https://github.com/bb/yyy\n"
+    )
+    assert generate_plugins_tips({}) == ""
+
+
+def test_plugins_tips_file_written_and_removed(tmp_path):
+    generate_tmux_conf_files(tmp_path, {"plugins": {"a/x": None}})
+    assert "https://github.com/a/x" in (tmp_path / "tips-plugins.txt").read_text()
+    generate_tmux_conf_files(tmp_path, {})
+    assert not (tmp_path / "tips-plugins.txt").exists()
+
+
+def test_underscore_keys_are_metadata_not_options():
+    out = generate_plugins_conf({"a/x": {"_url": "https://v/1", "opt": 1}})
+    assert "_url" not in out and 'set -g @opt "1"' in out
+
+
+def test_plugins_tips_showcase_urls():
+    from optmux.cli import generate_plugins_tips
+    out = generate_plugins_tips({
+        "a/x": {"_url": "https://v/1", "o": 1},
+        "bb/y": {"_url": ["https://p/1", "https://p/2"]},
+        "c/z": None,
+    })
+    assert out == (
+        "  a/x   https://github.com/a/x\n"
+        "        -> https://v/1\n"
+        "  bb/y  https://github.com/bb/y\n"
+        "        -> https://p/1\n"
+        "        -> https://p/2\n"
+        "  c/z   https://github.com/c/z\n"
+    )

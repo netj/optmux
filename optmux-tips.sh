@@ -91,6 +91,12 @@ else
     echo "  (no shortcuts configured)"
 fi
 
+plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"
+if [[ -s "$plugins_tips" ]]; then
+    printf '\n  Plugins:\n'
+    cat "$plugins_tips"
+fi
+
 cat <<EOF
 
   Install:  brew install netj/tap/wtcode   https://github.com/netj/wtcode
