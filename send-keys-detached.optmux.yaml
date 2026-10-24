@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uvx optmux
+#!/usr/bin/env optmux
 # send-keys + detached shortcuts — typed into the new pane/window's shell.
 # Pane: targets the just-created split pane via `:.+`.
 # Window: targets the new window via `:$`.

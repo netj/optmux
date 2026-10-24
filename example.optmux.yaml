@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uvx optmux
+#!/usr/bin/env optmux
 session_name: example
 start_directory: .
 

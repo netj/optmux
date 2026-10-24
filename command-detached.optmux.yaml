@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uvx optmux
+#!/usr/bin/env optmux
 # command + detached shortcuts — focus stays on the origin pane/window.
 # Where it runs:  bare        → split pane in the current window
 #                 float_window → floating pane over it (tmux 3.7+, leaves zoom alone)
