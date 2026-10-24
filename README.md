@@ -64,10 +64,10 @@ Prints usage and exits.
 
 ### As a shebang
 
-Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable:
+Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable. This needs `optmux` on your `PATH` (e.g. `brew install netj/tap/optmux`):
 
 ```yaml
-#!/usr/bin/env -S uvx optmux
+#!/usr/bin/env optmux
 session_name: myproject
 windows:
 - window_name: editor
@@ -113,7 +113,7 @@ Runs `tmux ARGS...` directly against this project's isolated tmux server — no 
 Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
 
 ```yaml
-#!/usr/bin/env -S uvx optmux
+#!/usr/bin/env optmux
 session_name: example
 start_directory: .
 
