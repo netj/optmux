@@ -5,20 +5,20 @@ optmux:
     tmux-plugins/tmux-sensible:      # hx limit, mouse, C-n/C-p over awkward n/p
     tmux-plugins/tmux-pain-control:  # move around panes with j and k, a bit like vim; resize panes like vim
     Morantron/tmux-fingers:          # prefix+F to highlight and copy URLs/paths/hashes/IPs
-    - set -g @fingers-skip-wizard '1'
+      fingers-skip-wizard: 1
     netj/tmux-yank:
     tmux-plugins/tmux-resurrect:
-    - set -g @resurrect-strategy-vim 'session'
-    - set -g @resurrect-capture-pane-contents 'on'
-    # isolate saved state per optmux session, not shared ~/.local/share/tmux/resurrect
-    - set -g @resurrect-dir "$OPTMUX_DIR/tmux/resurrect"
+      resurrect-strategy-vim: session
+      resurrect-capture-pane-contents: true
+      # isolate saved state per optmux session, not shared ~/.local/share/tmux/resurrect
+      resurrect-dir: $OPTMUX_DIR/tmux/resurrect
     #tmux-plugins/tmux-continuum:
-    #- set -g @continuum-restore 'on'
+    #  continuum-restore: true
     netj/claritmux:
-    - set -g @claritmux_status_workdir   0
-    - set -g @claritmux_status_date      0
-    - set -g @claritmux_status_time      0
-    - set -g @claritmux_status_hostname  1
+      claritmux_status_workdir: 0
+      claritmux_status_date: 0
+      claritmux_status_time: 0
+      claritmux_status_hostname: 1
 
   shortcuts:
     # Workflow
