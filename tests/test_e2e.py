@@ -3,6 +3,7 @@
 import fcntl
 import os
 import pty
+import re
 import select
 import shutil
 import struct
@@ -168,10 +169,11 @@ def test_e2e_shortcuts_bound(tmux_env):
         env=env,
     )
     assert result.returncode == 0
+    # older tmux prints the modifiers as M-C- rather than C-M-
     # Bundled default
-    assert "C-M-s" in result.stdout
+    assert re.search(r"\b(C-M|M-C)-s\b", result.stdout)
     # Project shortcut
-    assert "C-M-b" in result.stdout
+    assert re.search(r"\b(C-M|M-C)-b\b", result.stdout)
 
 
 def test_e2e_pane_menu_preserves_tmux_default_and_reload_is_idempotent(tmux_env):

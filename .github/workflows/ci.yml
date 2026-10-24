@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      TERM: xterm-256color
+    steps:
+      - uses: actions/checkout@v7
+      # Python comes from .python-version (what dev uses); optmux is a CLI, not a library
+      - uses: astral-sh/setup-uv@v7
+      # e2e tests skip themselves when tmux is missing, so a failed install must fail the job
+      - name: Install tmux
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
+          tmux -V
+      - run: uv sync --locked
+      - run: uv run pytest -rs
+
+  build:
+    name: build and smoke-test wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv build
+      - name: Run the built wheel in a clean environment
+        run: uv run --isolated --no-project --with dist/*.whl optmux --version
