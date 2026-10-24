@@ -10,20 +10,18 @@ permissions:
 
 jobs:
   test:
-    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.12", "3.14"]
     env:
       TERM: xterm-256color
     steps:
       - uses: actions/checkout@v4
+      # Python comes from .python-version (what dev uses); optmux is a CLI, not a library
       - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: ${{ matrix.python }}
       # e2e tests skip themselves when tmux is missing, so a failed install must fail the job
       - name: Install tmux
         run: |
