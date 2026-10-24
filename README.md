@@ -225,6 +225,23 @@ you're usually mid-task in the current window); a **menu** custom item with
 neither set opens a **new window** (a menu click is more often "go start
 this over there"). Set either explicitly to override.
 
+### plugins
+
+`plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. optmux installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
+
+```yaml
+optmux:
+  plugins:
+    laktak/extrakto:
+      extrakto_grab_area: window recent     # same as: set -g @extrakto_grab_area "window recent"
+      extrakto_filter_order: word all line
+    tmux-plugins/tmux-resurrect:
+    - set -g @resurrect-dir "$OPTMUX_DIR/tmux/resurrect"   # or raw tmux lines
+    Morantron/tmux-fingers: false    # disable a bundled plugin
+```
+
+Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole. See `optmux/data/optmux-defaults.yaml` for the bundled list.
+
 ### tmux_config
 
 Entries under `tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.

@@ -29,8 +29,7 @@ if [[ ! -x "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/tpm ]]; then
 fi
 
 # Pre-clone plugins in parallel so TPM's install_plugins finds them already present
-# (parses @plugin entries from tmux.conf using TPM's own awk pattern)
-# TODO migrate plugin list to optmux YAML config instead of parsing tmux.conf
+# (parses @plugin entries from the optmux-plugins.conf generated from optmux.plugins in YAML)
 _optmux_preclone() {
     local plugin="$1"
     local dest="$TMUX_PLUGIN_MANAGER_PATH/$plugin"
@@ -40,12 +39,12 @@ _optmux_preclone() {
         echo "optmux:   cloned $plugin" ||
         echo "optmux:   failed to clone $plugin" >&2
 }
-if [[ -f "$OPTMUX_DIR/tmux/tmux.conf" ]]; then
+if [[ -f "$OPTMUX_DIR/tmux/optmux-plugins.conf" ]]; then
     while IFS= read -r _plugin; do
         _optmux_preclone "$_plugin" &
     done < <(awk '/^[ \t]*set(-option)? +-g +@plugin/ {
         gsub(/'"'"'/,""); gsub(/"/,""); print $4
-    }' "$OPTMUX_DIR/tmux/tmux.conf")
+    }' "$OPTMUX_DIR/tmux/optmux-plugins.conf")
     wait
 fi
 
