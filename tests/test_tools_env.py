@@ -353,3 +353,11 @@ def test_bundled_shortcuts_call_helpers_by_absolute_path_not_bare_names():
         for line in command.splitlines():
             line = re.sub(r"^\(.*?\) & ?", "", line)  # drop a backgrounded helper subshell
             assert not re.match(r"\s*optmux-[a-z-]+\b", line), f"{key} runs a bare optmux helper: {line}"
+
+
+def test_env_sh_adapts_links_to_installed_less(tmp_path):
+    with patch.object(cli, "less_version", return_value=668):
+        env = run_setup(tmp_path)
+    assert "LESS_OSC8_OPEN_ANY" not in env
+    assert env["LESS_OSC8_ANY"] == "echo \"optmux-open-url '%o'\""
+    assert env["LESS_OSC8_file"] == "-"

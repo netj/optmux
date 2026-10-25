@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -510,6 +511,47 @@ def generate_env_sh(bin_dir, env):
     return "".join(lines)
 
 
+# less versions that introduced each feature (see less's NEWS)
+LESS_MOUSE = 551  # --mouse
+LESS_LINKS = 661  # clickable OSC 8 links, via LESS_OSC8_xxx printing the command to run
+LESS_LINKS_OPEN = 702  # LESS_OSC8_OPEN_xxx runs the command itself; a leading ^P- silences it
+
+
+def less_version(less=None):
+    """The major version of the `less` on PATH (or at the given path), or None if absent/unparsable."""
+    less = less or shutil.which("less")
+    if not less:
+        return None
+    try:
+        with subprocess.Popen([less, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True) as proc:
+            out, _ = proc.communicate(timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.match(r"less (\d+)", out)
+    return int(m.group(1)) if m else None
+
+
+def adapt_env_for_less(env, version):
+    """Adapt env (written for the newest less) to what the installed less supports.
+
+    Unknown version (no less found) leaves env as written.
+    """
+    if version is None:
+        return env
+    env = dict(env)
+    if version < LESS_MOUSE and env.get("LESS"):
+        env["LESS"] = " ".join(w for w in env["LESS"].split() if w != "--mouse")
+    opener = env.get("LESS_OSC8_OPEN_ANY")
+    if opener is not None and version < LESS_LINKS_OPEN:
+        del env["LESS_OSC8_OPEN_ANY"]
+        if version >= LESS_LINKS and opener:
+            # old protocol: the variable prints the command to run, for every scheme (file needs "-" to defer to ANY)
+            command = opener.lstrip("\x10").lstrip("-")
+            env["LESS_OSC8_ANY"] = f"echo \"{command} '%o'\""
+            env["LESS_OSC8_file"] = "-"
+    return env
+
+
 def setup_tools_env(optmux_dir, data_dir, optmux):
     """Install optmux's helper scripts, and write env.sh from optmux's env, git_config, and lazygit.
 
@@ -531,6 +573,7 @@ def setup_tools_env(optmux_dir, data_dir, optmux):
         name: None if value is None else _env_value(value)
         for name, value in (optmux.get("env") or {}).items()
     }
+    env = adapt_env_for_less(env, less_version())
     env.update(generate_git_config_env(optmux.get("git_config") or {}))
     env.update(generate_lazygit_env(optmux_dir, optmux.get("lazygit") or {}))
     (optmux_dir / ENV_SH).write_text(generate_env_sh(bin_dir, env))

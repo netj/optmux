@@ -85,12 +85,14 @@ bundled_tool() {
         mark="✗"
         note="   (missing: brew install $formula)"
     elif [[ "$name" == less ]]; then
-        # --mouse and clickable OSC 8 links need less 668+ (macOS ships 487)
+        # --mouse needs less 551+, clickable OSC 8 links 661+ (macOS ships 668; 702+ has the newer link protocol)
         local less_version
         less_version=$(less --version 2>/dev/null | sed -n '1s/^less \([0-9]*\).*/\1/p')
-        if [[ "${less_version:-0}" -lt 668 ]]; then
+        if [[ "${less_version:-0}" -lt 661 ]]; then
             mark="✗"
             note="   (too old for --mouse and links: brew install less)"
+        elif [[ "$less_version" -lt 702 ]]; then
+            note="   (links via the old protocol; brew install less for the newer one)"
         fi
     fi
     printf '  %s %-8s %-40s %s%s\n' "$mark" "$name" "$description" "$url" "$note"
