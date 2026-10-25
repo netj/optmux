@@ -168,7 +168,8 @@ def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
     try:
         subprocess.run(
             [*tmux, "new-session", "-d", "-x", "100", "-y", "10",
-             f"OPTMUX_DIR={tmp_path} TERM=screen-256color bash {TIPS_SH} --force; sleep 30"],
+             f"OPTMUX_DIR={tmp_path} TERM=screen-256color bash {TIPS_SH} --force; "
+             f"echo $? > {tmp_path}/exit-status; sleep 30"],
             check=True,
         )
         state = ""
@@ -186,5 +187,12 @@ def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
         time.sleep(0.5)
         assert tmux_out("display-message", "-p", "#{pane_in_mode}") == "0"
         assert "q/Enter: dismiss" in tmux_out("capture-pane", "-p")
+        # dismissing exits cleanly (no unbound-variable error from the cleanup trap)
+        subprocess.run([*tmux, "send-keys", "q"], check=True)
+        for _ in range(50):
+            if (tmp_path / "exit-status").exists():
+                break
+            time.sleep(0.1)
+        assert (tmp_path / "exit-status").read_text().strip() == "0"
     finally:
         subprocess.run([*tmux, "kill-server"], capture_output=True)

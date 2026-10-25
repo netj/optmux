@@ -174,7 +174,8 @@ scroll_in_tmux() {
     [[ -n "${TMUX:-}" && -n "$pane" ]] || return 0
     tmux set-window-option -t "$pane" window-status-current-format \
         ' #I:tips | wheel/↑/↓/PgUp/PgDn scroll · / search · q done reading ' 2>/dev/null || return 0
-    trap 'tmux set-window-option -u -t "$pane" window-status-current-format 2>/dev/null' EXIT
+    # expand $pane now: it's a local, gone by the time the trap runs at exit
+    trap "tmux set-window-option -u -t '$pane' window-status-current-format 2>/dev/null" EXIT
     tmux copy-mode -e -t "$pane" 2>/dev/null || return 0
     tmux send-keys -t "$pane" -X history-top 2>/dev/null || return 0
     while [[ "$(tmux display-message -p -t "$pane" '#{pane_in_mode}' 2>/dev/null)" == 1 ]]; do
