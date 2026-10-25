@@ -14,11 +14,60 @@ optmux:
       resurrect-dir: $OPTMUX_DIR/tmux/resurrect
     #tmux-plugins/tmux-continuum:
     #  continuum-restore: true
+    laktak/extrakto:
+      extrakto_key: X
+      extrakto_insert_key: enter
+      extrakto_copy_key: ctrl-y         # frees tab for fzf's own multi-select (extrakto has no option to rebind it)
+      extrakto_clip_mode: buffer
+      extrakto_filter_order: line all
+      extrakto_grab_area: full
     netj/claritmux:
       claritmux_status_workdir: 0
       claritmux_status_date: 0
       claritmux_status_time: 0
       claritmux_status_hostname: 1
+
+  # Opinionated environment for commands run via `optmux-env` (as the shortcuts below do, by absolute
+  # path: your shell startup files may rebuild PATH, but $OPTMUX_DIR is always set) and
+  # everything they start; it wins over your own settings there, while your shells stay untouched.
+  # All of env, git_config, and lazygit end up in $OPTMUX_DIR/env.sh.
+  # `$VAR` expands; a null value unsets the variable.
+  env:
+    PAGER: less
+    # --no-init --RAW-CONTROL-CHARS --ignore-case --LONG-PROMPT --HILITE-UNREAD --chop-long-lines --clear-screen --mouse
+    LESS: -XRiMWSc --mouse
+    # open clicked OSC 8 hyperlinks (delta's file:line and commit links) with optmux-open-url;
+    # the leading ^P- tells less to run it without echoing the command or printing "link done"
+    LESS_OSC8_OPEN_ANY: "\x10-optmux-open-url"
+
+  # git config, passed through GIT_CONFIG_PARAMETERS (like `git -c`; delta reads that too) so it wins over ~/.gitconfig without touching it.
+  # A pager whose command isn't installed (e.g., no delta) is skipped.
+  git_config:
+    core.pager: delta
+    interactive.diffFilter: delta --color-only
+    delta.navigate: true
+    delta.line-numbers: true
+    delta.hyperlinks: true
+    delta.hyperlinks-file-link-format: file://{path}#L{line}
+    # override git's default LESS=FRX: quit-if-one-screen conflicts with --mouse and clicking links
+    delta.pager: less -+F
+    diff.colorMoved: default
+
+  # lazygit config, layered on top of your own lazygit config (deep-merged; lists replace).
+  # A diffRenderer whose command isn't installed is skipped.
+  lazygit:
+    promptToReturnFromSubprocess: false
+    git:
+      diffRenderers:
+      # clicking a line number opens it in your editor (lazygit-edit:// links)
+      - colorArg: always
+        command: delta --paging=never --line-numbers --hyperlinks --hyperlinks-file-link-format='lazygit-edit://{path}:{line}'
+    customCommands:
+    - key: <c-g>
+      context: global
+      description: Diff against the default branch (origin/HEAD, or origin/main)
+      command: optmux-diff-base
+      output: terminal
 
   shortcuts:
     # Workflow
@@ -31,11 +80,37 @@ optmux:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
       tip: find file to edit
     C-M-g:
-      command: lazygit
-      tip: lazygit
+      command: |
+        (sleep 0.5; tmux send-keys Enter '*' Enter) &
+        "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch
+      tip: |
+        Open lazygit and see the diff of commits of this branch
+    C-M-d:
+      command: |
+        "$OPTMUX_DIR/bin/optmux-env" optmux-diff-base
+      tip: clickable diff against the default branch (same as lazygit's C-g)
     C-M-s:
       command: ""
       tip: shell in same dir
+    C-M-w:
+      command: |
+        "$OPTMUX_DIR/bin/optmux-gh-open"
+      detached: true
+      new_window: true
+      tip: open PR (or repo) on GitHub
+    C-M-x:
+      tip: extrakto lines into claude's ! shell mode (tab multi-select, enter inserts)
+      tmux: |
+        {
+          if-shell "ps -t #{pane_tty} -o command= | grep -Eq '(^|/)claude( |$|/)'" {
+            # run only in claude: a single C-c clears its prompt without the delays of M-Enter/Escape-based resets
+            send-keys C-c
+            send-keys BSpace "!"  # Backspace leaves any ! shell mode, then ! enters it fresh
+          }
+          # start extrakto
+          switch-client -T prefix
+          send-keys -K X
+        }
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true
@@ -67,6 +142,8 @@ optmux:
       tip: next window with bell
     C-t p:
       tip: prev window with bell
+    C-t w:
+      tip: list all windows (pick one to jump to)
     C-t z:
       tip: toggle zoom
     "C-t `":
@@ -74,13 +151,15 @@ optmux:
     C-t R:
       tip: reload config
     C-t F:
-      tip: fingers (copy URLs/paths/hashes)
+      tip: tmux-fingers (copy URLs/paths/hashes)
+    C-t X:
+      tip: extrakto (pick words/lines on screen to copy or insert)
     C-t h/j/k/l:
       tip: navigate panes
     C-t t:
-      tip: send prefix to nested tmux
+      tip: send prefix to nested TMUX
     C-t T:
-      tip: swap prefix (nested tmux)
+      tip: swap prefix (nested TMUX)
 
   menu:
     pane:

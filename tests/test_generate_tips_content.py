@@ -95,3 +95,52 @@ def test_invalid_value_skipped():
     result = generate_tips_content(shortcuts)
     assert "C-M-g" in result
     assert "C-M-x" not in result
+
+
+def test_bundled_shortcuts_grouped_direct_then_prefix():
+    shortcuts = {
+        "C-t z": {"tip": "toggle zoom"},
+        "C-M-g": {"tip": "lazygit"},
+        "C-M-b": {"tip": "mine"},
+    }
+    result = generate_tips_content(shortcuts, bundled_keys={"C-t z", "C-M-g"})
+    groups = [g.splitlines() for g in result.rstrip("\n").split("\n\n")]
+    assert [len(g) for g in groups] == [1, 1]
+    assert "C-M-g" in groups[0][0]  # bundled direct keys
+    assert "C-t z" in groups[1][0]  # then prefix keys
+    assert "C-M-b" not in result  # yours are listed separately
+
+
+def test_custom_tips_are_the_non_bundled_shortcuts():
+    from optmux.cli import generate_custom_tips_content
+    shortcuts = {
+        "C-t z": {"tip": "toggle zoom"},
+        "C-M-b": {"tip": "mine"},
+        "C-M-q": "gh browse .",
+    }
+    result = generate_custom_tips_content(shortcuts, bundled_keys={"C-t z"})
+    assert "C-M-b" in result and "mine" in result
+    assert "C-M-q" in result
+    assert "toggle zoom" not in result
+    assert generate_custom_tips_content({"C-t z": {"tip": "x"}}, bundled_keys={"C-t z"}) == ""
+
+
+def test_bundled_reference_lists_window_chooser_and_extrakto_next_to_fingers():
+    from optmux.cli import load_bundled_defaults
+    shortcuts = load_bundled_defaults()["shortcuts"]
+    keys = list(shortcuts)
+    assert "list all windows" in shortcuts["C-t w"]["tip"]
+    assert "extrakto" in shortcuts["C-t X"]["tip"]
+    assert keys.index("C-t X") == keys.index("C-t F") + 1  # right after fingers
+
+
+def test_multiline_tip_is_collapsed_to_one_line():
+    shortcuts = {"C-M-g": {"tip": "Open lazygit and see\nthe diff of commits\n"}}
+    assert generate_tips_content(shortcuts) == "  C-M-g    Open lazygit and see the diff of commits\n"
+
+
+def test_bundled_c_m_g_opens_lazygit_on_the_branch_diff():
+    from optmux.cli import load_bundled_defaults
+    value = load_bundled_defaults()["shortcuts"]["C-M-g"]
+    assert '"$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch' in value["command"]
+    assert "send-keys Enter '*' Enter" in value["command"]

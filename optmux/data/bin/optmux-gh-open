@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# optmux-gh-open — open the GitHub PR for the current branch, or else the repo page, in the browser
+# Origin: https://github.com/netj/dotfiles/blob/main/bin/ezgithubopen
+gh pr view -w 2>/dev/null ||
+gh repo view -w -b "$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)" 2>/dev/null ||
+gh browse .

@@ -1,5 +1,6 @@
 import hashlib
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -42,7 +43,7 @@ def _short_sock_path(tmux_dir: Path) -> str:
     return short_sock
 
 
-KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux"}
+KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux", "env"}
 
 
 def parse_project_name(yaml_path_str):
@@ -54,7 +55,7 @@ def parse_project_name(yaml_path_str):
     return name
 
 
-KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins"}
+KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit"}
 KNOWN_SHORTCUT_KEYS = {
     "tmux", "send_keys", "command", "new_window", "float_window",
     "zoom", "detached", "remain", "tip",
@@ -121,7 +122,7 @@ def load_optmux_conf(conf_path=None):
 def merge_optmux(*layers):
     """Merge optmux config layers (later layers win)."""
     merged = {}
-    for key in ("shortcuts", "tmux_config"):
+    for key in ("shortcuts", "tmux_config", "env", "git_config"):
         combined = {}
         for layer in layers:
             combined.update(layer.get(key) or {})
@@ -132,6 +133,11 @@ def merge_optmux(*layers):
         plugins_combined.update(layer.get("plugins") or {})
     if plugins_combined:
         merged["plugins"] = plugins_combined
+    lazygit_combined = {}
+    for layer in layers:
+        lazygit_combined = _deep_merge(lazygit_combined, layer.get("lazygit") or {})
+    if lazygit_combined:
+        merged["lazygit"] = lazygit_combined
     menu_combined = {}
     for layer in layers:
         for context, entries in (layer.get("menu") or {}).items():
@@ -172,58 +178,54 @@ def generate_shortcut_line(key, value):
     return f"{bind} {tmux_key} {' \\; '.join(parts)}\n"
 
 
+def _tip_entries(shortcuts):
+    """(display key, tip text) for each shortcut that has something to show."""
+    entries = []
+    for key, value in shortcuts.items():
+        if isinstance(value, str):
+            tip = value if value else None
+        elif isinstance(value, dict):
+            tip = value.get("tip")
+            if tip is None:
+                tip = value.get("command") or value.get("send_keys")
+        else:
+            continue
+        if not tip:
+            continue
+        tip = " ".join(str(tip).split())  # a YAML block scalar (tip: |) must stay one line
+        # display key: non-C-M- keys without spaces get C-t prefix
+        if not key.startswith("C-M-") and " " not in key and "/" not in key:
+            key = f"C-t {key}"
+        entries.append((key, tip))
+    return entries
+
+
+def _format_tip_entries(groups):
+    """Align (key, tip) entries across groups; groups are separated by a blank line."""
+    groups = [g for g in groups if g]
+    width = max((len(k) for g in groups for k, _ in g), default=0) + 2
+    return "\n\n".join("\n".join(f"  {k:<{width}}  {t}" for k, t in g) for g in groups)
+
+
 def generate_tips_content(shortcuts, bundled_keys=None):
     """Generate formatted tips text from shortcuts with tip fields.
 
-    If bundled_keys is provided, separates user-defined shortcuts into a second section.
+    If bundled_keys is provided, only the bundled shortcuts are listed (your own are in
+    generate_custom_tips_content), split into direct keys (C-M-*) and tmux prefix keys (C-t ...).
     """
     if bundled_keys is None:
-        bundled_keys = set()
+        entries = _tip_entries(shortcuts)
+        return _format_tip_entries([entries]) + "\n" if entries else ""
+    entries = _tip_entries({k: v for k, v in shortcuts.items() if k in bundled_keys})
+    direct = [e for e in entries if not e[0].startswith("C-t ")]
+    prefixed = [e for e in entries if e[0].startswith("C-t ")]
+    return _format_tip_entries([direct, prefixed]) + "\n" if entries else ""
 
-    def extract_entries(shortcut_dict, keys_filter=None):
-        entries = []
-        for key, value in shortcut_dict.items():
-            if keys_filter is not None and (key in keys_filter) != (keys_filter == bundled_keys):
-                continue
-            if isinstance(value, str):
-                tip = value if value else None
-            elif isinstance(value, dict):
-                tip = value.get("tip")
-                if tip is None:
-                    tip = value.get("command") or value.get("send_keys")
-            else:
-                continue
-            if not tip:
-                continue
-            # display key: non-C-M- keys without spaces get C-t prefix
-            if not key.startswith("C-M-") and " " not in key and "/" not in key:
-                display_key = f"C-t {key}"
-            else:
-                display_key = key
-            entries.append((display_key, tip))
-        return entries
 
-    builtin = extract_entries(shortcuts, bundled_keys if bundled_keys else None)
-    user = extract_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys}, set()) if bundled_keys else []
-
-    all_entries = user + builtin
-    if not all_entries:
-        return ""
-
-    key_width = max(len(k) for k, _ in all_entries) + 2
-    lines = []
-
-    if user:
-        for display_key, tip in user:
-            lines.append(f"  {display_key:<{key_width}}  {tip}")
-
-    if builtin:
-        if user:
-            lines.append("")
-        for display_key, tip in builtin:
-            lines.append(f"  {display_key:<{key_width}}  {tip}")
-
-    return "\n".join(lines) + "\n"
+def generate_custom_tips_content(shortcuts, bundled_keys):
+    """Tips text for the shortcuts that aren't bundled: yours, from a project or ~/.optmux.yaml."""
+    entries = _tip_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys})
+    return _format_tip_entries([entries]) + "\n" if entries else ""
 
 
 PLUGINS_CONF = "optmux-plugins.conf"
@@ -341,6 +343,11 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
         tips_content = generate_tips_content(shortcuts, bundled_keys)
         if tips_content:
             (tmux_dir / "tips-content.txt").write_text(tips_content)
+        custom_tips = generate_custom_tips_content(shortcuts, bundled_keys) if bundled_keys else ""
+        if custom_tips:
+            (tmux_dir / "tips-custom.txt").write_text(custom_tips)
+        else:
+            (tmux_dir / "tips-custom.txt").unlink(missing_ok=True)
 
     # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
     tmux_config = optmux.get("tmux_config") or {}
@@ -391,6 +398,142 @@ def resolve_paths(yaml_file):
         "sock": sock,
         "tmux_cmd": ["tmux", "-S", sock],
     }
+
+
+ENV_SH = "env.sh"
+# git config keys whose value is a command to run; skipped when that command isn't installed
+GIT_CONFIG_COMMAND_KEYS = {"core.pager", "interactive.difffilter"}
+
+
+def _deep_merge(base, override):
+    """Merge dicts recursively (override wins; lists and scalars replace)."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _env_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return os.path.expandvars(str(value))
+
+
+def _command_installed(command):
+    words = str(command).split()
+    return bool(words) and shutil.which(words[0]) is not None
+
+
+def _git_config_parameter(key, value):
+    """Quote key=value the way git's GIT_CONFIG_PARAMETERS expects: 'key'='value'."""
+    def quote(text):
+        return "'" + text.replace("'", "'\\''") + "'"
+    return f"{quote(key)}={quote(value)}"
+
+
+def generate_git_config_env(git_config):
+    """Turn optmux.git_config into a GIT_CONFIG_PARAMETERS env var (like `git -c key=value`).
+
+    Not GIT_CONFIG_COUNT/KEY_n/VALUE_n: delta reads its settings (delta.*) itself and only
+    understands GIT_CONFIG_PARAMETERS. Entries come after any the user already exported, so
+    optmux's win.
+    """
+    # an outer optmux records the user's own value, so nesting doesn't stack our entries twice
+    user = os.environ.get("OPTMUX_USER_GIT_CONFIG_PARAMETERS", os.environ.get("GIT_CONFIG_PARAMETERS", ""))
+    params = [user] if user else []
+    for key, value in git_config.items():
+        if value is None:
+            continue
+        if (key.lower() in GIT_CONFIG_COMMAND_KEYS or key.lower().startswith("pager.")) \
+                and not _command_installed(value):
+            continue
+        params.append(_git_config_parameter(key, _env_value(value)))
+    return {
+        "OPTMUX_USER_GIT_CONFIG_PARAMETERS": user,
+        "GIT_CONFIG_PARAMETERS": " ".join(params),
+    }
+
+
+def _user_lazygit_config_files():
+    """Return the user's own lazygit config file(s), to keep under optmux's in LG_CONFIG_FILE."""
+    if "OPTMUX_USER_LG_CONFIG_FILE" in os.environ:  # recorded by an outer optmux
+        return [f for f in os.environ["OPTMUX_USER_LG_CONFIG_FILE"].split(",") if f]
+    if os.environ.get("LG_CONFIG_FILE"):
+        return os.environ["LG_CONFIG_FILE"].split(",")
+    try:
+        env = {k: v for k, v in os.environ.items() if k != "LG_CONFIG_FILE"}
+        config_dir = subprocess.run(
+            ["lazygit", "--print-config-dir"], capture_output=True, text=True, env=env,
+        ).stdout.strip()
+    except OSError:
+        return []
+    config_file = Path(config_dir) / "config.yml" if config_dir else None
+    return [str(config_file)] if config_file and config_file.exists() else []
+
+
+def generate_lazygit_env(optmux_dir, lazygit):
+    """Write optmux.lazygit as a config file layered on top of the user's via LG_CONFIG_FILE."""
+    if not lazygit or not shutil.which("lazygit"):
+        return {}
+    git = lazygit.get("git") or {}
+    if git.get("diffRenderers"):
+        renderers = [r for r in git["diffRenderers"] if _command_installed(r.get("command", ""))]
+        lazygit = {**lazygit, "git": {**git, "diffRenderers": renderers}}
+    lazygit_dir = optmux_dir / "lazygit"
+    lazygit_dir.mkdir(parents=True, exist_ok=True)
+    config = lazygit_dir / "config.yml"
+    config.write_text(
+        "# DO NOT EDIT — regenerated by optmux on every launch from the optmux: lazygit: section.\n"
+        + yaml.safe_dump(lazygit, sort_keys=False, allow_unicode=True)
+    )
+    user_files = _user_lazygit_config_files()
+    return {
+        "OPTMUX_USER_LG_CONFIG_FILE": ",".join(user_files),
+        "LG_CONFIG_FILE": ",".join([*user_files, str(config)]),
+    }
+
+
+def generate_env_sh(bin_dir, env):
+    """Render env.sh: put optmux's helper scripts on PATH, then set/unset env."""
+    q = shlex.quote
+    lines = [
+        "# DO NOT EDIT — regenerated by optmux on every launch from the optmux: env, git_config, and lazygit sections.\n",
+        "# Applied by optmux-env (which shortcuts use) to the command it runs. To use it in every shell,\n",
+        "# add to your shell rc: [ -n \"$OPTMUX_DIR\" ] && . \"$OPTMUX_DIR/env.sh\"\n",
+        f"export PATH={q(str(bin_dir))}\"${{PATH:+:$PATH}}\"\n",
+    ]
+    for name, value in env.items():
+        lines.append(f"unset {name}\n" if value is None else f"export {name}={q(value)}\n")
+    return "".join(lines)
+
+
+def setup_tools_env(optmux_dir, data_dir, optmux):
+    """Install optmux's helper scripts, and write env.sh from optmux's env, git_config, and lazygit.
+
+    env.sh is applied only to commands run via optmux-env (as the bundled shortcuts do), and so to
+    everything those start (lazygit → git → delta → less); shells inside optmux are left alone.
+    """
+    bin_dir = optmux_dir / "bin"
+    if bin_dir.exists():  # managed: clear out stale scripts
+        shutil.rmtree(bin_dir)
+    bin_dir.mkdir(parents=True)
+    for script in (data_dir / "bin").iterdir():
+        dest = bin_dir / script.name
+        dest.write_bytes(script.read_bytes())
+        dest.chmod(0o555)  # read+execute for all (not writable), like tips.sh
+    # only optmux-* helpers live here, so putting them on PATH shadows nothing
+    os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+
+    env = {
+        name: None if value is None else _env_value(value)
+        for name, value in (optmux.get("env") or {}).items()
+    }
+    env.update(generate_git_config_env(optmux.get("git_config") or {}))
+    env.update(generate_lazygit_env(optmux_dir, optmux.get("lazygit") or {}))
+    (optmux_dir / ENV_SH).write_text(generate_env_sh(bin_dir, env))
 
 
 def setup_optmux_env(resolved):
@@ -444,6 +587,7 @@ def setup_optmux_env(resolved):
     os.environ["OPTMUX_DIR"] = str(optmux_dir)
     os.environ["OPTMUX_NAME"] = name
     os.environ["TMUX_PLUGIN_MANAGER_PATH"] = str(tmux_dir / "plugins")
+    setup_tools_env(optmux_dir, data_dir, optmux)
 
     sock = _short_sock_path(tmux_dir)
     resolved["sock"] = sock
@@ -494,6 +638,20 @@ def cmd_tmux(resolved, args):
     setup_optmux_env(resolved)
     tmux = resolved["tmux_cmd"]
     os.execvp(tmux[0], [*tmux, *args])
+
+
+def cmd_env(resolved, args, explicit_target):
+    """Run a command with optmux's opinionated environment (see optmux-env)."""
+    if not args:
+        print("usage: optmux [DIR | YAML] env COMMAND [ARGS...]", file=sys.stderr)
+        sys.exit(2)
+    optmux_dir = os.environ.get("OPTMUX_DIR")
+    if explicit_target or not (optmux_dir and Path(optmux_dir, ENV_SH).exists()):
+        # outside a session, or told which project: (re)generate its env.sh
+        setup_optmux_env(resolved)
+        optmux_dir = os.environ["OPTMUX_DIR"]
+    # else inside an optmux pane: $OPTMUX_DIR is already this project's
+    os.execv(str(Path(optmux_dir, "bin", "optmux-env")), ["optmux-env", *args])
 
 
 def _notify_config_changed(tmux):
@@ -705,7 +863,7 @@ def cmd_warp(resolved, args, original_cwd=None):
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
+usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS... | env CMD...]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
@@ -716,6 +874,8 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
                                       whose panes match WORKDIR (default: cwd)
   optmux [DIR | YAML] tmux ARGS...    run a raw tmux command against this
                                       project's tmux server (e.g. `optmux . tmux ls`)
+  optmux [DIR | YAML] env CMD...      run CMD with optmux's environment (delta as git's
+                                      pager, less links, ...), e.g. `optmux env git log -p`
   optmux -v | --version | version     print the optmux version
   optmux -h | --help | help           print this help
 """
@@ -743,12 +903,15 @@ def main(argv=None):
 
     # First positional is either a directory (plain tmux) or a YAML file (tmuxp session)
     yaml_file = None
+    explicit_target = False
     if argv and argv[0] not in KNOWN_SUBCOMMANDS:
         candidate = argv[0]
         if Path(candidate).is_dir():
             os.chdir(argv.pop(0))
+            explicit_target = True
         elif Path(candidate).suffix in ('.yaml', '.yml'):
             yaml_file = argv.pop(0)
+            explicit_target = True
 
     if argv and argv[0] in KNOWN_SUBCOMMANDS:
         subcommand = argv.pop(0)
@@ -769,3 +932,5 @@ def main(argv=None):
         cmd_warp(resolved, argv, original_cwd)
     elif subcommand == "tmux":
         cmd_tmux(resolved, argv)
+    elif subcommand == "env":
+        cmd_env(resolved, argv, explicit_target)

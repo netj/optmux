@@ -86,3 +86,13 @@ def test_shortcuts_with_various_types(tmp_path, sample_optmux_config):
     # E: send_keys without zoom
     assert "bind E" in content
     assert "send-keys" in content and "'vim .'" in content
+
+
+def test_custom_tips_file_written_and_removed(tmp_path):
+    bundled = {"C-M-g": {"command": "lazygit", "tip": "lazygit"}}
+    mine = {"C-M-b": {"command": "gh browse .", "tip": "browse"}}
+    generate_tmux_conf_files(tmp_path, {"shortcuts": {**bundled, **mine}}, bundled)
+    assert "browse" in (tmp_path / "tips-custom.txt").read_text()
+    assert "browse" not in (tmp_path / "tips-content.txt").read_text()
+    generate_tmux_conf_files(tmp_path, {"shortcuts": bundled}, bundled)
+    assert not (tmp_path / "tips-custom.txt").exists()

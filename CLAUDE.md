@@ -9,6 +9,7 @@
 ## YAML Style
 
 - README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
+- **Prefer YAML block scalars over quoting** for anything with shell or tmux syntax (`command:`, `tmux:`, `tip:`, in `optmux-defaults.yaml`, README examples, tests). Use the **literal** style `|` (keeps newlines, so a script reads as written) and, for long prose, the **folded** style `>` (joins lines). Quoting (`'...'`, `"..."`) fights with the `$`, quotes, and `\` already in shell commands, and plain scalars choke on `: `, `#`, or a leading quote. Quote only what a block can't hold (e.g. a `"\x10..."` escape).
 
 ## Release Checklist
 
@@ -18,14 +19,14 @@
 4. Clean old builds: `rm dist/optmux-0.1.* ...` (keep only current version to avoid re-uploading old ones)
 5. `uv publish --token "$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('$HOME/.pypirc'); print(c['pypi']['password'])")"`
 6. `gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes dist/*`
-7. Update `netj/homebrew-tap/optmux.rb`: new `url`/`version`, tarball sha256 (`curl -sL TARBALL_URL | shasum -a 256`). Homepage stays `https://pypi.org/project/optmux/`
+7. Update `homebrew/optmux.rb`: new `url`/`version`, tarball sha256 (`curl -sL TARBALL_URL | shasum -a 256`). Homepage stays `https://pypi.org/project/optmux/`. Commit it, then `homebrew/upload.sh` to push it to the tap
 
 ## Homebrew Tap
 
-- Repo: `netj/homebrew-tap` (on GitHub)
-- `optmux.rb` runs `uv sync --frozen --no-dev --no-editable` at install time into `libexec` (deps pinned by `uv.lock`, nothing fetched at runtime), and depends on `netj/tap/wtcode` + `lazygit`
+- Repo: `netj/homebrew-tap` (on GitHub); `homebrew/optmux.rb` in this repo is the source of truth for its `optmux.rb`
+- `optmux.rb` runs `uv sync --frozen --no-dev --no-editable` at install time into `libexec` (deps pinned by `uv.lock`, nothing fetched at runtime), and depends on `tmux`, `netj/tap/wtcode`, `lazygit`, `git-delta`, `less`, `fzf`, `gh`
 - Shebangs recommended as `#!/usr/bin/env optmux` (not `uvx`, which hits PyPI on every run)
-- Update via `gh api repos/netj/homebrew-tap/contents/optmux.rb --method PUT ...`
+- Update via `homebrew/upload.sh` (uploads `homebrew/optmux.rb` with `gh api ... --method PUT`; no-op when unchanged)
 
 ## tmux-fingers Plugin
 

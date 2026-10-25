@@ -18,7 +18,9 @@ uvx optmux .
 brew install netj/tap/optmux
 ```
 
-`brew install netj/tap/optmux` pulls in [wtcode](https://github.com/netj/wtcode) and [lazygit](https://github.com/jesseduffield/lazygit) as dependencies.
+`brew install netj/tap/optmux` pulls in tmux, [wtcode](https://github.com/netj/wtcode), [lazygit](https://github.com/jesseduffield/lazygit), [delta](https://github.com/dandavison/delta), a recent `less`, fzf, and gh as dependencies. See [Git, diffs, and links](#git-diffs-and-links).
+
+**New here?** The **[Quick Start guide](QUICKSTART.md)** shows how to be an effective mentor and manager of AI coding agents like Claude Code: one worktree and window per task, with lazygit, your editor, and a shell a keystroke away in sibling panes.
 
 Try the included example:
 
@@ -108,6 +110,14 @@ optmux [DIR | YAML] tmux ARGS...
 
 Runs `tmux ARGS...` directly against this project's isolated tmux server — no tmuxp bootstrapping, no session creation. Useful for one-off inspection or scripting without hand-rolling the `-S <sock>` path yourself, e.g. `optmux . tmux ls` or `optmux . tmux kill-server`.
 
+### Running a command with optmux's settings
+
+```bash
+optmux [DIR | YAML] env COMMAND [ARGS...]
+```
+
+Runs the command with optmux's opinionated environment (delta as git's pager, less with the mouse and clickable links, the layered lazygit config, …). It's [`optmux-env`](#optmux-env) as a subcommand, so it works in any shell, even where your rc has rebuilt `PATH`: `optmux env git log -p`, `optmux env lazygit`. Inside an optmux pane it uses that project's settings; elsewhere, give it the DIR or YAML (e.g. `optmux . env git diff`).
+
 ## Example tmuxp YAML
 
 Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
@@ -154,6 +164,11 @@ Each project gets its own `.$NAME.optmux.d/` directory:
 | `tmux/plugins/` | TPM plugin directory |
 | `tmux/plugins-update.sh` | Run manually to update all plugins |
 | `tmux/resurrect/` | Saved session state (tmux-resurrect), isolated per project |
+| `env.sh` | optmux's opinionated environment ([`env`](#env), [`git_config`](#git_config), [`lazygit`](#lazygit)), applied by [`optmux-env`](#optmux-env) |
+| `bin/` | Helper scripts (`optmux-*`), on `PATH` for shortcuts (and in shells that source `env.sh`) |
+| `lazygit/config.yml` | Generated from [`lazygit:`](#lazygit) |
+
+`env.sh`, `bin/`, and `lazygit/` are regenerated on every launch.
 
 ## optmux YAML config
 
@@ -162,7 +177,7 @@ Add an `optmux:` section to your tmuxp YAML to configure shortcuts and tmux sett
 ```yaml
 optmux:
   shortcuts:
-    C-M-b: gh browse .                              # Ctrl-Alt-b: run command directly
+    C-M-b: gh browse .                              # Ctrl+Alt+b (Control+Option+b on a Mac): run command directly
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
       new_window: true                              # open in a new-window
@@ -341,6 +356,65 @@ optmux:
 
 A context left out of `menu:` entirely keeps tmux's untouched default. Supported contexts: `session`, `window`, `pane`.
 
+### env
+
+Environment variables for commands run through [`optmux-env`](#optmux-env). `$VAR` expands at launch, and a null value unsets the variable. Layers merge by variable name.
+
+```yaml
+optmux:
+  env:
+    EDITOR: nvim
+    LESS: -R --mouse   # replaces the bundled -XRiMWSc --mouse
+    PAGER:             # null: unset
+```
+
+### optmux-env
+
+`env`, `git_config`, and `lazygit` are all written to `$OPTMUX_DIR/env.sh`. **They apply only to commands started through `optmux-env`**, and to everything those commands start in turn. Your shells inside optmux behave exactly as they do outside it.
+
+The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`), since your shell startup files may rebuild `PATH`: `C-M-g` runs lazygit and `C-M-d` runs the PR diff through it. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
+
+```yaml
+optmux:
+  shortcuts:
+    C-M-l:
+      command: |
+        "$OPTMUX_DIR/bin/optmux-env" git log -p
+```
+
+Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` always works. To use optmux's settings in every shell inside optmux, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:
+
+```bash
+[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"
+```
+
+### git_config
+
+git config for commands run through [`optmux-env`](#optmux-env), passed through `GIT_CONFIG_PARAMETERS` (the env equivalent of `git -c`, which, unlike `GIT_CONFIG_COUNT`, delta also reads for its `delta.*` settings). It takes precedence over `~/.gitconfig` and repo config without modifying either. Keys merge across layers. A pager setting (`core.pager`, `interactive.diffFilter`, `pager.*`) whose command isn't installed is skipped, so a missing delta falls back to your own pager.
+
+```yaml
+optmux:
+  git_config:
+    delta.side-by-side: true
+    delta.line-numbers: false
+    core.pager:          # null: drop the bundled delta pager
+```
+
+### lazygit
+
+[lazygit config](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md), written to `$OPTMUX_DIR/lazygit/config.yml` and loaded *after* your own lazygit config via `LG_CONFIG_FILE`. Settings optmux doesn't mention keep your values, and the ones it does mention use optmux's. Layers deep-merge (lists replace). A `git.diffRenderers` entry whose command isn't installed is skipped.
+
+```yaml
+optmux:
+  lazygit:
+    gui:
+      nerdFontsVersion: "3"
+    git:
+      diffRenderers:
+      - colorArg: always
+        command: delta --paging=never --side-by-side
+```
+
 ### Personal config (`~/.optmux.yaml`)
 
 Create `~/.optmux.yaml` to define personal defaults that apply to all optmux sessions:
@@ -372,6 +446,33 @@ optmux sets these before launching tmux/tmuxp:
 | `OPTMUX_DIR` | Absolute path to the `.$NAME.optmux.d/` directory |
 | `OPTMUX_NAME` | Name derived from YAML filename or cwd (e.g., `myproject`) |
 | `TMUX_PLUGIN_MANAGER_PATH` | `$OPTMUX_DIR/tmux/plugins` |
+| `PATH` | `$OPTMUX_DIR/bin` prepended (`optmux-*` helper scripts) |
+
+[`optmux-env`](#optmux-env) additionally sets, for the command it runs:
+
+| Variable | Value |
+|---|---|
+| anything under [`env:`](#env) | e.g. `PAGER`, `LESS`, `LESS_OSC8_OPEN_ANY` by default |
+| `GIT_CONFIG_PARAMETERS` | from [`git_config:`](#git_config) |
+| `LG_CONFIG_FILE` | your own lazygit config, then optmux's from [`lazygit:`](#lazygit) |
+
+## Git, diffs, and links
+
+optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](optmux-defaults.yaml) under [`env`](#env), [`git_config`](#git_config), and [`lazygit`](#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](#optmux-env). Your dotfiles and your shells are left alone. See the [Quick Start guide](QUICKSTART.md) for how it fits into working with coding agents.
+
+- **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
+- **Clickable diff** (`C-M-d`, same as `Ctrl-g` in lazygit): what the branch changes against the default branch, rendered by delta in less, so you can scroll with the mouse and click a line number twice to edit it.
+- **[delta](https://github.com/dandavison/delta)**: becomes git's pager (`core.pager`, `interactive.diffFilter`), with line numbers, `n`/`N` file navigation, moved-code coloring, and hyperlinked line numbers and commit hashes.
+- **less**: mouse mode (`--mouse`) and an [OSC 8](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda) hyperlink handler. Click a link once to select it and again to open it: `file://…#L<n>` opens `$VISUAL`/`$EDITOR` at that line, and `http(s)` links open your browser. Clicking links needs a recent `less` (Homebrew's; the formula depends on it).
+
+Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
+
+| Script | What it does |
+|---|---|
+| `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
+| `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
+| `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
 ## Session persistence
 
