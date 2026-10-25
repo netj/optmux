@@ -20,7 +20,7 @@ brew install netj/tap/optmux
 
 `brew install netj/tap/optmux` pulls in tmux, [wtcode](https://github.com/netj/wtcode), [lazygit](https://github.com/jesseduffield/lazygit), [delta](https://github.com/dandavison/delta), a recent `less`, fzf, and gh as dependencies. See [Git, diffs, and links](#git-diffs-and-links).
 
-**New here?** The **[Quick Start guide](QUICKSTART.md)** shows how optmux, lazygit, delta, and wtcode work together for reviewing and steering a coding agent like Claude Code, including running many agents at once in separate worktrees.
+**New here?** The **[Quick Start guide](QUICKSTART.md)** shows how to be an effective mentor and manager of AI coding agents like Claude Code: one worktree and window per task, with lazygit, your editor, and a shell a keystroke away in sibling panes.
 
 Try the included example:
 

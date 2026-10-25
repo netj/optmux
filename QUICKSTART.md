@@ -1,12 +1,11 @@
 # Quick Start
 
-**Your coding agent edits files. Git already knows how to show, stage, and undo file edits. optmux puts them side by side.**
+**Be the mentor, not the typist.** Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
-Run [Claude Code](https://claude.com/claude-code) (or any agent) in one pane, with lazygit, a shell, and your editor a keystroke away in the same TMUX window. Then:
-
-1. **Watch and steer.** See each change as it lands. Keep the good hunks, throw out the rest.
-2. **Show, don't tell.** Make one example edit yourself, and tell the agent "do it like this".
-3. **Run a dozen agents at once.** One task, one worktree, one window.
+1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, agent running.
+2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the agent.
+3. **Teach by example.** Fix one spot yourself and tell the agent "do it like this".
+4. **Keep many going.** A bell tells you which agent needs you; `C-t n` takes you there.
 
 ## Setup
 
@@ -31,11 +30,30 @@ Then `chmod +x .optmux.yaml && ./.optmux.yaml`, or just run `optmux .` for a pla
 > **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
 
-## 1. Watch and steer: lazygit beside the agent
+## 1. One task, one workdir, one window
 
-Press **`C-M-g`** in the agent's pane.
-[lazygit](https://github.com/jesseduffield/lazygit) opens in a split, zoomed to fill the window.
-**`C-M-o`** or **`C-M-\`** jumps back to the other pane and zooms it, so you can flip between *agent* and *changes* with one key.
+One agent per checkout gets old fast. Give every task its own [git worktree](https://git-scm.com/docs/git-worktree) so agents never step on each other's files, and give every worktree its own TMUX window:
+
+> **one task = one branch = one worktree = one TMUX window**
+
+The window name is the worktree's directory, so the status bar reads like your task list.
+Everything you need for a task is one keystroke away, as extra panes in *that same window*, already `cd`'d into *that same worktree*:
+
+| Key | Pane | |
+|---|---|---|
+| `C-M-s` | shell | run tests, poke around |
+| `C-M-g` | lazygit | review, stage, commit |
+| `C-M-d` | diff | what the PR will contain |
+| `C-M-f` | editor | fuzzy-find a file and edit it |
+
+Each opens zoomed over the agent; `C-M-z` toggles the zoom, and `C-M-o` jumps back to the agent.
+
+**Start a task instantly with `C-M-c`** ([wtcode](https://github.com/netj/wtcode)): fzf-pick an existing branch or worktree, or type `:new-branch:` to make one off `origin/HEAD`. wtcode creates the worktree (under `<repo>.worktrees/`) and launches Claude Code in it, in a new window. Describe the task and move on.
+
+## 2. Look over its shoulder: watch and steer
+
+Press **`C-M-g`** in the agent's pane: [lazygit](https://github.com/jesseduffield/lazygit) opens beside it, in that worktree.
+**`C-M-o`** or **`C-M-\`** flips back to the agent and zooms it, so you can go between *agent* and *changes* with one key.
 
 While the agent works, lazygit refreshes by itself.
 optmux sets lazygit up to render diffs with [delta](https://github.com/dandavison/delta), so you get syntax highlighting, word-level changes, and line numbers.
@@ -56,7 +74,7 @@ Some lazygit keys optmux adds:
 
 Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `lazygit:` in `~/.optmux.yaml`; see [lazygit](README.md#lazygit).
 
-## 2. Show, don't tell: example edits
+## 3. Teach by example
 
 Some changes take a paragraph to explain but one edit to show: "rename these the way I like," "this error message style, not that one," "split it like *this*."
 So edit the file yourself, then point the agent at your edit:
@@ -91,27 +109,7 @@ For anything else, prefix the command with `optmux env`: `optmux env git log -p`
 To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
 Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](README.md#env).
 
-## 3. Multitask: one task, one worktree, one window
-
-One agent per checkout gets old fast. Give every task its own [git worktree](https://git-scm.com/docs/git-worktree) so agents never step on each other's files, and give every worktree its own TMUX window:
-
-> **one task = one branch = one worktree = one TMUX window**
-
-The window name is the worktree's directory, so the status bar reads like your task list.
-Everything you need for a task is one keystroke away, as extra panes in *that same window*, already `cd`'d into *that same worktree*:
-
-| Key | Pane | |
-|---|---|---|
-| `C-M-s` | shell | run tests, poke around |
-| `C-M-g` | lazygit | review, stage, commit |
-| `C-M-d` | diff | what the PR will contain |
-| `C-M-f` | editor | fuzzy-find a file and edit it |
-
-Each opens zoomed over the agent; `C-M-z` toggles the zoom, and `C-M-o` jumps back to the agent.
-
-**Start a task instantly with `C-M-c`** ([wtcode](https://github.com/netj/wtcode)): fzf-pick an existing branch or worktree, or type `:new-branch:` to make one off `origin/HEAD`. wtcode creates the worktree (under `<repo>.worktrees/`) and launches Claude Code in it, in a new window. Describe the task and move on.
-
-Then juggle the windows:
+## 4. Keep many going
 
 - When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
 - Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](README.md#warp-sessions).
