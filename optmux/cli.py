@@ -181,7 +181,8 @@ def generate_shortcut_line(key, value):
 def generate_tips_content(shortcuts, bundled_keys=None):
     """Generate formatted tips text from shortcuts with tip fields.
 
-    If bundled_keys is provided, separates user-defined shortcuts into a second section.
+    If bundled_keys is provided, user-defined shortcuts are listed first, apart from the bundled
+    ones, which are split into direct keys (C-M-*) and tmux prefix keys (C-t ...).
     """
     if bundled_keys is None:
         bundled_keys = set()
@@ -223,10 +224,19 @@ def generate_tips_content(shortcuts, bundled_keys=None):
         for display_key, tip in user:
             lines.append(f"  {display_key:<{key_width}}  {tip}")
 
-    if builtin:
-        if user:
+    # bundled shortcuts, grouped: direct keys (C-M-*), then tmux prefix keys (C-t ...)
+    groups = [builtin]
+    if bundled_keys:
+        groups = [
+            [e for e in builtin if not e[0].startswith("C-t ")],
+            [e for e in builtin if e[0].startswith("C-t ")],
+        ]
+    for group in groups:
+        if not group:
+            continue
+        if lines:
             lines.append("")
-        for display_key, tip in builtin:
+        for display_key, tip in group:
             lines.append(f"  {display_key:<{key_width}}  {tip}")
 
     return "\n".join(lines) + "\n"

@@ -95,3 +95,17 @@ def test_invalid_value_skipped():
     result = generate_tips_content(shortcuts)
     assert "C-M-g" in result
     assert "C-M-x" not in result
+
+
+def test_bundled_shortcuts_grouped_direct_then_prefix():
+    shortcuts = {
+        "C-t z": {"tip": "toggle zoom"},
+        "C-M-g": {"tip": "lazygit"},
+        "C-M-b": {"tip": "mine"},
+    }
+    result = generate_tips_content(shortcuts, bundled_keys={"C-t z", "C-M-g"})
+    groups = [g.splitlines() for g in result.rstrip("\n").split("\n\n")]
+    assert [len(g) for g in groups] == [1, 1, 1]
+    assert "C-M-b" in groups[0][0]  # your own shortcuts first
+    assert "C-M-g" in groups[1][0]  # then bundled direct keys
+    assert "C-t z" in groups[2][0]  # then prefix keys

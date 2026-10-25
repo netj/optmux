@@ -14,6 +14,13 @@ optmux:
       resurrect-dir: $OPTMUX_DIR/tmux/resurrect
     #tmux-plugins/tmux-continuum:
     #  continuum-restore: true
+    laktak/extrakto:
+      extrakto_key: X
+      extrakto_insert_key: enter
+      extrakto_copy_key: ctrl-y         # frees tab for fzf's own multi-select (extrakto has no option to rebind it)
+      extrakto_clip_mode: buffer
+      extrakto_filter_order: line all
+      extrakto_grab_area: full
     netj/claritmux:
       claritmux_status_workdir: 0
       claritmux_status_date: 0
@@ -85,6 +92,19 @@ optmux:
       detached: true
       new_window: true
       tip: open PR (or repo) on GitHub
+    C-M-x:
+      tip: extrakto lines into claude's ! shell mode (tab multi-select, enter inserts)
+      tmux: |
+        {
+          if-shell "ps -t #{pane_tty} -o command= | grep -Eq '(^|/)claude( |$|/)'" {
+            # run only in claude: a single C-c clears its prompt without the delays of M-Enter/Escape-based resets
+            send-keys C-c
+            send-keys BSpace "!"  # Backspace leaves any ! shell mode, then ! enters it fresh
+          }
+          # start extrakto
+          switch-client -T prefix
+          send-keys -K X
+        }
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true

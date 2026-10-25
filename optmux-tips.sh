@@ -27,8 +27,7 @@ fi
 # nerd font hint
 nerd_font_tip=""
 if ! fc-list : family 2>/dev/null | grep -qi 'Nerd Font'; then
-    nerd_font_tip="
-  [!] Install a Nerd Font for best experience
+    nerd_font_tip="  [!] Install a Nerd Font for best experience
       https://www.nerdfonts.com"
 fi
 
@@ -65,8 +64,7 @@ if [[ "$osc52_known" != true ]]; then
     else
         terminal_tip_why="  [!] Could not confirm OSC 52 support — clipboard sync may not work over SSH"
     fi
-    terminal_tip="
-${terminal_tip_why}
+    terminal_tip="${terminal_tip_why}
       For clipboard integration, use a modern terminal:
       Ghostty: https://ghostty.org
       iTerm2:  https://iterm2.com
@@ -75,37 +73,71 @@ fi
 
 tips_content="$OPTMUX_DIR/tmux/tips-content.txt"
 
+# Setext-style (markdown-like) heading: the text, then a line of = under it
+heading() {
+    printf '\n%s\n%s\n\n' "$1" "$(printf '%*s' "${#1}" '' | tr ' ' '=')"
+}
+
+# bundled_tool NAME DESCRIPTION URL [BREW-FORMULA]: one row, marked by whether it's installed
+bundled_tool() {
+    local name=$1 description=$2 url=$3 formula=${4:-$1} mark="✓" note=""
+    if ! command -v "$name" >/dev/null 2>&1; then
+        mark="✗"
+        note="   (missing: brew install $formula)"
+    elif [[ "$name" == less ]]; then
+        # --mouse and clickable OSC 8 links need less 668+ (macOS ships 487)
+        local less_version
+        less_version=$(less --version 2>/dev/null | sed -n '1s/^less \([0-9]*\).*/\1/p')
+        if [[ "${less_version:-0}" -lt 668 ]]; then
+            mark="✗"
+            note="   (too old for --mouse and links: brew install less)"
+        fi
+    fi
+    printf '  %s %-8s %-40s %s%s\n' "$mark" "$name" "$description" "$url" "$note"
+}
+
 clear 2>/dev/null || true  # unknown TERM (common over SSH) must not abort the tips
-cat <<EOF
+printf '\noptmux tips\n===========\n'
 
-
-                            optmux tips
-
-  Prefix: Ctrl+T  (C-t)
-
-EOF
-
+heading "Keyboard Shortcuts"
+echo "  Prefix: Ctrl+T (C-t)"
+echo
 if [[ -f "$tips_content" ]]; then
     cat "$tips_content"
 else
     echo "  (no shortcuts configured)"
 fi
 
+heading "Bundled Tools"
+bundled_tool wtcode 'for claude (or $WTCODE_CMD) (C-M-c)' https://github.com/netj/wtcode netj/tap/wtcode
+bundled_tool lazygit "review and stage changes (C-M-g)" https://github.com/jesseduffield/lazygit
+bundled_tool delta "syntax-highlighted, clickable diffs" https://github.com/dandavison/delta git-delta
+bundled_tool less "mouse and clickable links in pagers" https://greenwoodsoftware.com/less
+bundled_tool fzf "fuzzy finder (C-M-f)" https://github.com/junegunn/fzf
+bundled_tool gh "GitHub CLI (C-M-w)" https://cli.github.com
+
 plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"
 if [[ -s "$plugins_tips" ]]; then
-    printf '\n  Plugins:\n'
+    heading "Plugins"
     cat "$plugins_tips"
 fi
 
-cat <<EOF
-
-  Install:  brew install netj/tap/wtcode   https://github.com/netj/wtcode
-            brew install lazygit          https://github.com/jesseduffield/lazygit
-
+heading "Tips"
+cat <<'EOF'
+  optmux env CMD...  run CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p
+  In a diff, click a line number twice to open that line in $EDITOR
   copy-mode yank auto-copies to system clipboard (OSC 52)
-${nerd_font_tip}${terminal_tip}
+EOF
 
-  q/Enter: dismiss    d: dismiss for a week    D: dismiss forever    C-M-h: show again
+if [[ -n "${nerd_font_tip}${terminal_tip}" ]]; then
+    heading "Heads Up"
+    [[ -n "$nerd_font_tip" ]] && echo "$nerd_font_tip"
+    [[ -n "$terminal_tip" ]] && echo "$terminal_tip"
+fi
+
+cat <<'EOF'
+
+q/Enter: dismiss    d: dismiss for a week    D: dismiss forever    C-M-h: show again
 
 EOF
 
