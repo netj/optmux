@@ -125,7 +125,7 @@ def pickable():
 
 def describe(project):
     if not project.live:
-        return "-"
+        return "not running"
     state = f"{project.windows} windows"
     return state + (", attached" if project.attached else "")
 
@@ -149,15 +149,23 @@ def self_command(*args):
     return " ".join([shlex.quote(sys.executable), "-c", shlex.quote("from optmux.cli import main; main()"), *quoted])
 
 
+def shell_path(path):
+    """A path as typed at a shell: with ~ for home, quoted only where needed."""
+    t = tilde(path)
+    return "~" + shlex.quote(t[1:]) if t.startswith("~/") else shlex.quote(t)
+
+
 def fzf_rows(projects):
-    """Rows for fzf: target, socket, session, then the visible text."""
+    """Rows for fzf: target, socket, session, then the visible text: the command that would run, and its state."""
+    paths = [shell_path(p.target) for p in projects]
+    width = max(map(len, paths), default=0)
     return [
-        "\t".join([p.target, p.sock, p.session, f"{'●' if p.live else '○'} {p.label}  {describe(p)}"])
-        for p in projects
+        "\t".join([p.target, p.sock, p.session, f"{'●' if p.live else '○'} optmux {w.ljust(width)} start  # {describe(p)}"])
+        for p, w in zip(projects, paths)
     ]
 
 
-def choose_with_fzf(projects):
+def choose_with_fzf(projects, title="optmux pick"):
     """Run fzf over the projects (already filtered by the query); returns the chosen target, or None when cancelled."""
     preview = (
         f"tmux -S {{2}} list-windows -t {{3}} -F {shlex.quote(LIST_WINDOWS_FORMAT)} 2>/dev/null"
@@ -165,7 +173,8 @@ def choose_with_fzf(projects):
     )
     cmd = [
         "fzf", "--delimiter", "\t", "--with-nth", "4", "--no-sort", "--ansi",
-        "--header", "enter: attach/start   ctrl-x: stop   ctrl-d: forget",
+        "--prompt", f"{title}> ",
+        "--header", f"{title}: choose an optmux project to launch\nenter: attach/start   ctrl-x: stop   ctrl-d: forget",
         "--preview", preview, "--preview-window", "right,40%",
         "--bind", f"ctrl-x:execute-silent({self_command('{1}', 'stop')})+reload({self_command('pick', '--rows')})",
         "--bind", f"ctrl-d:execute-silent({self_command('pick', '--forget', '{1}')})+reload({self_command('pick', '--rows')})",
@@ -176,12 +185,12 @@ def choose_with_fzf(projects):
     return result.stdout.split("\n")[0].split("\t")[0]
 
 
-def choose_with_menu(projects):
+def choose_with_menu(projects, title="pick"):
     """Numbered-menu fallback when fzf is missing."""
     for i, p in enumerate(projects, 1):
         print(f"{i:3}) {'●' if p.live else '○'} {p.label}  {describe(p)}", file=sys.stderr)
     try:
-        answer = input("pick> ").strip()
+        answer = input(f"{title}> ").strip()
     except (EOFError, KeyboardInterrupt):
         return None
     if answer.isdigit() and 1 <= int(answer) <= len(projects):
@@ -190,7 +199,7 @@ def choose_with_menu(projects):
 
 
 USAGE = """\
-usage: optmux pick [--list] [--live] [-1] [QUERY]
+usage: optmux pick [--list] [--live] [-1] [--title TITLE] [QUERY]
 
   Choose a project optmux has been started in, and attach to (or start) its TMUX session.
   Returns when you detach or exit, so it can be run in a loop.
@@ -200,6 +209,7 @@ usage: optmux pick [--list] [--live] [-1] [QUERY]
   --list      print projects as TSV (state, kind, target, session, socket) and exit
   --live      only projects with a running session
   -1          if exactly one project matches QUERY, pick it without asking
+  --title T   name the picker (prompt and header) after the caller, e.g. auto-optmux
 
 exit status: 0 after attach/detach, 130 cancelled, 1 nothing to pick
 """
@@ -212,6 +222,7 @@ def run(argv):
     select = None  # hidden, for tests: pick the Nth project without any UI
     rows = False  # hidden, for the picker's reload
     forget = None
+    title = None
     args = list(argv)
     while args:
         a = args.pop(0)
@@ -228,6 +239,8 @@ def run(argv):
             select = int(args.pop(0))
         elif a == "--rows":
             rows = True
+        elif a == "--title":
+            title = args.pop(0)
         elif a == "--forget":
             forget = args.pop(0)
         else:
@@ -260,9 +273,9 @@ def run(argv):
     elif auto_single and len(projects) == 1:
         target = projects[0].target
     elif shutil.which("fzf") and sys.stdin.isatty():
-        target = choose_with_fzf(projects)
+        target = choose_with_fzf(projects, title or "optmux pick")
     else:
-        target = choose_with_menu(projects)
+        target = choose_with_menu(projects, title or "pick")
     if target is None:
         return EXIT_CANCELLED
 
