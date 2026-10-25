@@ -20,6 +20,47 @@ optmux:
       claritmux_status_time: 0
       claritmux_status_hostname: 1
 
+  # Opinionated environment for commands run via `optmux-env` (as the shortcuts below do) and
+  # everything they start; it wins over your own settings there, while your shells stay untouched.
+  # All of env, git_config, and lazygit end up in $OPTMUX_DIR/env.sh.
+  # `$VAR` expands; a null value unsets the variable.
+  env:
+    PAGER: less
+    # --no-init --RAW-CONTROL-CHARS --ignore-case --LONG-PROMPT --HILITE-UNREAD --chop-long-lines --clear-screen --mouse
+    LESS: -XRiMWSc --mouse
+    # open clicked OSC 8 hyperlinks (delta's file:line and commit links) with optmux-open-url;
+    # the leading ^P- tells less to run it without echoing the command or printing "link done"
+    LESS_OSC8_OPEN_ANY: "\x10-optmux-open-url"
+
+  # git config, passed through GIT_CONFIG_* env vars so it wins over ~/.gitconfig without touching it.
+  # A pager whose command isn't installed (e.g., no delta) is skipped.
+  git_config:
+    core.pager: delta
+    interactive.diffFilter: delta --color-only
+    delta.navigate: true
+    delta.line-numbers: true
+    delta.hyperlinks: true
+    delta.hyperlinks-file-link-format: file://{path}#L{line}
+    # override git's default LESS=FRX: quit-if-one-screen conflicts with --mouse and clicking links
+    delta.pager: less -+F
+    diff.colorMoved: default
+
+  # lazygit config, layered on top of your own lazygit config (deep-merged; lists replace).
+  # A diffRenderer whose command isn't installed is skipped.
+  lazygit:
+    promptToReturnFromSubprocess: false
+    git:
+      diffRenderers:
+      # clicking a line number opens it in your editor (lazygit-edit:// links)
+      - colorArg: always
+        command: delta --paging=never --line-numbers --hyperlinks --hyperlinks-file-link-format='lazygit-edit://{path}:{line}'
+    customCommands:
+    - key: <c-g>
+      context: global
+      description: Diff against the default branch (origin/HEAD, or origin/main)
+      command: git diff "$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo origin/main)"...
+      output: terminal
+
   shortcuts:
     # Workflow
     C-M-c:
@@ -31,11 +72,19 @@ optmux:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
       tip: find file to edit
     C-M-g:
-      command: lazygit
+      command: optmux-env lazygit
       tip: lazygit
+    C-M-d:
+      command: optmux-env git diff
+      tip: clickable git diff (click a line number twice to edit)
     C-M-s:
       command: ""
       tip: shell in same dir
+    C-M-w:
+      command: optmux-gh-open
+      detached: true
+      new_window: true
+      tip: open PR (or repo) on GitHub
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# optmux-open-url — open a URI from an OSC 8 hyperlink
+#
+# Used as less's LESS_OSC8_OPEN_ANY handler (less appends the URI), so
+# clicking a hyperlink in `git diff`/`git log` (rendered by delta) opens it:
+#   file:///path#L123  → $VISUAL/$EDITOR at that line (delta's file links)
+#   http(s)://...      → the browser (delta's commit links, etc.)
+#   anything else      → less-osc8-open, less's own default handler
+# Origin: https://github.com/netj/dotfiles/blob/main/bin/ezurlopen
+set -euo pipefail
+
+uri=${1:?usage: optmux-open-url URI}
+
+urldecode() { local s=${1//+/ }; printf '%b' "${s//%/\\x}"; }
+
+edit_at() {  # edit_at PATH [LINE]
+    local path=$1 line=${2:-}
+    # shellcheck disable=SC2206  # word-split $VISUAL/$EDITOR like a shell would, e.g. "code --wait"
+    local editor=(${VISUAL:-${EDITOR:-vim}})
+    if [[ -z $line ]]; then
+        exec "${editor[@]}" "$path"
+    fi
+    case ${editor[0]##*/} in
+        code|code-insiders|cursor|codium|windsurf)
+            exec "${editor[@]}" --goto "$path:$line" ;;
+        hx|helix|zed|subl|mate)
+            exec "${editor[@]}" "$path:$line" ;;
+        *)  # vi, vim, nvim, emacs, nano, micro, kak, ...
+            exec "${editor[@]}" "+$line" "$path" ;;
+    esac
+}
+
+case $uri in
+    file://*)
+        path=${uri#file://}
+        case $path in
+            /*) ;;                  # file:///path (empty hostname)
+            *)  path=/${path#*/} ;; # file://host/path → strip hostname
+        esac
+        frag=
+        case $path in *"#"*) frag=${path##*#}; path=${path%%#*} ;; esac
+        frag=${frag#L}  # GitHub-style #L123 fragment, as delta's hyperlinks-file-link-format emits
+        [[ $frag =~ ^[0-9]+$ ]] || frag=
+        edit_at "$(urldecode "$path")" "$frag"
+        ;;
+    http://*|https://*)
+        case $(uname) in
+            Darwin) exec open "$uri" ;;
+            *)      exec xdg-open "$uri" >/dev/null 2>&1 ;;
+        esac
+        ;;
+    *)
+        if command -v less-osc8-open >/dev/null; then
+            exec less-osc8-open "$uri"
+        fi
+        echo >&2 "optmux-open-url: don't know how to open: $uri"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# optmux-env — run a command with optmux's opinionated environment ($OPTMUX_DIR/env.sh):
+# the optmux: env, git_config, and lazygit sections, e.g., delta as git's pager and less with
+# mouse and clickable links. It applies to the command and everything it starts, overriding
+# your own settings there; shells inside optmux are left alone.
+#   optmux-env lazygit
+#   optmux-env git diff
+set -euo pipefail
+if [[ $# -eq 0 ]]; then
+    echo >&2 "usage: optmux-env COMMAND [ARGS...]"
+    exit 2
+fi
+# shellcheck source=/dev/null
+. "$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)/env.sh"
+exec "$@"

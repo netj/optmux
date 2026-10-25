@@ -23,7 +23,7 @@
 ## Homebrew Tap
 
 - Repo: `netj/homebrew-tap` (on GitHub)
-- `optmux.rb` runs `uv sync --frozen --no-dev --no-editable` at install time into `libexec` (deps pinned by `uv.lock`, nothing fetched at runtime), and depends on `netj/tap/wtcode` + `lazygit`
+- `optmux.rb` runs `uv sync --frozen --no-dev --no-editable` at install time into `libexec` (deps pinned by `uv.lock`, nothing fetched at runtime), and depends on `tmux`, `netj/tap/wtcode`, `lazygit`, `git-delta`, `less`, `fzf`, `gh`
 - Shebangs recommended as `#!/usr/bin/env optmux` (not `uvx`, which hits PyPI on every run)
 - Update via `gh api repos/netj/homebrew-tap/contents/optmux.rb --method PUT ...`
 
