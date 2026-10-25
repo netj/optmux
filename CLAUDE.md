@@ -9,6 +9,7 @@
 ## YAML Style
 
 - README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
+- **Prefer YAML block scalars over quoting** for anything with shell or tmux syntax (`command:`, `tmux:`, `tip:`, in `optmux-defaults.yaml`, README examples, tests). Use the **literal** style `|` (keeps newlines, so a script reads as written) and, for long prose, the **folded** style `>` (joins lines). Quoting (`'...'`, `"..."`) fights with the `$`, quotes, and `\` already in shell commands, and plain scalars choke on `: `, `#`, or a leading quote. Quote only what a block can't hold (e.g. a `"\x10..."` escape).
 
 ## Release Checklist
 
