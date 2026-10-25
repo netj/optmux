@@ -120,6 +120,13 @@ def test_old_less_flagged(tmp_path):
     assert "too old for --mouse and links" in out
 
 
+def test_less_with_old_link_protocol_noted(tmp_path):
+    bin_dir = stub_tools(tmp_path, less=668)
+    out = run_tips(tmp_path, TERM="xterm-256color", PATH=f"{bin_dir}:/usr/bin:/bin")
+    assert "✓ less" in out
+    assert "links via the old protocol" in out
+
+
 def test_notes_list_tips_and_warnings(tmp_path):
     out = run_tips(tmp_path, TERM="xterm-256color")
     notes = out[out.index("Good to Know"):]
