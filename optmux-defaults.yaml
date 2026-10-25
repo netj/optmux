@@ -58,7 +58,7 @@ optmux:
     - key: <c-g>
       context: global
       description: Diff against the default branch (origin/HEAD, or origin/main)
-      command: git diff "$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo origin/main)"...
+      command: optmux-diff-base
       output: terminal
 
   shortcuts:
@@ -75,8 +75,8 @@ optmux:
       command: optmux-env lazygit
       tip: lazygit
     C-M-d:
-      command: optmux-env git diff
-      tip: clickable git diff (click a line number twice to edit)
+      command: optmux-env optmux-diff-base
+      tip: clickable diff against the default branch (same as lazygit's C-g)
     C-M-s:
       command: ""
       tip: shell in same dir

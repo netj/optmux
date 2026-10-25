@@ -372,7 +372,7 @@ optmux:
 
 `env`, `git_config`, and `lazygit` are all written to `$OPTMUX_DIR/env.sh`. **They apply only to commands started through `optmux-env`**, and to everything those commands start in turn. Your shells inside optmux behave exactly as they do outside it.
 
-The bundled shortcuts use it: `C-M-g` runs `optmux-env lazygit` and `C-M-d` runs `optmux-env git diff`. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
+The bundled shortcuts use it: `C-M-g` runs `optmux-env lazygit` and `C-M-d` runs `optmux-env optmux-diff-base`. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
 
 ```yaml
 optmux:
@@ -459,7 +459,7 @@ optmux sets these before launching tmux/tmuxp:
 optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](optmux-defaults.yaml) under [`env`](#env), [`git_config`](#git_config), and [`lazygit`](#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](#optmux-env). Your dotfiles and your shells are left alone. See the [Quick Start guide](QUICKSTART.md) for how it fits into working with coding agents.
 
 - **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
-- **Clickable `git diff`** (`C-M-d`): delta renders the diff in less, so you can scroll with the mouse and click a line number twice to edit it.
+- **Clickable diff** (`C-M-d`, same as `Ctrl-g` in lazygit): what the branch changes against the default branch, rendered by delta in less, so you can scroll with the mouse and click a line number twice to edit it.
 - **[delta](https://github.com/dandavison/delta)**: becomes git's pager (`core.pager`, `interactive.diffFilter`), with line numbers, `n`/`N` file navigation, moved-code coloring, and hyperlinked line numbers and commit hashes.
 - **less**: mouse mode (`--mouse`) and an [OSC 8](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda) hyperlink handler. Click a link once to select it and again to open it: `file://…#L<n>` opens `$VISUAL`/`$EDITOR` at that line, and `http(s)` links open your browser. Clicking links needs a recent `less` (Homebrew's; the formula depends on it).
 
@@ -469,6 +469,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 |---|---|
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
+| `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
 ## Session persistence

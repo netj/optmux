@@ -78,7 +78,7 @@ The agent picks up the change the next time it looks at the file.
 
 ### Clickable diffs: delta + less
 
-Press **`C-M-d`** for a `git diff` you can click.
+Press **`C-M-d`** for a diff you can click: the branch against the default branch, what the PR will contain (the same as `Ctrl-g` in lazygit).
 It renders with delta and opens in less with mouse support and link handling:
 
 - **Scroll** with the mouse wheel; `n`/`N` jumps between files.

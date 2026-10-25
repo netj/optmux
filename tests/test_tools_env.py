@@ -269,3 +269,70 @@ def test_open_url_file_links(tmp_path, editor, uri, expected):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
+
+
+# --- optmux-diff-base ---------------------------------------------------------
+
+DIFF_BASE = str(DATA_DIR.joinpath("bin", "optmux-diff-base"))
+
+
+def git(cwd, *args):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        cwd=cwd, check=True, capture_output=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+    )
+
+
+@pytest.fixture
+def repo_with_remote(tmp_path):
+    """A clone whose default branch has diverged from the feature branch (no origin/HEAD yet)."""
+    if not shutil.which("git"):
+        pytest.skip("git not found")
+    origin, clone = tmp_path / "origin", tmp_path / "clone"
+    git(tmp_path, "init", "-q", "-b", "main", str(origin))
+    (origin / "a.txt").write_text("base\n")
+    git(origin, "add", "a.txt")
+    git(origin, "commit", "-qm", "base")
+    git(tmp_path, "clone", "-q", str(origin), str(clone))
+    git(clone, "checkout", "-qb", "feature")
+    (clone / "a.txt").write_text("base\nfeature\n")
+    git(clone, "commit", "-qam", "feature")
+    # main moves on after the branch point: must not show up as a (reverse) change
+    (origin / "b.txt").write_text("later\n")
+    git(origin, "add", "b.txt")
+    git(origin, "commit", "-qm", "later")
+    git(clone, "fetch", "-q")
+    return clone
+
+
+def diff_base(cwd, *args):
+    result = subprocess.run(
+        ["bash", DIFF_BASE, *args], cwd=cwd, capture_output=True, text=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+             "GIT_PAGER": "cat"},
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_diff_base_falls_back_to_origin_main(repo_with_remote):
+    out = diff_base(repo_with_remote)
+    assert "+feature" in out
+    assert "b.txt" not in out  # since the merge-base, not a diff against main's tip
+
+
+def test_diff_base_uses_origin_head(repo_with_remote):
+    git(repo_with_remote, "remote", "set-head", "origin", "main")
+    assert "+feature" in diff_base(repo_with_remote)
+
+
+def test_diff_base_passes_args_to_git_diff(repo_with_remote):
+    assert diff_base(repo_with_remote, "--stat").strip().startswith("a.txt")
+
+
+def test_lazygit_ctrl_g_and_shortcut_share_the_script():
+    defaults = load_bundled_defaults()
+    command = next(c for c in defaults["lazygit"]["customCommands"] if c["key"] == "<c-g>")["command"]
+    assert command == "optmux-diff-base"
+    assert defaults["shortcuts"]["C-M-d"]["command"] == "optmux-env optmux-diff-base"
