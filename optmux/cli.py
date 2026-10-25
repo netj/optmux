@@ -43,7 +43,7 @@ def _short_sock_path(tmux_dir: Path) -> str:
     return short_sock
 
 
-KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux"}
+KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux", "env"}
 
 
 def parse_project_name(yaml_path_str):
@@ -639,6 +639,20 @@ def cmd_tmux(resolved, args):
     os.execvp(tmux[0], [*tmux, *args])
 
 
+def cmd_env(resolved, args, explicit_target):
+    """Run a command with optmux's opinionated environment (see optmux-env)."""
+    if not args:
+        print("usage: optmux [DIR | YAML] env COMMAND [ARGS...]", file=sys.stderr)
+        sys.exit(2)
+    optmux_dir = os.environ.get("OPTMUX_DIR")
+    if explicit_target or not (optmux_dir and Path(optmux_dir, ENV_SH).exists()):
+        # outside a session, or told which project: (re)generate its env.sh
+        setup_optmux_env(resolved)
+        optmux_dir = os.environ["OPTMUX_DIR"]
+    # else inside an optmux pane: $OPTMUX_DIR is already this project's
+    os.execv(str(Path(optmux_dir, "bin", "optmux-env")), ["optmux-env", *args])
+
+
 def _notify_config_changed(tmux):
     """Remind the next client to attach to this session to reload the config.
 
@@ -848,7 +862,7 @@ def cmd_warp(resolved, args, original_cwd=None):
 
 
 USAGE = """\
-usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
+usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS... | env CMD...]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
@@ -859,6 +873,8 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS...]
                                       whose panes match WORKDIR (default: cwd)
   optmux [DIR | YAML] tmux ARGS...    run a raw tmux command against this
                                       project's tmux server (e.g. `optmux . tmux ls`)
+  optmux [DIR | YAML] env CMD...      run CMD with optmux's environment (delta as git's
+                                      pager, less links, ...), e.g. `optmux env git log -p`
   optmux -v | --version | version     print the optmux version
   optmux -h | --help | help           print this help
 """
@@ -886,12 +902,15 @@ def main(argv=None):
 
     # First positional is either a directory (plain tmux) or a YAML file (tmuxp session)
     yaml_file = None
+    explicit_target = False
     if argv and argv[0] not in KNOWN_SUBCOMMANDS:
         candidate = argv[0]
         if Path(candidate).is_dir():
             os.chdir(argv.pop(0))
+            explicit_target = True
         elif Path(candidate).suffix in ('.yaml', '.yml'):
             yaml_file = argv.pop(0)
+            explicit_target = True
 
     if argv and argv[0] in KNOWN_SUBCOMMANDS:
         subcommand = argv.pop(0)
@@ -912,3 +931,5 @@ def main(argv=None):
         cmd_warp(resolved, argv, original_cwd)
     elif subcommand == "tmux":
         cmd_tmux(resolved, argv)
+    elif subcommand == "env":
+        cmd_env(resolved, argv, explicit_target)

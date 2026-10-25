@@ -110,6 +110,14 @@ optmux [DIR | YAML] tmux ARGS...
 
 Runs `tmux ARGS...` directly against this project's isolated tmux server — no tmuxp bootstrapping, no session creation. Useful for one-off inspection or scripting without hand-rolling the `-S <sock>` path yourself, e.g. `optmux . tmux ls` or `optmux . tmux kill-server`.
 
+### Running a command with optmux's settings
+
+```bash
+optmux [DIR | YAML] env COMMAND [ARGS...]
+```
+
+Runs the command with optmux's opinionated environment (delta as git's pager, less with the mouse and clickable links, the layered lazygit config, …). It's [`optmux-env`](#optmux-env) as a subcommand, so it works in any shell, even where your rc has rebuilt `PATH`: `optmux env git log -p`, `optmux env lazygit`. Inside an optmux pane it uses that project's settings; elsewhere, give it the DIR or YAML (e.g. `optmux . env git diff`).
+
 ## Example tmuxp YAML
 
 Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
@@ -372,7 +380,7 @@ optmux:
     C-M-l: optmux-env git log -p
 ```
 
-To use optmux's settings in every shell inside optmux, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:
+Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` always works. To use optmux's settings in every shell inside optmux, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:
 
 ```bash
 [ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"

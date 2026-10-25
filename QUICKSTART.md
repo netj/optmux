@@ -88,7 +88,8 @@ It renders with delta and opens in less with mouse support and link handling:
 `$EDITOR` can be vim, nvim, emacs, nano, helix, or VS Code-style editors (`code`, `cursor`, …); optmux passes the line number the way each one expects.
 
 optmux applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
-To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
+For anything else, prefix the command with `optmux env`: `optmux env git log -p`, `optmux env git show HEAD`.
+To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
 Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](README.md#env).
 
 ## 3. Multitask: one worktree per agent

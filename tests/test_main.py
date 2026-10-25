@@ -283,3 +283,48 @@ def test_short_sock_path_deterministic(tmp_path):
     tmux_dir = tmp_path / padding / "tmux"
     tmux_dir.mkdir(parents=True)
     assert _short_sock_path(tmux_dir) == _short_sock_path(tmux_dir)
+
+
+# --- optmux env ---------------------------------------------------------------
+
+def test_env_subcommand_runs_command_via_optmux_env(project_yaml_file, monkeypatch):
+    monkeypatch.delenv("OPTMUX_DIR", raising=False)  # restored on teardown
+    with patch("os.execv") as mock_execv:
+        main(argv=[str(project_yaml_file), "env", "git", "log", "-p"])
+
+    optmux_dir = project_yaml_file.parent / ".myproject.optmux.d"
+    assert (optmux_dir / "env.sh").exists()  # generated, as outside a session
+    mock_execv.assert_called_once_with(
+        str(optmux_dir / "bin" / "optmux-env"), ["optmux-env", "git", "log", "-p"]
+    )
+
+
+def test_env_subcommand_inside_pane_uses_current_project(tmp_path, monkeypatch):
+    optmux_dir = tmp_path / "somewhere" / ".other.optmux.d"
+    optmux_dir.mkdir(parents=True)
+    (optmux_dir / "env.sh").write_text("")
+    monkeypatch.setenv("OPTMUX_DIR", str(optmux_dir))
+    monkeypatch.chdir(tmp_path)  # not the project dir
+    with patch("os.execv") as mock_execv:
+        main(argv=["env", "git", "diff"])
+
+    mock_execv.assert_called_once_with(
+        str(optmux_dir / "bin" / "optmux-env"), ["optmux-env", "git", "diff"]
+    )
+    assert not (tmp_path / ".optmux.d").exists()  # didn't bootstrap a new project
+
+
+def test_env_subcommand_explicit_target_wins_over_pane(project_yaml_file, tmp_path, monkeypatch):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path / "elsewhere"))
+    with patch("os.execv") as mock_execv:
+        main(argv=[str(project_yaml_file), "env", "true"])
+
+    optmux_dir = project_yaml_file.parent / ".myproject.optmux.d"
+    assert mock_execv.call_args[0][0] == str(optmux_dir / "bin" / "optmux-env")
+
+
+def test_env_subcommand_requires_a_command(project_yaml_file, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(argv=[str(project_yaml_file), "env"])
+    assert exc.value.code == 2
+    assert "usage: optmux [DIR | YAML] env COMMAND" in capsys.readouterr().err
