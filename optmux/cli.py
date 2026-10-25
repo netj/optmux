@@ -14,6 +14,7 @@ import yaml
 
 from optmux import actions
 from optmux import menu as menu_compiler
+from optmux import pick
 
 __version__ = _pkg_version("optmux")
 
@@ -44,7 +45,7 @@ def _short_sock_path(tmux_dir: Path) -> str:
     return short_sock
 
 
-KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux", "env"}
+KNOWN_SUBCOMMANDS = {"start", "stop", "warp", "tmux", "env", "pick"}
 
 
 def parse_project_name(yaml_path_str):
@@ -737,6 +738,13 @@ def cmd_start(resolved, remaining_args):
     tmux = resolved["tmux_cmd"]
     sock = resolved["sock"]
 
+    try:  # remember the project for `optmux pick`; never block starting on it
+        pick.record_project(
+            "yaml" if yaml_path else "dir", yaml_path or resolved["optmux_dir"].parent, session_name, sock,
+        )
+    except OSError as e:
+        print(f"optmux: couldn't update the project list: {e}", file=sys.stderr)
+
     subprocess.run([str(env["setup_script"])], check=True)
 
     if yaml_path:
@@ -907,6 +915,7 @@ def cmd_warp(resolved, args, original_cwd=None):
 
 USAGE = """\
 usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS... | env CMD...]
+       optmux pick [--list] [--live] [-1] [QUERY]
 
   optmux DIR                          open tmux in DIR (use . for cwd)
   optmux YAML                         load a tmuxp session from YAML
@@ -919,6 +928,8 @@ usage: optmux [DIR | YAML] [start | stop | warp [WORKDIR] [NAME] | tmux ARGS... 
                                       project's tmux server (e.g. `optmux . tmux ls`)
   optmux [DIR | YAML] env CMD...      run CMD with optmux's environment (delta as git's
                                       pager, less links, ...), e.g. `optmux env git log -p`
+  optmux pick [QUERY]                 choose among projects you've started optmux in, then
+                                      attach (or start); returns after you detach
   optmux -v | --version | version     print the optmux version
   optmux -h | --help | help           print this help
 """
@@ -943,6 +954,9 @@ def main(argv=None):
 
     argv = list(argv)
     original_cwd = os.getcwd()
+
+    if argv[0] == "pick":  # not about any one project: no resolving, no environment
+        sys.exit(pick.run(argv[1:]))
 
     # First positional is either a directory (plain tmux) or a YAML file (tmuxp session)
     yaml_file = None

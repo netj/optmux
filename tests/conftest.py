@@ -82,3 +82,9 @@ def pytest_addoption(parser):
 @pytest.fixture
 def update_golden(request):
     return request.config.getoption("--update-golden")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_state_home(tmp_path_factory, monkeypatch):
+    """Starting optmux records the project for `optmux pick`; keep that out of the real home."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("state")))
