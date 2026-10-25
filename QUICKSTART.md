@@ -112,6 +112,7 @@ Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](READM
 ## 4. Keep many going
 
 - When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
+- Many projects? `optmux pick` lists every project you've started optmux in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
 - Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](README.md#warp-sessions).
 - **`C-M-w`** opens the current branch's PR on GitHub, or the repo page if there's no PR yet.
 

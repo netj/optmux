@@ -150,6 +150,7 @@ MOUSE
   (.) Each project is isolated: its own TMUX server, config, and saved sessions (in .NAME.optmux.d/)
   (.) One task = one worktree = one window. C-M-s/g/d/f open a shell/lazygit/diff/editor pane in its workdir
   (.) A window blinking red rang the bell (an agent wants you): C-t n / C-t p jump to the next / previous one
+  (.) optmux pick  chooses among your projects (● running) and attaches; it returns when you detach
   (.) optmux env CMD...  runs CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p
   (.) In a diff, click a line number twice to open that line in $EDITOR
   (.) copy-mode yank auto-copies to the system clipboard (OSC 52)
