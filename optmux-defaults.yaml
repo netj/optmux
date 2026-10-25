@@ -136,6 +136,8 @@ optmux:
       tip: next window with bell
     C-t p:
       tip: prev window with bell
+    C-t w:
+      tip: list all windows (pick one to jump to)
     C-t z:
       tip: toggle zoom
     "C-t `":
@@ -144,6 +146,8 @@ optmux:
       tip: reload config
     C-t F:
       tip: fingers (copy URLs/paths/hashes)
+    C-t X:
+      tip: extrakto (pick words/lines on screen to copy or insert)
     C-t h/j/k/l:
       tip: navigate panes
     C-t t:

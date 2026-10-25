@@ -109,3 +109,12 @@ def test_bundled_shortcuts_grouped_direct_then_prefix():
     assert "C-M-b" in groups[0][0]  # your own shortcuts first
     assert "C-M-g" in groups[1][0]  # then bundled direct keys
     assert "C-t z" in groups[2][0]  # then prefix keys
+
+
+def test_bundled_reference_lists_window_chooser_and_extrakto_next_to_fingers():
+    from optmux.cli import load_bundled_defaults
+    shortcuts = load_bundled_defaults()["shortcuts"]
+    keys = list(shortcuts)
+    assert "list all windows" in shortcuts["C-t w"]["tip"]
+    assert "extrakto" in shortcuts["C-t X"]["tip"]
+    assert keys.index("C-t X") == keys.index("C-t F") + 1  # right after fingers

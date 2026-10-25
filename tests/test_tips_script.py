@@ -211,3 +211,13 @@ def test_intro_uses_the_readme_tagline(tmp_path):
     readme = (Path(__file__).parent.parent / "README.md").read_text()
     tagline = next(l for l in readme.splitlines() if l.startswith("Optimal, opinionated"))
     assert tagline in run_tips(tmp_path, TERM="xterm-256color")
+
+
+def test_good_to_know_covers_isolation_workdir_panes_and_bell(tmp_path):
+    out = run_tips(tmp_path, TERM="xterm-256color")
+    notes = out[out.index("Good to Know"):]
+    assert "Each project is isolated" in notes
+    assert "One task = one worktree = one window" in notes
+    assert "C-M-s/g/d/f" in notes and "workdir" in notes
+    assert "blinking red" in notes and "C-t n / C-t p" in notes
+    assert notes.index("Each project is isolated") < notes.index("optmux env CMD")  # concepts first
