@@ -196,3 +196,11 @@ def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
         assert (tmp_path / "exit-status").read_text().strip() == "0"
     finally:
         subprocess.run([*tmux, "kill-server"], capture_output=True)
+
+
+def test_osc52_warning_follows_clipboard_tip_and_nerd_font_is_last(tmp_path):
+    out = run_tips(tmp_path, TERM="xterm-256color")
+    notes = out[out.index("Good to Know"):]
+    assert notes.index("copy-mode yank") < notes.index("OSC 52 support") < notes.index("Nerd Font")
+    between = notes[notes.index("copy-mode yank"):notes.index("OSC 52 support")]
+    assert "Nerd Font" not in between and between.count("\n") == 1  # adjacent lines

@@ -135,8 +135,9 @@ render_tips() {
   (.) In a diff, click a line number twice to open that line in $EDITOR
   (.) copy-mode yank auto-copies to the system clipboard (OSC 52)
 EOF
-    [[ -n "$nerd_font_tip" ]] && echo "$nerd_font_tip"
+    # the OSC 52 warning goes right after the clipboard tip it belongs to; the Nerd Font note is last
     [[ -n "$terminal_tip" ]] && echo "$terminal_tip"
+    [[ -n "$nerd_font_tip" ]] && echo "$nerd_font_tip"
 }
 
 footer="q/Enter: dismiss    d: dismiss for a week    D: dismiss forever    C-M-h: show again"
