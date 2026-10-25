@@ -1,15 +1,12 @@
-# optmux Quick Start: pairing with Claude Code (and friends)
+# Quick Start
 
-Coding agents like [Claude Code](https://claude.com/claude-code) change *files*, and git already knows how to show and edit file changes.
-optmux puts the git tools next to the agent in one tmux session.
-Every change the agent makes shows up right away, and you take part by editing those same files yourself.
-You don't have to describe what you want and hope the agent gets it.
+**Your coding agent edits files. Git already knows how to show, stage, and undo file edits. optmux puts them side by side.**
 
-This guide covers three habits that make that work:
+Run [Claude Code](https://claude.com/claude-code) (or any agent) in one pane, with lazygit, a shell, and your editor a keystroke away in the same tmux window. Then:
 
-1. **Watch and steer** the agent's changes live, one hunk at a time
-2. **Show, don't tell**: make a small example edit yourself and have the agent continue from it
-3. **Multitask** across many agents: one task, one worktree, one window
+1. **Watch and steer.** See each change as it lands. Keep the good hunks, throw out the rest.
+2. **Show, don't tell.** Make one example edit yourself, and tell the agent "do it like this".
+3. **Run a dozen agents at once.** One task, one worktree, one window.
 
 ## Setup
 
