@@ -9,7 +9,7 @@ This guide covers three habits that make that work:
 
 1. **Watch and steer** the agent's changes live, one hunk at a time
 2. **Show, don't tell**: make a small example edit yourself and have the agent continue from it
-3. **Multitask** across many agents, one git worktree each
+3. **Multitask** across many agents: one task, one worktree, one window
 
 ## Setup
 
@@ -94,16 +94,29 @@ For anything else, prefix the command with `optmux env`: `optmux env git log -p`
 To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
 Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](README.md#env).
 
-## 3. Multitask: one worktree per agent
+## 3. Multitask: one task, one worktree, one window
 
-One agent per checkout gets old fast. With [wtcode](https://github.com/netj/wtcode) you run a whole team, each agent in its own [git worktree](https://git-scm.com/docs/git-worktree), so they never step on each other's files:
+One agent per checkout gets old fast. Give every task its own [git worktree](https://git-scm.com/docs/git-worktree) so agents never step on each other's files, and give every worktree its own tmux window:
 
-- **`C-M-c`** runs wtcode: fzf-pick an existing branch/worktree, or type `:new-branch:` to create one, branched off `origin/HEAD`.
-  wtcode creates the worktree (under `<repo>.worktrees/`) and starts Claude Code there in a new window.
-- Window names show each pane's directory, so the status bar reads like a list of your worktrees.
-- When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones.
-  (In Claude Code, set `/config` → notifications to *terminal bell*.)
-- Every review tool works per worktree: `C-M-g` in a window opens lazygit *for that worktree*, and `C-M-s` opens a shell in that window's directory.
+> **one task = one branch = one worktree = one tmux window**
+
+The window name is the worktree's directory, so the status bar reads like your task list.
+Everything you need for a task is one keystroke away, as extra panes in *that same window*, already `cd`'d into *that same worktree*:
+
+| Key | Pane | |
+|---|---|---|
+| `C-M-s` | shell | run tests, poke around |
+| `C-M-g` | lazygit | review, stage, commit |
+| `C-M-d` | diff | what the PR will contain |
+| `C-M-f` | editor | fuzzy-find a file and edit it |
+
+Each opens zoomed over the agent; `C-M-z` toggles the zoom, and `C-M-o` jumps back to the agent.
+
+**Start a task instantly with `C-M-c`** ([wtcode](https://github.com/netj/wtcode)): fzf-pick an existing branch or worktree, or type `:new-branch:` to make one off `origin/HEAD`. wtcode creates the worktree (under `<repo>.worktrees/`) and launches Claude Code in it, in a new window. Describe the task and move on.
+
+Then juggle the windows:
+
+- When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
 - Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](README.md#warp-sessions).
 - **`C-M-w`** opens the current branch's PR on GitHub, or the repo page if there's no PR yet.
 
