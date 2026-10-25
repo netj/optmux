@@ -101,18 +101,34 @@ render_tips() {
     printf '\noptmux tips\n===========\n\n'
     echo "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project."
     echo
-    echo "tmux runs many shells in one terminal, and keeps them alive when you detach."
-    echo "New to tmux? https://github.com/tmux/tmux/wiki/Getting-Started"
+    echo "TMUX runs many shells in one terminal, and keeps them alive when you detach."
+    echo "New to TMUX? https://github.com/tmux/tmux/wiki/Getting-Started"
 
     heading "Keyboard Shortcuts"
     echo "  TMUX Prefix key: Ctrl+T (C-t). Press it, let go, then the key: C-t z zooms a pane."
-    echo "  C-M-* (Ctrl+Alt) shortcuts need no prefix."
+    echo "  C-M-* (Ctrl+Alt, or Control+Option on a Mac) shortcuts need no prefix."
     echo
     if [[ -f "$tips_content" ]]; then
         cat "$tips_content"
     else
         echo "  (no shortcuts configured)"
     fi
+
+    local custom_tips="$OPTMUX_DIR/tmux/tips-custom.txt"
+    if [[ -s "$custom_tips" ]]; then
+        heading "Your Shortcuts"
+        cat "$custom_tips"
+    fi
+
+    heading "Mouse"
+    cat <<'MOUSE'
+  Click         a pane to focus it; a window name in the status bar to switch to it
+  Drag          a pane border to resize; across text to select and copy it
+  Double-click  selects a word
+  Triple-click  selects a line
+  Scroll        the wheel browses a pane's history (q, or scrolling to the end, leaves it)
+  Right-click   a pane, window name, or the status bar for a menu of actions
+MOUSE
 
     heading "Bundled Tools"
     bundled_tool wtcode 'for claude (or $WTCODE_CMD) (C-M-c)' https://github.com/netj/wtcode netj/tap/wtcode
@@ -124,13 +140,13 @@ render_tips() {
 
     local plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"
     if [[ -s "$plugins_tips" ]]; then
-        heading "Plugins"
+        heading "TMUX Plugins"
         cat "$plugins_tips"
     fi
 
     heading "Good to Know"
     cat <<'EOF'
-  (.) Each project is isolated: its own tmux server, config, and saved sessions (in .NAME.optmux.d/)
+  (.) Each project is isolated: its own TMUX server, config, and saved sessions (in .NAME.optmux.d/)
   (.) One task = one worktree = one window. C-M-s/g/d/f open a shell/lazygit/diff/editor pane in its workdir
   (.) A window blinking red rang the bell (an agent wants you): C-t n / C-t p jump to the next / previous one
   (.) optmux env CMD...  runs CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p

@@ -2,7 +2,7 @@
 
 **Your coding agent edits files. Git already knows how to show, stage, and undo file edits. optmux puts them side by side.**
 
-Run [Claude Code](https://claude.com/claude-code) (or any agent) in one pane, with lazygit, a shell, and your editor a keystroke away in the same tmux window. Then:
+Run [Claude Code](https://claude.com/claude-code) (or any agent) in one pane, with lazygit, a shell, and your editor a keystroke away in the same TMUX window. Then:
 
 1. **Watch and steer.** See each change as it lands. Keep the good hunks, throw out the rest.
 2. **Show, don't tell.** Make one example edit yourself, and tell the agent "do it like this".
@@ -26,9 +26,9 @@ windows:
   - claude
 ```
 
-Then `chmod +x .optmux.yaml && ./.optmux.yaml`, or just run `optmux .` for a plain session. Press **`C-M-h`** (Ctrl-Alt-h) any time for the cheatsheet.
+Then `chmod +x .optmux.yaml && ./.optmux.yaml`, or just run `optmux .` for a plain session. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet.
 
-> **Mouse:** optmux turns on mouse mode everywhere: in tmux (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
+> **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
 
 ## 1. Watch and steer: lazygit beside the agent
@@ -93,9 +93,9 @@ Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](READM
 
 ## 3. Multitask: one task, one worktree, one window
 
-One agent per checkout gets old fast. Give every task its own [git worktree](https://git-scm.com/docs/git-worktree) so agents never step on each other's files, and give every worktree its own tmux window:
+One agent per checkout gets old fast. Give every task its own [git worktree](https://git-scm.com/docs/git-worktree) so agents never step on each other's files, and give every worktree its own TMUX window:
 
-> **one task = one branch = one worktree = one tmux window**
+> **one task = one branch = one worktree = one TMUX window**
 
 The window name is the worktree's directory, so the status bar reads like your task list.
 Everything you need for a task is one keystroke away, as extra panes in *that same window*, already `cd`'d into *that same worktree*:

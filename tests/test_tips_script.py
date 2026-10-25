@@ -90,7 +90,7 @@ def test_sections_in_order_with_underlined_headings(tmp_path):
     (tmp_path / "tmux" / "tips-content.txt").write_text("  C-M-g  lazygit\n")
     (tmp_path / "tmux" / "tips-plugins.txt").write_text("  a/b  https://github.com/a/b\n")
     out = run_tips(tmp_path, TERM="xterm-256color")
-    headings = ["Keyboard Shortcuts", "Bundled Tools", "Plugins", "Good to Know"]
+    headings = ["Keyboard Shortcuts", "Mouse", "Bundled Tools", "TMUX Plugins", "Good to Know"]
     positions = [out.index(f"\n{h}\n{'=' * len(h)}\n") for h in headings]
     assert positions == sorted(positions)  # shortcuts come first
     assert "\noptmux tips\n===========\n" in out
@@ -141,8 +141,8 @@ def test_no_warnings_when_nothing_to_warn(tmp_path):
 
 def test_title_oneliner_and_prefix_key_first(tmp_path):
     out = run_tips(tmp_path, TERM="xterm-256color")
-    assert "New to tmux? https://github.com/tmux/tmux/wiki/Getting-Started" in out
-    assert out.index("New to tmux?") < out.index("Keyboard Shortcuts")
+    assert "New to TMUX? https://github.com/tmux/tmux/wiki/Getting-Started" in out
+    assert out.index("New to TMUX?") < out.index("Keyboard Shortcuts")
     shortcuts = out[out.index("Keyboard Shortcuts"):]
     assert shortcuts.split("\n")[3].strip().startswith("TMUX Prefix key: Ctrl+T (C-t)")
 
@@ -221,3 +221,28 @@ def test_good_to_know_covers_isolation_workdir_panes_and_bell(tmp_path):
     assert "C-M-s/g/d/f" in notes and "workdir" in notes
     assert "blinking red" in notes and "C-t n / C-t p" in notes
     assert notes.index("Each project is isolated") < notes.index("optmux env CMD")  # concepts first
+
+
+def test_custom_shortcuts_get_their_own_section_after_the_bundled_ones(tmp_path):
+    (tmp_path / "tmux").mkdir()
+    (tmp_path / "tmux" / "tips-content.txt").write_text("  C-M-g  lazygit\n")
+    (tmp_path / "tmux" / "tips-custom.txt").write_text("  C-M-b  gh browse .\n")
+    out = run_tips(tmp_path, TERM="xterm-256color")
+    assert "\nYour Shortcuts\n==============\n" in out
+    assert out.index("C-M-g  lazygit") < out.index("Your Shortcuts") < out.index("C-M-b  gh browse .")
+    assert out.index("C-M-b  gh browse .") < out.index("\nMouse\n")
+
+
+def test_no_custom_section_without_custom_shortcuts(tmp_path):
+    assert "Your Shortcuts" not in run_tips(tmp_path, TERM="xterm-256color")
+
+
+def test_mouse_section_and_consistent_tmux_name(tmp_path):
+    out = run_tips(tmp_path, TERM="xterm-256color")
+    mouse = out[out.index("\nMouse\n"):out.index("\nBundled Tools\n")]
+    for word in ("Click", "Drag", "Scroll", "Right-click"):
+        assert word in mouse
+    prose = out[:out.index("Bundled Tools")]
+    assert "TMUX runs many shells" in prose and "New to TMUX?" in prose
+    assert "Control+Option on a Mac" in prose
+    assert " tmux " not in prose  # prose says TMUX (URLs and commands keep their spelling)

@@ -177,7 +177,7 @@ Add an `optmux:` section to your tmuxp YAML to configure shortcuts and tmux sett
 ```yaml
 optmux:
   shortcuts:
-    C-M-b: gh browse .                              # Ctrl-Alt-b: run command directly
+    C-M-b: gh browse .                              # Ctrl+Alt+b (Control+Option+b on a Mac): run command directly
     C-M-e:
       command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
       new_window: true                              # open in a new-window

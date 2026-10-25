@@ -145,15 +145,15 @@ optmux:
     C-t R:
       tip: reload config
     C-t F:
-      tip: fingers (copy URLs/paths/hashes)
+      tip: tmux-fingers (copy URLs/paths/hashes)
     C-t X:
       tip: extrakto (pick words/lines on screen to copy or insert)
     C-t h/j/k/l:
       tip: navigate panes
     C-t t:
-      tip: send prefix to nested tmux
+      tip: send prefix to nested TMUX
     C-t T:
-      tip: swap prefix (nested tmux)
+      tip: swap prefix (nested TMUX)
 
   menu:
     pane:

@@ -178,68 +178,53 @@ def generate_shortcut_line(key, value):
     return f"{bind} {tmux_key} {' \\; '.join(parts)}\n"
 
 
+def _tip_entries(shortcuts):
+    """(display key, tip text) for each shortcut that has something to show."""
+    entries = []
+    for key, value in shortcuts.items():
+        if isinstance(value, str):
+            tip = value if value else None
+        elif isinstance(value, dict):
+            tip = value.get("tip")
+            if tip is None:
+                tip = value.get("command") or value.get("send_keys")
+        else:
+            continue
+        if not tip:
+            continue
+        # display key: non-C-M- keys without spaces get C-t prefix
+        if not key.startswith("C-M-") and " " not in key and "/" not in key:
+            key = f"C-t {key}"
+        entries.append((key, tip))
+    return entries
+
+
+def _format_tip_entries(groups):
+    """Align (key, tip) entries across groups; groups are separated by a blank line."""
+    groups = [g for g in groups if g]
+    width = max((len(k) for g in groups for k, _ in g), default=0) + 2
+    return "\n\n".join("\n".join(f"  {k:<{width}}  {t}" for k, t in g) for g in groups)
+
+
 def generate_tips_content(shortcuts, bundled_keys=None):
     """Generate formatted tips text from shortcuts with tip fields.
 
-    If bundled_keys is provided, user-defined shortcuts are listed first, apart from the bundled
-    ones, which are split into direct keys (C-M-*) and tmux prefix keys (C-t ...).
+    If bundled_keys is provided, only the bundled shortcuts are listed (your own are in
+    generate_custom_tips_content), split into direct keys (C-M-*) and tmux prefix keys (C-t ...).
     """
     if bundled_keys is None:
-        bundled_keys = set()
+        entries = _tip_entries(shortcuts)
+        return _format_tip_entries([entries]) + "\n" if entries else ""
+    entries = _tip_entries({k: v for k, v in shortcuts.items() if k in bundled_keys})
+    direct = [e for e in entries if not e[0].startswith("C-t ")]
+    prefixed = [e for e in entries if e[0].startswith("C-t ")]
+    return _format_tip_entries([direct, prefixed]) + "\n" if entries else ""
 
-    def extract_entries(shortcut_dict, keys_filter=None):
-        entries = []
-        for key, value in shortcut_dict.items():
-            if keys_filter is not None and (key in keys_filter) != (keys_filter == bundled_keys):
-                continue
-            if isinstance(value, str):
-                tip = value if value else None
-            elif isinstance(value, dict):
-                tip = value.get("tip")
-                if tip is None:
-                    tip = value.get("command") or value.get("send_keys")
-            else:
-                continue
-            if not tip:
-                continue
-            # display key: non-C-M- keys without spaces get C-t prefix
-            if not key.startswith("C-M-") and " " not in key and "/" not in key:
-                display_key = f"C-t {key}"
-            else:
-                display_key = key
-            entries.append((display_key, tip))
-        return entries
 
-    builtin = extract_entries(shortcuts, bundled_keys if bundled_keys else None)
-    user = extract_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys}, set()) if bundled_keys else []
-
-    all_entries = user + builtin
-    if not all_entries:
-        return ""
-
-    key_width = max(len(k) for k, _ in all_entries) + 2
-    lines = []
-
-    if user:
-        for display_key, tip in user:
-            lines.append(f"  {display_key:<{key_width}}  {tip}")
-
-    # bundled shortcuts, grouped: direct keys (C-M-*), then tmux prefix keys (C-t ...)
-    groups = [builtin]
-    if bundled_keys:
-        groups = [
-            [e for e in builtin if not e[0].startswith("C-t ")],
-            [e for e in builtin if e[0].startswith("C-t ")],
-        ]
-    for group in groups:
-        if not group:
-            continue
-        if lines:
-            lines.append("")
-        for display_key, tip in group:
-            lines.append(f"  {display_key:<{key_width}}  {tip}")
-
-    return "\n".join(lines) + "\n"
+def generate_custom_tips_content(shortcuts, bundled_keys):
+    """Tips text for the shortcuts that aren't bundled: yours, from a project or ~/.optmux.yaml."""
+    entries = _tip_entries({k: v for k, v in shortcuts.items() if k not in bundled_keys})
+    return _format_tip_entries([entries]) + "\n" if entries else ""
 
 
 PLUGINS_CONF = "optmux-plugins.conf"
@@ -357,6 +342,11 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
         tips_content = generate_tips_content(shortcuts, bundled_keys)
         if tips_content:
             (tmux_dir / "tips-content.txt").write_text(tips_content)
+        custom_tips = generate_custom_tips_content(shortcuts, bundled_keys) if bundled_keys else ""
+        if custom_tips:
+            (tmux_dir / "tips-custom.txt").write_text(custom_tips)
+        else:
+            (tmux_dir / "tips-custom.txt").unlink(missing_ok=True)
 
     # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
     tmux_config = optmux.get("tmux_config") or {}

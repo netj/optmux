@@ -105,10 +105,24 @@ def test_bundled_shortcuts_grouped_direct_then_prefix():
     }
     result = generate_tips_content(shortcuts, bundled_keys={"C-t z", "C-M-g"})
     groups = [g.splitlines() for g in result.rstrip("\n").split("\n\n")]
-    assert [len(g) for g in groups] == [1, 1, 1]
-    assert "C-M-b" in groups[0][0]  # your own shortcuts first
-    assert "C-M-g" in groups[1][0]  # then bundled direct keys
-    assert "C-t z" in groups[2][0]  # then prefix keys
+    assert [len(g) for g in groups] == [1, 1]
+    assert "C-M-g" in groups[0][0]  # bundled direct keys
+    assert "C-t z" in groups[1][0]  # then prefix keys
+    assert "C-M-b" not in result  # yours are listed separately
+
+
+def test_custom_tips_are_the_non_bundled_shortcuts():
+    from optmux.cli import generate_custom_tips_content
+    shortcuts = {
+        "C-t z": {"tip": "toggle zoom"},
+        "C-M-b": {"tip": "mine"},
+        "C-M-q": "gh browse .",
+    }
+    result = generate_custom_tips_content(shortcuts, bundled_keys={"C-t z"})
+    assert "C-M-b" in result and "mine" in result
+    assert "C-M-q" in result
+    assert "toggle zoom" not in result
+    assert generate_custom_tips_content({"C-t z": {"tip": "x"}}, bundled_keys={"C-t z"}) == ""
 
 
 def test_bundled_reference_lists_window_chooser_and_extrakto_next_to_fingers():
