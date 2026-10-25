@@ -246,3 +246,12 @@ def test_mouse_section_and_consistent_tmux_name(tmp_path):
     assert "TMUX runs many shells" in prose and "New to TMUX?" in prose
     assert "Control+Option on a Mac" in prose
     assert " tmux " not in prose  # prose says TMUX (URLs and commands keep their spelling)
+
+
+def test_quick_start_linked_right_under_the_tagline(tmp_path):
+    out = run_tips(tmp_path, TERM="xterm-256color")
+    link = "Quick Start: https://github.com/netj/optmux/blob/main/QUICKSTART.md"
+    assert link in out
+    lines = out.splitlines()
+    tagline = next(i for i, l in enumerate(lines) if l.startswith("Optimal, opinionated"))
+    assert lines[tagline + 1] == link

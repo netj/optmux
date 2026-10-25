@@ -100,6 +100,7 @@ bundled_tool() {
 render_tips() {
     printf '\noptmux tips\n===========\n\n'
     echo "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project."
+    echo "Quick Start: https://github.com/netj/optmux/blob/main/QUICKSTART.md"
     echo
     echo "TMUX runs many shells in one terminal, and keeps them alive when you detach."
     echo "New to TMUX? https://github.com/tmux/tmux/wiki/Getting-Started"
