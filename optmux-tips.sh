@@ -162,62 +162,34 @@ screen_rows() {
     echo "${rows:-$(tput lines 2>/dev/null || echo 24)}"
 }
 
-# page: show the screen scrollably from the top, with the footer pinned to the last row.
-# Used when the screen is taller than the terminal (otherwise it'd open scrolled to the bottom).
-page() {
-    local rows body top=0 max key rest step
-    trap 'printf "\033[?7h\033[?1049l"' EXIT
-    printf '\033[?1049h\033[?7l'  # alternate screen; no line wrapping, so one line is one row
-    while true; do
-        rows=$(screen_rows)
-        body=$((rows - 1))
-        max=$((${#lines[@]} - body))
-        ((max < 0)) && max=0
-        ((top > max)) && top=$max
-        ((top < 0)) && top=0
-        printf '\033[H\033[2J'
-        printf '%s\n' "${lines[@]:top:body}"
-        printf '\033[%d;1H\033[7m ↑/↓ scroll (%d%%)   q/Enter: dismiss   d: for a week   D: forever \033[0m' \
-            "$rows" $((max == 0 ? 100 : (top * 100 / max)))
-        step=0
-        IFS= read -rsn1 key || break
-        if [[ "$key" == $'\e' ]]; then
-            rest=""
-            IFS= read -rsn2 -t 1 rest || true
-            case "$rest" in
-                "[A"|"OA") step=-1 ;;
-                "[B"|"OB") step=1 ;;
-                "[5") IFS= read -rsn1 -t 1 _ || true; step=-$body ;;  # PgUp
-                "[6") IFS= read -rsn1 -t 1 _ || true; step=$body ;;   # PgDn
-                "[H") top=0 ;;
-                "[F") top=$max ;;
-            esac
-        else
-            dismiss_key "$key" && break
-            case "$key" in
-                j) step=1 ;;
-                k) step=-1 ;;
-                " ") step=$body ;;
-                b) step=-$body ;;
-                g) top=0 ;;
-                G) top=$max ;;
-            esac
-        fi
-        top=$((top + step))
+# scroll_in_tmux: when the screen is taller than the pane, leave it in tmux's copy-mode at the top
+# (instead of scrolled to the bottom), with key hints in this window's status bar entry.
+# Mouse wheel, arrows, PgUp/PgDn and / search work as usual; q, or scrolling past the end, goes back
+# to the footer prompt below.
+scroll_in_tmux() {
+    local pane=${TMUX_PANE:-}
+    [[ -n "${TMUX:-}" && -n "$pane" ]] || return 0
+    tmux set-window-option -t "$pane" window-status-current-format \
+        ' #I:tips | wheel/↑/↓/PgUp/PgDn scroll · / search · q done reading ' 2>/dev/null || return 0
+    trap 'tmux set-window-option -u -t "$pane" window-status-current-format 2>/dev/null' EXIT
+    tmux copy-mode -e -t "$pane" 2>/dev/null || return 0
+    tmux send-keys -t "$pane" -X history-top 2>/dev/null || return 0
+    while [[ "$(tmux display-message -p -t "$pane" '#{pane_in_mode}' 2>/dev/null)" == 1 ]]; do
+        sleep 0.2
     done
+    tmux set-window-option -u -t "$pane" window-status-current-format 2>/dev/null || true
 }
 
 lines=()
 while IFS= read -r line; do lines+=("$line"); done < <(render_tips)
 
-if [[ -t 0 && -t 1 ]] && ((${#lines[@]} + 2 > $(screen_rows))); then
-    page
-else
-    clear 2>/dev/null || true  # unknown TERM (common over SSH) must not abort the tips
-    printf '%s\n' "${lines[@]}"
-    printf '\n%s\n%s\n\n' "$(rule)" "$footer"
-    while true; do
-        read -rsn1 key
-        dismiss_key "$key" && break
-    done
+clear 2>/dev/null || true  # unknown TERM (common over SSH) must not abort the tips
+printf '%s\n' "${lines[@]}"
+printf '\n%s\n%s\n\n' "$(rule)" "$footer"
+if [[ -t 0 && -t 1 ]] && ((${#lines[@]} + 5 > $(screen_rows))); then
+    scroll_in_tmux
 fi
+while true; do
+    read -rsn1 key
+    dismiss_key "$key" && break
+done

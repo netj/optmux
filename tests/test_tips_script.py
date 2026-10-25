@@ -1,9 +1,12 @@
-"""Tests for the OSC 52 terminal detection in optmux-tips.sh."""
+"""Tests for the tips screen script (tips.sh): OSC 52 terminal detection, structure, scrolling."""
 
+import os
 import subprocess
 from importlib.resources import files as pkg_files
 
 import pytest
+
+from conftest import skip_no_tmux
 
 TIPS_SH = str(pkg_files("optmux").joinpath("data", "tips.sh"))
 
@@ -150,3 +153,38 @@ def test_rule_before_footer(tmp_path):
     footer = next(i for i, l in enumerate(lines) if l.startswith("q/Enter: dismiss"))
     assert set(lines[footer - 1]) == {"─"}  # divider directly above the footer
     assert len(lines[footer - 1]) >= 20
+
+
+@skip_no_tmux
+def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
+    """The tips window must not open scrolled to the bottom: it enters copy-mode at the top."""
+    import time
+    sock = f"optmux-tips-test-{os.getpid()}"
+    tmux = ["tmux", "-L", sock, "-f", "/dev/null"]
+
+    def tmux_out(*args):
+        return subprocess.run([*tmux, *args], capture_output=True, text=True).stdout.strip()
+
+    try:
+        subprocess.run(
+            [*tmux, "new-session", "-d", "-x", "100", "-y", "10",
+             f"OPTMUX_DIR={tmp_path} TERM=screen-256color bash {TIPS_SH} --force; sleep 30"],
+            check=True,
+        )
+        state = ""
+        for _ in range(50):  # wait for the script to print and enter copy-mode
+            state = tmux_out("display-message", "-p", "#{pane_in_mode} #{scroll_position} #{history_size}")
+            if state.startswith("1 "):
+                break
+            time.sleep(0.1)
+        in_mode, position, history = state.split()
+        assert in_mode == "1"
+        assert position == history and int(history) > 0  # top of the scrollback
+        assert "scroll" in tmux_out("show-options", "-wv", "window-status-current-format")
+        # scrolling past the end leaves copy-mode, back at the footer prompt
+        subprocess.run([*tmux, "send-keys", "-X", "-N", "500", "scroll-down"], check=True)
+        time.sleep(0.5)
+        assert tmux_out("display-message", "-p", "#{pane_in_mode}") == "0"
+        assert "q/Enter: dismiss" in tmux_out("capture-pane", "-p")
+    finally:
+        subprocess.run([*tmux, "kill-server"], capture_output=True)
