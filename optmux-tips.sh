@@ -129,11 +129,11 @@ render_tips() {
         cat "$plugins_tips"
     fi
 
-    heading "Tips & Notes"
+    heading "Good to Know"
     cat <<'EOF'
-  - optmux env CMD...  runs CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p
-  - In a diff, click a line number twice to open that line in $EDITOR
-  - copy-mode yank auto-copies to the system clipboard (OSC 52)
+  (.) optmux env CMD...  runs CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p
+  (.) In a diff, click a line number twice to open that line in $EDITOR
+  (.) copy-mode yank auto-copies to the system clipboard (OSC 52)
 EOF
     [[ -n "$nerd_font_tip" ]] && echo "$nerd_font_tip"
     [[ -n "$terminal_tip" ]] && echo "$terminal_tip"

@@ -90,7 +90,7 @@ def test_sections_in_order_with_underlined_headings(tmp_path):
     (tmp_path / "tmux" / "tips-content.txt").write_text("  C-M-g  lazygit\n")
     (tmp_path / "tmux" / "tips-plugins.txt").write_text("  a/b  https://github.com/a/b\n")
     out = run_tips(tmp_path, TERM="xterm-256color")
-    headings = ["Keyboard Shortcuts", "Bundled Tools", "Plugins", "Tips & Notes"]
+    headings = ["Keyboard Shortcuts", "Bundled Tools", "Plugins", "Good to Know"]
     positions = [out.index(f"\n{h}\n{'=' * len(h)}\n") for h in headings]
     assert positions == sorted(positions)  # shortcuts come first
     assert "\noptmux tips\n===========\n" in out
@@ -122,10 +122,10 @@ def test_old_less_flagged(tmp_path):
 
 def test_notes_list_tips_and_warnings(tmp_path):
     out = run_tips(tmp_path, TERM="xterm-256color")
-    notes = out[out.index("Tips & Notes"):]
-    assert "  - optmux env CMD..." in notes  # tips are quiet bullets
+    notes = out[out.index("Good to Know"):]
+    assert "  (.) optmux env CMD..." in notes  # tips are quiet bullets
     assert "  [!] Could not confirm OSC 52 support" in notes  # warnings keep [!], after the tips
-    assert notes.index("- optmux env") < notes.index("[!]")
+    assert notes.index("(.) optmux env") < notes.index("[!]")
     assert "Heads Up" not in out
 
 
@@ -136,7 +136,7 @@ def test_no_warnings_when_nothing_to_warn(tmp_path):
     (bin_dir / "fc-list").chmod(0o755)
     out = run_tips(tmp_path, TERM="xterm-ghostty", PATH=f"{bin_dir}:/usr/bin:/bin")
     assert "[!]" not in out
-    assert "Tips & Notes" in out
+    assert "Good to Know" in out
 
 
 def test_title_oneliner_and_prefix_key_first(tmp_path):
