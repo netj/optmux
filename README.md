@@ -469,7 +469,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 |---|---|
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
-| `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
 ## Session persistence

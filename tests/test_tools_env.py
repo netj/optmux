@@ -336,3 +336,9 @@ def test_lazygit_ctrl_g_and_shortcut_share_the_script():
     command = next(c for c in defaults["lazygit"]["customCommands"] if c["key"] == "<c-g>")["command"]
     assert command == "optmux-diff-base"
     assert defaults["shortcuts"]["C-M-d"]["command"] == "optmux-env optmux-diff-base"
+
+
+def test_diff_base_shows_diffstat_before_the_patch(repo_with_remote):
+    out = diff_base(repo_with_remote)
+    assert out.index("1 file changed") < out.index("diff --git")
+    assert out.lstrip().startswith("a.txt |")

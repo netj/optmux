@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # optmux-diff-base — diff the branch against the default branch (origin/HEAD, else origin/main)
-# since they diverged, i.e. what a PR from here would contain. Extra args go to git diff.
+# since they diverged, i.e. what a PR from here would contain: a diffstat, then the patch.
+# Extra args go to git diff.
 # Used by lazygit's Ctrl-g and the C-M-d shortcut.
 base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=origin/main
-exec git diff "$@" "$base"...
+exec git diff --patch-with-stat "$@" "$base"...
