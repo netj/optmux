@@ -42,9 +42,18 @@ def env_sh(optmux_dir, base_env=None):
     return dict(kv.split("=", 1) for kv in result.stdout.split("\0") if kv)
 
 
-def git_config_env(env):
-    count = int(env.get("GIT_CONFIG_COUNT") or 0)
-    return {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"] for i in range(count)}
+def git_get(env, key, tmp_path):
+    """Ask real git for a config value, as seen from `env` with an empty HOME."""
+    if not shutil.which("git"):
+        pytest.skip("git not found")
+    home = tmp_path / "empty-home"
+    home.mkdir(exist_ok=True)
+    result = subprocess.run(
+        ["git", "config", "--get-all", key],
+        env={**env, "HOME": str(home), "XDG_CONFIG_HOME": str(home), "GIT_CONFIG_NOSYSTEM": "1"},
+        capture_output=True, text=True,
+    )
+    return result.stdout.split("\n")[:-1]
 
 
 def run_setup(tmp_path, optmux=None, tools=("delta", "lazygit"), lazygit_config_dir=None):
@@ -108,7 +117,7 @@ def test_shells_and_server_env_left_alone(tmp_path):
     os.environ["LESS"] = "-R"
     run_setup(tmp_path)
     assert os.environ["LESS"] == "-R"
-    assert "GIT_CONFIG_COUNT" not in os.environ
+    assert "GIT_CONFIG_PARAMETERS" not in os.environ
     assert "LG_CONFIG_FILE" not in os.environ
     # only the optmux-* helpers go on PATH, shadowing nothing
     bin_dir = tmp_path / "bin"
@@ -119,33 +128,37 @@ def test_shells_and_server_env_left_alone(tmp_path):
 # --- git_config --------------------------------------------------------------
 
 def test_git_config_via_env(tmp_path):
-    config = git_config_env(run_setup(tmp_path))
-    assert config["core.pager"] == "delta"
-    assert config["interactive.diffFilter"] == "delta --color-only"
-    assert config["delta.navigate"] == "true"
+    env = run_setup(tmp_path)
+    assert git_get(env, "core.pager", tmp_path) == ["delta"]
+    assert git_get(env, "interactive.diffFilter", tmp_path) == ["delta --color-only"]
+    assert git_get(env, "delta.navigate", tmp_path) == ["true"]
+    assert git_get(env, "delta.hyperlinks-file-link-format", tmp_path) == ["file://{path}#L{line}"]
 
 
 def test_git_config_skips_missing_pager(tmp_path):
-    config = git_config_env(run_setup(tmp_path, tools=()))
-    assert "core.pager" not in config
-    assert "interactive.diffFilter" not in config
-    assert config["delta.navigate"] == "true"  # harmless without delta
+    env = run_setup(tmp_path, tools=())
+    assert git_get(env, "core.pager", tmp_path) == []
+    assert git_get(env, "interactive.diffFilter", tmp_path) == []
+    assert git_get(env, "delta.navigate", tmp_path) == ["true"]  # harmless without delta
 
 
-def test_git_config_after_user_env_config(tmp_path):
-    os.environ.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.pager", GIT_CONFIG_VALUE_0="cat")
-    run_setup(tmp_path, {"git_config": {"core.pager": "delta"}})
-    env = env_sh(tmp_path, {"GIT_CONFIG_KEY_0": "core.pager", "GIT_CONFIG_VALUE_0": "cat"})
-    assert env["GIT_CONFIG_KEY_0"] == "core.pager"
-    assert env["GIT_CONFIG_KEY_1"] == "core.pager"  # later entry wins in git
-    assert env["GIT_CONFIG_VALUE_1"] == "delta"
-    assert env["GIT_CONFIG_COUNT"] == "2"
+def test_git_config_quotes_values(tmp_path):
+    env = run_setup(tmp_path, {"git_config": {"alias.q": "log --format='%h %s'"}})
+    assert git_get(env, "alias.q", tmp_path) == ["log --format='%h %s'"]
+
+
+def test_git_config_keeps_and_follows_user_parameters(tmp_path):
+    os.environ["GIT_CONFIG_PARAMETERS"] = "'core.pager'='cat' 'user.name'='me'"
+    env = run_setup(tmp_path, {"git_config": {"core.pager": "delta"}})
+    assert git_get(env, "user.name", tmp_path) == ["me"]
+    assert git_get(env, "core.pager", tmp_path) == ["cat", "delta"]  # last one wins
 
 
 def test_git_config_not_stacked_when_nested(tmp_path):
     env = run_setup(tmp_path / "outer")
     os.environ.update({k: v for k, v in env.items() if k.startswith(("GIT_CONFIG_", "OPTMUX_USER_"))})
-    assert run_setup(tmp_path / "inner")["GIT_CONFIG_COUNT"] == env["GIT_CONFIG_COUNT"]
+    inner = run_setup(tmp_path / "inner")
+    assert inner["GIT_CONFIG_PARAMETERS"] == env["GIT_CONFIG_PARAMETERS"]
 
 
 def test_git_config_wins_in_real_git(tmp_path):
@@ -158,6 +171,21 @@ def test_git_config_wins_in_real_git(tmp_path):
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home))
     result = subprocess.run(["git", "var", "GIT_PAGER"], env=env, capture_output=True, text=True)
     assert result.stdout.strip() == "less"
+
+
+@pytest.mark.skipif(not shutil.which("delta"), reason="delta not found")
+def test_delta_sees_git_config(tmp_path):
+    """delta reads delta.* itself and ignores GIT_CONFIG_COUNT, so optmux must use GIT_CONFIG_PARAMETERS."""
+    env = run_setup(tmp_path)
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    result = subprocess.run(
+        ["delta", "--show-config"],
+        env={**env, "PATH": os.environ["PATH"], "HOME": str(home), "XDG_CONFIG_HOME": str(home)},
+        capture_output=True, text=True,
+    )
+    assert "line-numbers" in result.stdout
+    assert any("hyperlinks" in line and "true" in line for line in result.stdout.splitlines())
 
 
 # --- lazygit -----------------------------------------------------------------

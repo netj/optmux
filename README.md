@@ -380,7 +380,7 @@ To use optmux's settings in every shell inside optmux, add this to your shell rc
 
 ### git_config
 
-git config for commands run through [`optmux-env`](#optmux-env), passed through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`. It takes precedence over `~/.gitconfig` and repo config without modifying either. Keys merge across layers. A pager setting (`core.pager`, `interactive.diffFilter`, `pager.*`) whose command isn't installed is skipped, so a missing delta falls back to your own pager.
+git config for commands run through [`optmux-env`](#optmux-env), passed through `GIT_CONFIG_PARAMETERS` (the env equivalent of `git -c`, which, unlike `GIT_CONFIG_COUNT`, delta also reads for its `delta.*` settings). It takes precedence over `~/.gitconfig` and repo config without modifying either. Keys merge across layers. A pager setting (`core.pager`, `interactive.diffFilter`, `pager.*`) whose command isn't installed is skipped, so a missing delta falls back to your own pager.
 
 ```yaml
 optmux:
@@ -443,7 +443,7 @@ optmux sets these before launching tmux/tmuxp:
 | Variable | Value |
 |---|---|
 | anything under [`env:`](#env) | e.g. `PAGER`, `LESS`, `LESS_OSC8_OPEN_ANY` by default |
-| `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n` | from [`git_config:`](#git_config) |
+| `GIT_CONFIG_PARAMETERS` | from [`git_config:`](#git_config) |
 | `LG_CONFIG_FILE` | your own lazygit config, then optmux's from [`lazygit:`](#lazygit) |
 
 ## Git, diffs, and links

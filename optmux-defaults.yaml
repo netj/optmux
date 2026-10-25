@@ -32,7 +32,7 @@ optmux:
     # the leading ^P- tells less to run it without echoing the command or printing "link done"
     LESS_OSC8_OPEN_ANY: "\x10-optmux-open-url"
 
-  # git config, passed through GIT_CONFIG_* env vars so it wins over ~/.gitconfig without touching it.
+  # git config, passed through GIT_CONFIG_PARAMETERS (like `git -c`; delta reads that too) so it wins over ~/.gitconfig without touching it.
   # A pager whose command isn't installed (e.g., no delta) is skipped.
   git_config:
     core.pager: delta

@@ -426,26 +426,34 @@ def _command_installed(command):
     return bool(words) and shutil.which(words[0]) is not None
 
 
-def generate_git_config_env(git_config):
-    """Turn optmux.git_config into GIT_CONFIG_COUNT/KEY_n/VALUE_n env vars.
+def _git_config_parameter(key, value):
+    """Quote key=value the way git's GIT_CONFIG_PARAMETERS expects: 'key'='value'."""
+    def quote(text):
+        return "'" + text.replace("'", "'\\''") + "'"
+    return f"{quote(key)}={quote(value)}"
 
-    Entries come after any GIT_CONFIG_* the user already exported, so optmux's win.
+
+def generate_git_config_env(git_config):
+    """Turn optmux.git_config into a GIT_CONFIG_PARAMETERS env var (like `git -c key=value`).
+
+    Not GIT_CONFIG_COUNT/KEY_n/VALUE_n: delta reads its settings (delta.*) itself and only
+    understands GIT_CONFIG_PARAMETERS. Entries come after any the user already exported, so
+    optmux's win.
     """
-    # an outer optmux records the user's own count, so nesting doesn't stack our entries twice
-    base = int(os.environ.get("OPTMUX_USER_GIT_CONFIG_COUNT", os.environ.get("GIT_CONFIG_COUNT")) or 0)
-    env = {"OPTMUX_USER_GIT_CONFIG_COUNT": str(base)}
-    count = base
+    # an outer optmux records the user's own value, so nesting doesn't stack our entries twice
+    user = os.environ.get("OPTMUX_USER_GIT_CONFIG_PARAMETERS", os.environ.get("GIT_CONFIG_PARAMETERS", ""))
+    params = [user] if user else []
     for key, value in git_config.items():
         if value is None:
             continue
         if (key.lower() in GIT_CONFIG_COMMAND_KEYS or key.lower().startswith("pager.")) \
                 and not _command_installed(value):
             continue
-        env[f"GIT_CONFIG_KEY_{count}"] = key
-        env[f"GIT_CONFIG_VALUE_{count}"] = _env_value(value)
-        count += 1
-    env["GIT_CONFIG_COUNT"] = str(count)
-    return env
+        params.append(_git_config_parameter(key, _env_value(value)))
+    return {
+        "OPTMUX_USER_GIT_CONFIG_PARAMETERS": user,
+        "GIT_CONFIG_PARAMETERS": " ".join(params),
+    }
 
 
 def _user_lazygit_config_files():
