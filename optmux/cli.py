@@ -192,6 +192,7 @@ def _tip_entries(shortcuts):
             continue
         if not tip:
             continue
+        tip = " ".join(str(tip).split())  # a YAML block scalar (tip: |) must stay one line
         # display key: non-C-M- keys without spaces get C-t prefix
         if not key.startswith("C-M-") and " " not in key and "/" not in key:
             key = f"C-t {key}"

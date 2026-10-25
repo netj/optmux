@@ -335,10 +335,21 @@ def test_lazygit_ctrl_g_and_shortcut_share_the_script():
     defaults = load_bundled_defaults()
     command = next(c for c in defaults["lazygit"]["customCommands"] if c["key"] == "<c-g>")["command"]
     assert command == "optmux-diff-base"
-    assert defaults["shortcuts"]["C-M-d"]["command"] == "optmux-env optmux-diff-base"
+    assert defaults["shortcuts"]["C-M-d"]["command"].strip() == '"$OPTMUX_DIR/bin/optmux-env" optmux-diff-base'
 
 
 def test_diff_base_shows_diffstat_before_the_patch(repo_with_remote):
     out = diff_base(repo_with_remote)
     assert out.index("1 file changed") < out.index("diff --git")
     assert out.lstrip().startswith("a.txt |")
+
+
+def test_bundled_shortcuts_call_helpers_by_absolute_path_not_bare_names():
+    """Shell startup files (zsh -c reads ~/.zshenv) can rebuild PATH, so shortcuts must not rely on it."""
+    import re
+    shortcuts = load_bundled_defaults()["shortcuts"]
+    for key, value in shortcuts.items():
+        command = value.get("command", "") if isinstance(value, dict) else ""
+        for line in command.splitlines():
+            line = re.sub(r"^\(.*?\) & ?", "", line)  # drop a backgrounded helper subshell
+            assert not re.match(r"\s*optmux-[a-z-]+\b", line), f"{key} runs a bare optmux helper: {line}"

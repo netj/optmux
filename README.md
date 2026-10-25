@@ -372,12 +372,14 @@ optmux:
 
 `env`, `git_config`, and `lazygit` are all written to `$OPTMUX_DIR/env.sh`. **They apply only to commands started through `optmux-env`**, and to everything those commands start in turn. Your shells inside optmux behave exactly as they do outside it.
 
-The bundled shortcuts use it: `C-M-g` runs `optmux-env lazygit` and `C-M-d` runs `optmux-env optmux-diff-base`. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
+The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`), since your shell startup files may rebuild `PATH`: `C-M-g` runs lazygit and `C-M-d` runs the PR diff through it. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
 
 ```yaml
 optmux:
   shortcuts:
-    C-M-l: optmux-env git log -p
+    C-M-l:
+      command: |
+        "$OPTMUX_DIR/bin/optmux-env" git log -p
 ```
 
 Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` always works. To use optmux's settings in every shell inside optmux, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:

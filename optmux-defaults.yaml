@@ -27,7 +27,8 @@ optmux:
       claritmux_status_time: 0
       claritmux_status_hostname: 1
 
-  # Opinionated environment for commands run via `optmux-env` (as the shortcuts below do) and
+  # Opinionated environment for commands run via `optmux-env` (as the shortcuts below do, by absolute
+  # path: your shell startup files may rebuild PATH, but $OPTMUX_DIR is always set) and
   # everything they start; it wins over your own settings there, while your shells stay untouched.
   # All of env, git_config, and lazygit end up in $OPTMUX_DIR/env.sh.
   # `$VAR` expands; a null value unsets the variable.
@@ -79,16 +80,21 @@ optmux:
       command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
       tip: find file to edit
     C-M-g:
-      command: optmux-env lazygit
-      tip: lazygit
+      command: |
+        (sleep 0.5; tmux send-keys Enter '*' Enter) &
+        "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch
+      tip: |
+        Open lazygit and see the diff of commits of this branch
     C-M-d:
-      command: optmux-env optmux-diff-base
+      command: |
+        "$OPTMUX_DIR/bin/optmux-env" optmux-diff-base
       tip: clickable diff against the default branch (same as lazygit's C-g)
     C-M-s:
       command: ""
       tip: shell in same dir
     C-M-w:
-      command: optmux-gh-open
+      command: |
+        "$OPTMUX_DIR/bin/optmux-gh-open"
       detached: true
       new_window: true
       tip: open PR (or repo) on GitHub

@@ -132,3 +132,15 @@ def test_bundled_reference_lists_window_chooser_and_extrakto_next_to_fingers():
     assert "list all windows" in shortcuts["C-t w"]["tip"]
     assert "extrakto" in shortcuts["C-t X"]["tip"]
     assert keys.index("C-t X") == keys.index("C-t F") + 1  # right after fingers
+
+
+def test_multiline_tip_is_collapsed_to_one_line():
+    shortcuts = {"C-M-g": {"tip": "Open lazygit and see\nthe diff of commits\n"}}
+    assert generate_tips_content(shortcuts) == "  C-M-g    Open lazygit and see the diff of commits\n"
+
+
+def test_bundled_c_m_g_opens_lazygit_on_the_branch_diff():
+    from optmux.cli import load_bundled_defaults
+    value = load_bundled_defaults()["shortcuts"]["C-M-g"]
+    assert '"$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch' in value["command"]
+    assert "send-keys Enter '*' Enter" in value["command"]
