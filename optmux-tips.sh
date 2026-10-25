@@ -99,8 +99,7 @@ bundled_tool() {
 # the whole screen except the footer, as lines on stdout
 render_tips() {
     printf '\noptmux tips\n===========\n\n'
-    echo "optmux is tmux, ready to go: an isolated session per project, with plugins, shortcuts,"
-    echo "and git review tools (lazygit, delta, less) already set up."
+    echo "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project."
     echo
     echo "tmux runs many shells in one terminal, and keeps them alive when you detach."
     echo "New to tmux? https://github.com/tmux/tmux/wiki/Getting-Started"

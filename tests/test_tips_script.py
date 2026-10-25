@@ -204,3 +204,10 @@ def test_osc52_warning_follows_clipboard_tip_and_nerd_font_is_last(tmp_path):
     assert notes.index("copy-mode yank") < notes.index("OSC 52 support") < notes.index("Nerd Font")
     between = notes[notes.index("copy-mode yank"):notes.index("OSC 52 support")]
     assert "Nerd Font" not in between and between.count("\n") == 1  # adjacent lines
+
+
+def test_intro_uses_the_readme_tagline(tmp_path):
+    from pathlib import Path
+    readme = (Path(__file__).parent.parent / "README.md").read_text()
+    tagline = next(l for l in readme.splitlines() if l.startswith("Optimal, opinionated"))
+    assert tagline in run_tips(tmp_path, TERM="xterm-256color")
