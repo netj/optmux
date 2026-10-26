@@ -123,10 +123,11 @@ Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](READM
 
 A typical rhythm:
 
-1. `C-M-c` → `:fix-flaky-test:` → describe the task → move on.
-2. `C-M-c` → `:add-export-csv:` → describe the task → move on.
-3. A bell rings → `C-t n` → `C-M-g` to review → stage, discard a hunk, or make an example edit → tell the agent → `C-t n` to the next one.
-4. Done? Ask the agent to open a PR, then `C-M-w` to look at it.
+1. `C-M-c` → `:hotfix-login:` → describe the bug → move on.
+2. `C-M-c` → `:try-dark-mode:` → describe the idea → move on.
+3. `C-M-c` → `:bump-deps:` → describe the chore → move on.
+4. A bell rings → `C-t n` → `C-M-g` to review → stage, discard a hunk, or make an example edit → tell the agent → `C-t n` to the next one.
+5. Done? Ask the agent to open a PR, then `C-M-w` to look at it.
 
 ## Where to go next
 
