@@ -9,7 +9,7 @@ The optmux Way is how to stay in the driver's seat when working with agents like
 1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, agent running.
 2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the agent.
 3. **Teach by example.** Fix one spot yourself and tell the agent "do it like this".
-4. **Keep many going.** A bell tells you which agent needs you; `C-t n` takes you there.
+4. **Keep many going.** `C-M-c` again starts the next task in a fresh workdir and window while the others keep working, undisturbed. A bell tells you which agent needs you; `C-t n` takes you there.
 
 ## Setup
 
@@ -115,6 +115,7 @@ Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](READM
 
 ## 4. Keep many going
 
+- A new idea doesn't have to wait. **`C-M-c`** spins up the next task in its own worktree and window, while every agent already running carries on in its own: their files, panes, and progress stay untouched. Start one, start five.
 - When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
 - Many projects? `optmux pick` lists every project you've started optmux in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
 - Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](README.md#warp-sessions).
