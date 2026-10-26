@@ -4,7 +4,7 @@
 
 The optmux Way is how to stay in the driver's seat when working with agents like Claude Code. optmux sets up a terminal workspace (built on TMUX) where several agents run side by side, each in its own checkout, and you review, correct, and steer them from the keyboard, with the real files one keystroke away.
 
-**Be the mentor, not the typist.** Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
+**Be the mentor, not the rubber stamp.** Think of the seasoned mechanic who knows what's wrong from the sound of the car pulling into the shop. That sense only comes from keeping your hands in the engine, and no agent can hand it to you. So keep yours in: every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
 1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, agent running.
 2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the agent.
