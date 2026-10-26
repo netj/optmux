@@ -20,7 +20,7 @@ brew install netj/tap/optmux
 
 `brew install netj/tap/optmux` pulls in tmux, [wtcode](https://github.com/netj/wtcode), [lazygit](https://github.com/jesseduffield/lazygit), [delta](https://github.com/dandavison/delta), a recent `less`, fzf, and gh as dependencies. See [Git, diffs, and links](#git-diffs-and-links).
 
-**New here?** The **[Quick Start guide](QUICKSTART.md)** shows how to be an effective mentor and manager of AI coding agents like Claude Code: one worktree and window per task, with lazygit, your editor, and a shell a keystroke away in sibling panes.
+**New here?** Read **[The optmux Way](OPTMUX-WAY.md)**. It shows how to be an effective mentor and manager of AI coding agents like Claude Code: one worktree and window per task, with lazygit, your editor, and a shell a keystroke away in sibling panes.
 
 Try the included example:
 
@@ -473,7 +473,7 @@ optmux sets these before launching tmux/tmuxp:
 
 ## Git, diffs, and links
 
-optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](optmux-defaults.yaml) under [`env`](#env), [`git_config`](#git_config), and [`lazygit`](#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](#optmux-env). Your dotfiles and your shells are left alone. See the [Quick Start guide](QUICKSTART.md) for how it fits into working with coding agents.
+optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](optmux-defaults.yaml) under [`env`](#env), [`git_config`](#git_config), and [`lazygit`](#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](#optmux-env). Your dotfiles and your shells are left alone. See [The optmux Way](OPTMUX-WAY.md) for how it fits into working with coding agents.
 
 - **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
 - **Clickable diff** (`C-M-d`, same as `Ctrl-g` in lazygit): what the branch changes against the default branch, rendered by delta in less, so you can scroll with the mouse and click a line number twice to edit it.

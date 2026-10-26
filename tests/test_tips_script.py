@@ -257,7 +257,7 @@ def test_mouse_section_and_consistent_tmux_name(tmp_path):
 
 def test_quick_start_linked_right_under_the_tagline(tmp_path):
     out = run_tips(tmp_path, TERM="xterm-256color")
-    link = "Quick Start: https://github.com/netj/optmux/blob/main/QUICKSTART.md"
+    link = "The optmux Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
     assert link in out
     lines = out.splitlines()
     tagline = next(i for i, l in enumerate(lines) if l.startswith("Optimal, opinionated"))

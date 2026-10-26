@@ -1,4 +1,4 @@
-# Quick Start
+# The optmux Way
 
 **Be the mentor, not the typist.** Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
