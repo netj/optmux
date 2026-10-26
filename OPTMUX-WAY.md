@@ -1,6 +1,8 @@
 # The optmux Way
 
-**How to work with AI coding agents like Claude Code without losing control of your codebase or your attention.** optmux sets up a terminal workspace (built on TMUX) where several agents run side by side, each in its own checkout, and you review, correct, and steer them from the keyboard.
+**Are you driving your AI coding agent, or is it driving you?** You approve diffs you only skimmed. The agent is three steps ahead of what you understand. The actual code, data, and files feel several layers removed, seen only through a chat transcript.
+
+The optmux Way is how to stay in the driver's seat when working with agents like Claude Code. optmux sets up a terminal workspace (built on TMUX) where several agents run side by side, each in its own checkout, and you review, correct, and steer them from the keyboard, with the real files one keystroke away.
 
 **Be the mentor, not the typist.** Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
