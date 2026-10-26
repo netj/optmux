@@ -1,5 +1,7 @@
 # The optmux Way
 
+**How to work with AI coding agents like Claude Code without losing control of your codebase or your attention.** optmux sets up a terminal workspace (built on TMUX) where several agents run side by side, each in its own checkout, and you review, correct, and steer them from the keyboard.
+
 **Be the mentor, not the typist.** Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
 1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, agent running.
@@ -13,7 +15,7 @@
 brew install netj/tap/optmux   # optmux + tmux, wtcode, lazygit, delta, less, fzf, gh
 ```
 
-Put a small `.optmux.yaml` in your repo (check it in, or keep it in `.git/info/exclude`):
+Put a small `myproject.optmux.yaml` in your repo (check it in, or keep it in `.git/info/exclude`):
 
 ```yaml
 #!/usr/bin/env optmux
@@ -25,7 +27,7 @@ windows:
   - claude
 ```
 
-Then `chmod +x .optmux.yaml && ./.optmux.yaml`, or just run `optmux .` for a plain session. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet.
+Then `chmod +x myproject.optmux.yaml && ./myproject.optmux.yaml`, or just run `optmux .` for a plain session. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet.
 
 > **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
