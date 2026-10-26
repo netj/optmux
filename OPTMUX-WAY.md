@@ -15,21 +15,12 @@ The optmux Way is how to stay in the driver's seat when working with agents like
 
 ```bash
 brew install netj/tap/optmux   # optmux + tmux, wtcode, lazygit, delta, less, fzf, gh
+cd myproject
+optmux .
 ```
 
-Put a small `myproject.optmux.yaml` in your repo (check it in, or keep it in `.git/info/exclude`):
-
-```yaml
-#!/usr/bin/env optmux
-session_name: myproject
-start_directory: .
-windows:
-- window_name: claude
-  panes:
-  - claude
-```
-
-Then `chmod +x myproject.optmux.yaml && ./myproject.optmux.yaml`, or just run `optmux .` for a plain session. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet.
+That's it. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet, and **`C-M-c`** to start your first task.
+Want the same windows every time, say an agent already running? Write a small YAML file for the project; see [As a shebang](README.md#as-a-shebang).
 
 > **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
