@@ -291,7 +291,7 @@ def pick(pane):
                 tmux("display-message", "-d", "1500", f"copied {len(text)} characters ({copier})")
             else:
                 load_buffer(text)
-                tmux("paste-buffer", "-p", "-d", "-b", BUFFER, "-t", pane)
+                tmux("paste-buffer", "-p", "-r", "-d", "-b", BUFFER, "-t", pane)
             return 0
 
 
