@@ -99,7 +99,7 @@ optmux:
       new_window: true
       tip: open PR (or repo) on GitHub
     C-M-x:
-      tip: extrakto lines into claude's ! shell mode (tab multi-select, enter inserts)
+      tip: pick lines (^s for colored spans) into claude's ! shell mode (tab multi-select, enter inserts)
       tmux: |
         {
           if-shell "ps -t #{pane_tty} -o command= | grep -Eq '(^|/)claude( |$|/)'" {
@@ -107,9 +107,8 @@ optmux:
             send-keys C-c
             send-keys BSpace "!"  # Backspace leaves any ! shell mode, then ! enters it fresh
           }
-          # start extrakto
-          switch-client -T prefix
-          send-keys -K X
+          # pick lines in screen order, duplicates and all (extrakto dedups and reorders)
+          display-popup -E -w 100% -h 60% -t "#{pane_id}" '"$OPTMUX_DIR/bin/optmux-pick-text" "#{pane_id}"'
         }
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force

@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""optmux-pick-text — pick lines (or colored/styled spans) from a pane and type them into it.
+
+Usage: optmux-pick-text PANE_ID   (meant to run in a tmux popup)
+
+Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
+a multiline script survives the round trip. `^s` switches to spans: runs of text the program itself
+styled (colored, bold, underlined, ...), which is usually exactly the command, path or name worth
+copying. Enter pastes the selection into PANE, `^y` copies it to the tmux buffer and clipboard.
+"""
+
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from dataclasses import dataclass
+
+SGR = re.compile(r"\x1b\[([0-9;:]*)m")
+# any other escape sequence (OSC 8 hyperlinks, cursor movement, ...) is noise for our purposes
+OTHER_ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;:?]*[A-Za-ln-z]|\x1b[()][A-Z0-9]")
+
+MIN_SPAN = 2  # characters; shorter styled runs are bullets, punctuation and the like
+
+
+@dataclass(frozen=True)
+class Style:
+    fg: tuple = ()
+    bg: tuple = ()
+    attrs: frozenset = frozenset()  # SGR codes: 1 bold, 2 dim, 3 italic, 4 underline, 7 reverse, 9 strike
+
+    @property
+    def plain(self):
+        return not (self.fg or self.bg or self.attrs)
+
+    def sgr(self):
+        """The escape sequence that switches to this style from a clean slate."""
+        params = sorted(self.attrs) + [*self.fg, *self.bg]
+        return "\x1b[0;" + ";".join(map(str, params)) + "m" if params else "\x1b[0m"
+
+
+def apply_sgr(style, params):
+    """Style after applying one SGR escape's parameters."""
+    codes = [p for p in re.split(r"[;:]", params)] if params else ["0"]
+    codes = [int(c) if c else 0 for c in codes]
+    fg, bg, attrs = style.fg, style.bg, set(style.attrs)
+    i = 0
+    while i < len(codes):
+        c = codes[i]
+        if c == 0:
+            fg, bg, attrs = (), (), set()
+        elif c in (1, 2, 3, 4, 7, 9):
+            attrs.add(c)
+        elif c == 22:
+            attrs -= {1, 2}
+        elif c in (23, 24, 27, 29):
+            attrs.discard(c - 20)
+        elif 30 <= c <= 37 or 90 <= c <= 97:
+            fg = (c,)
+        elif c == 39:
+            fg = ()
+        elif 40 <= c <= 47 or 100 <= c <= 107:
+            bg = (c,)
+        elif c == 49:
+            bg = ()
+        elif c in (38, 48):
+            n = {5: 3, 2: 5}.get(codes[i + 1] if i + 1 < len(codes) else None)  # 38;5;N or 38;2;R;G;B
+            if n is None:
+                break
+            color = tuple(codes[i : i + n])
+            fg, bg = (color, bg) if c == 38 else (fg, color)
+            i += n - 1
+        i += 1
+    return Style(fg, bg, frozenset(attrs))
+
+
+def parse_line(raw):
+    """(plain text, [(start, end, Style)]) for one captured line; spans cover non-default style runs."""
+    raw = OTHER_ESCAPES.sub("", raw)
+    plain, runs, style, start, pos = [], [], Style(), 0, 0
+    for piece in re.split(r"(\x1b\[[0-9;:]*m)", raw):
+        m = SGR.fullmatch(piece)
+        if m:
+            new = apply_sgr(style, m.group(1))
+            if new != style:
+                if not style.plain and pos > start:
+                    runs.append((start, pos, style))
+                style, start = new, pos
+        else:
+            plain.append(piece)
+            pos += len(piece)
+    if not style.plain and pos > start:
+        runs.append((start, pos, style))
+    return "".join(plain), runs
+
+
+def choices(capture, mode):
+    """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows."""
+    parsed = [(parse_line(raw), raw) for raw in capture.splitlines()]
+    while parsed and not parsed[-1][0][0].strip():
+        parsed.pop()
+    if mode == "lines":
+        return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
+    spans = {}
+    for (plain, runs), _ in parsed:
+        for s, e, style in runs:
+            text = plain[s:e].strip()
+            # a span that is the whole line is already a choice in lines mode
+            if len(text) >= MIN_SPAN and text != plain.strip():
+                spans.pop(text, None)  # repeated spans stay once, at their latest position
+                spans[text] = style
+    return [(text, f"{style.sgr()}{text}\x1b[0m") for text, style in spans.items()]
+
+
+def compose(selection, mode):
+    """The text to type for the picked items: lines joined by newlines (dedented), spans by spaces."""
+    if mode == "lines":
+        return textwrap.dedent("\n".join(selection)).strip("\n")
+    return " ".join(selection)
+
+
+def tmux(*args, **kw):
+    return subprocess.run(["tmux", *args], check=True, **kw)
+
+
+def pick(pane):
+    history = os.environ.get("OPTMUX_PICK_TEXT_HISTORY", "1000")
+    capture = tmux(
+        "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
+        capture_output=True, text=True,
+    ).stdout
+    mode, query = "lines", ""
+    while True:
+        items = choices(capture, mode)
+        if not items:
+            tmux("display-message", "-d", "2000", f"optmux-pick-text: no {mode} on screen")
+            return 1
+        other = "spans" if mode == "lines" else "lines"
+        # newest first: fzf's default layout grows upward from the prompt, so the screen reads in its
+        # natural order with the most recent choices under the cursor (and ahead among equal matches)
+        numbered = reversed(list(enumerate(items)))
+        proc = subprocess.run(
+            [
+                "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if mode == "lines" else []),
+                "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
+                "--expect=ctrl-s,ctrl-y,ctrl-c,ctrl-g,esc",
+                f"--header=tab=select  enter=insert  ^y=copy  ^s={other}  [{mode}]",
+            ],
+            input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
+        )
+        if proc.returncode not in (0, 1):
+            return proc.returncode
+        query, key, *chosen = proc.stdout.split("\n")[:-1] or ["", "esc"]
+        # fzf returns picks in the order they were made; type them in screen order
+        chosen = [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in chosen))]
+        if key == "ctrl-s":
+            mode = other
+        elif key in ("ctrl-c", "ctrl-g", "esc") or not chosen:
+            return 0
+        else:
+            text = compose(chosen, mode)
+            if key == "ctrl-y":
+                tmux("set-buffer", "-w", "--", text)
+            else:
+                tmux("set-buffer", "--", text)
+                tmux("paste-buffer", "-p", "-d", "-t", pane)
+            return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    sys.exit(pick(sys.argv[1]))
