@@ -141,3 +141,14 @@ def test_load_buffer_keeps_trailing_semicolons_and_large_text():
     finally:
         pt.tmux = real
         subprocess.run([*tmux, "kill-server"], capture_output=True)
+
+
+def test_spans_wrapped_by_the_program_are_joined_when_they_fill_the_line():
+    cap = "so \x1b[34mgit\x1b[0m\n  \x1b[34mcommit -m x\x1b[0m and \x1b[34mmake test\x1b[0m\n"
+    # "so git" is 6 wide; "commit" would not fit in 8 columns, so it was wrapped
+    assert [t for t, _ in pt.choices(cap, "spans", 8)] == ["git commit -m x", "make test"]
+    # plenty of room left: two separate highlights, not a wrap
+    assert [t for t, _ in pt.choices(cap, "spans", 80)] == ["git", "commit -m x", "make test"]
+    # a different style never joins
+    cap2 = "so \x1b[34mgit\x1b[0m\n  \x1b[31mcommit\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap2, "spans", 8)] == ["git", "commit"]

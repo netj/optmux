@@ -149,7 +149,34 @@ def find_patterns(plain):
     return sorted(found)
 
 
-def choices(capture, mode):
+def span_items(parsed, width):
+    """[(text, style)] for the styled runs on the screen. A run that fills its line right up to the edge and
+    continues in the same style at the start of the next line was wrapped by the program: join the two.
+    Only an exact fit counts (the next line's first word wouldn't have fitted), so that is precise but misses some."""
+    items = []  # [text, style, line, first, last, line_length] where first/last tell whether it touches the line's start/end
+    for i, ((plain, runs), _) in enumerate(parsed):
+        body = plain.rstrip()
+        for s, e, style in runs:
+            text = plain[s:e].strip()
+            # a whole line with a background is a highlighted block (diff line, prompt box): lines mode has it
+            if len(text) < MIN_SPAN or (style.bg and text == plain.strip()):
+                continue
+            end = s + len(plain[s:e].rstrip())
+            start = s + len(plain[s:e]) - len(plain[s:e].lstrip())
+            items.append([text, style, i, start == len(plain) - len(plain.lstrip()), end == len(body), len(body)])
+    merged = []
+    for item in items:
+        prev = merged[-1] if merged else None
+        if (width and prev and prev[4] and item[3] and item[2] == prev[2] + 1 and item[1] == prev[1]
+                and prev[5] + 1 + len(item[0].split()[0]) > width):
+            prev[0] += " " + item[0]
+            prev[2], prev[4], prev[5] = item[2], item[4], item[5]
+        else:
+            merged.append(item)
+    return [(m[0], m[1]) for m in merged]
+
+
+def choices(capture, mode, width=None):
     """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows."""
     parsed = [(parse_line(raw), raw) for raw in capture.expandtabs(4).splitlines()]
     while parsed and not parsed[-1][0][0].strip():
@@ -157,25 +184,22 @@ def choices(capture, mode):
     if mode == "lines":
         return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
     found = {}  # repeats stay once, at their latest position
-    for (plain, runs), _ in parsed:
-        if mode == "spans":
-            for s, e, style in runs:
-                text = plain[s:e].strip()
-                # a whole line with a background is a highlighted block (diff line, prompt box): lines mode has it
-                if len(text) >= MIN_SPAN and not (style.bg and text == plain.strip()):
+    if mode == "spans":
+        for text, style in span_items(parsed, width):
+            found.pop(text, None)
+            found[text] = f"{style.sgr()}{text}\x1b[0m"
+    else:
+        for (plain, _), _ in parsed:
+            if mode == "patterns":
+                for _, label, text in find_patterns(plain):
                     found.pop(text, None)
-                    found[text] = f"{style.sgr()}{text}\x1b[0m"
-        elif mode == "patterns":
-            for _, label, text in find_patterns(plain):
-                found.pop(text, None)
-                found[text] = f"\x1b[2m{label:<4}\x1b[0m {text}"
-        else:
-            for m in WORD.finditer(plain):
-                if len(m.group()) >= MIN_WORD:
-                    found.pop(m.group(), None)
-                    found[m.group()] = m.group()
+                    found[text] = f"\x1b[2m{label:<4}\x1b[0m {text}"
+            else:
+                for m in WORD.finditer(plain):
+                    if len(m.group()) >= MIN_WORD:
+                        found.pop(m.group(), None)
+                        found[m.group()] = m.group()
     return list(found.items())
-
 
 def compose(selection, mode):
     """The text to type for the picked items: lines joined by newlines (dedented). Anything else is joined by
@@ -246,6 +270,7 @@ def pick(pane):
         "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
         capture_output=True, text=True,
     ).stdout
+    width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
     mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
     query = ""
@@ -253,7 +278,7 @@ def pick(pane):
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
         for _ in FILTERS:
-            items = choices(capture, shown)
+            items = choices(capture, shown, width)
             if items:
                 break
             shown = cycle(FILTERS, shown)
