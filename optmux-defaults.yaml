@@ -141,7 +141,7 @@ optmux:
         display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       tip: >
         optmux eXtract: lines, colored spans, URLs/paths/hashes/versions or words on screen,
-        to type or copy (C-f or C-M-x cycles, C-y copies)
+        to type or copy (C-M-x cycles, C-y copies)
     C-t h/j/k/l:
       tip: navigate panes
     C-t t:

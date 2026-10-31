@@ -193,6 +193,18 @@ def cycle(values, current):
     return values[(values.index(current) + 1) % len(values)]
 
 
+NARROW = 90  # columns; below this the hints shrink to fit
+
+
+def labels(filter_name, copier):
+    """fzf's --header and --prompt: what is listed and which keys do what (C-f also cycles, unadvertised)."""
+    if shutil.get_terminal_size().columns < NARROW:
+        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)",
+                f"--prompt={filter_name} (C-M-x) > "]
+    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)",
+            f"--prompt={filter_name} filtered (C-M-x to switch) > "]
+
+
 def pick(pane):
     history = os.environ.get("OPTMUX_EXTRACT_HISTORY", "1000")
     capture = tmux(
@@ -221,9 +233,7 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
-                "--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  "
-                f"C-y to copy ({copier}; C-t to switch)",
-                f"--prompt={shown} filtered (C-f or C-M-x to switch) > ",
+                *labels(shown, copier),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )

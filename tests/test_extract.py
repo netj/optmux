@@ -60,3 +60,12 @@ def test_words_skip_short_ones():
 
 def test_cycle_wraps_around():
     assert pt.cycle(pt.FILTERS, pt.FILTERS[-1]) == pt.FILTERS[0]
+
+
+def test_labels_shrink_in_narrow_terminals(monkeypatch):
+    import os
+    monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
+    assert pt.labels("words", "osc52")[1] == "--prompt=words filtered (C-M-x to switch) > "
+    monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
+    assert pt.labels("words", "osc52")[1] == "--prompt=words (C-M-x) > "
+    assert len(pt.labels("words", "osc52")[0]) < 80
