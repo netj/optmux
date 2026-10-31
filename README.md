@@ -516,6 +516,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 - **`^f`** (or **`C-M-x`** again, so the key that opened the picker keeps cycling) cycles what is listed: **lines**, **spans** (runs of text the program colored or styled: the command, path or name worth copying), **patterns** (URLs, paths, file names with an optional `:line:col`, commit hashes, semver versions) and **words**. The last one used is remembered.
 - **`^y`** copies by the method **`^t`** cycles: `osc52` (tmux emits OSC 52, so it reaches your local clipboard over SSH too), `native` (`pbcopy`, `wl-copy`, `xclip` or `xsel`) or `buffer` (the tmux buffer only). Also remembered. Either way the tmux buffer holds the text afterwards.
+- Several picks go on one line separated by spaces, except lines mode (always one pick per line) and picks that themselves contain whitespace, such as commands in spans mode, which each get their own line.
 - Picks are pasted as a bracketed paste, so a shell (or Claude Code) takes several lines as one paste. A program that doesn't ask for bracketed paste (plain `cat`, some REPLs) receives each newline as `Enter`.
 - Both are kept as tmux options on the project's server (`@optmux-extract-filter`, `@optmux-extract-copy`), so they last until it stops.
 

@@ -178,9 +178,12 @@ def choices(capture, mode):
 
 
 def compose(selection, mode):
-    """The text to type for the picked items: lines joined by newlines (dedented), anything else by spaces."""
+    """The text to type for the picked items: lines joined by newlines (dedented). Anything else is joined by
+    spaces, unless a pick itself has whitespace (a command, a phrase): then each pick gets its own line."""
     if mode == "lines":
         return textwrap.dedent("\n".join(selection)).strip("\n")
+    if any(re.search(r"\s", item) for item in selection):
+        return "\n".join(selection)
     return " ".join(selection)
 
 

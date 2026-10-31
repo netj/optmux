@@ -40,7 +40,13 @@ def test_parse_line_strips_hyperlinks_and_tracks_256_and_rgb_colors():
 
 def test_compose_dedents_lines_and_joins_spans_with_spaces():
     assert pt.compose(["    a", "      b", ""], "lines") == "a\n  b"
-    assert pt.compose(["git commit", '"msg"'], "spans") == 'git commit "msg"'
+    assert pt.compose(["foo", "bar"], "spans") == "foo bar"
+    assert pt.compose(["foo", "bar"], "words") == "foo bar"
+
+
+def test_compose_puts_picks_that_contain_whitespace_on_their_own_lines():
+    assert pt.compose(["git commit -m x", "make test"], "spans") == "git commit -m x\nmake test"
+    assert pt.compose(["make test", "foo"], "spans") == "make test\nfoo"
 
 
 def test_patterns_find_urls_paths_files_hashes_and_versions_without_overlaps():
