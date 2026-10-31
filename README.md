@@ -486,6 +486,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
 | `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-extract [PANE]` | Picks lines, styled spans, URLs/paths/hashes/versions or words from a pane's screen and types or copies them (`C-t X`, `C-M-x`). See [optmux eXtract](#optmux-extract-text-from-the-screen) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
 ## Session persistence
@@ -515,6 +516,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 - **`^f`** (or **`C-M-x`** again, so the key that opened the picker keeps cycling) cycles what is listed: **lines**, **spans** (runs of text the program colored or styled: the command, path or name worth copying), **patterns** (URLs, paths, file names with an optional `:line:col`, commit hashes, semver versions) and **words**. The last one used is remembered.
 - **`^y`** copies by the method **`^t`** cycles: `osc52` (tmux emits OSC 52, so it reaches your local clipboard over SSH too), `native` (`pbcopy`, `wl-copy`, `xclip` or `xsel`) or `buffer` (the tmux buffer only). Also remembered. Either way the tmux buffer holds the text afterwards.
+- Picks are pasted as a bracketed paste, so a shell (or Claude Code) takes several lines as one paste. A program that doesn't ask for bracketed paste (plain `cat`, some REPLs) receives each newline as `Enter`.
 - Both are kept as tmux options on the project's server (`@optmux-extract-filter`, `@optmux-extract-copy`), so they last until it stops.
 
 ## Development

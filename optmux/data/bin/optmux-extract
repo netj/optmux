@@ -50,7 +50,7 @@ def apply_sgr(style, params):
     """Style after applying one SGR escape's parameters."""
     # colon sub-parameters: 38:2::R:G:B is 38;2;R;G;B, and 4:3 (a curly underline) is just underline
     params = re.sub(r"\b([34]8):2::", r"\1;2;", params)
-    params = re.sub(r"\b4:\d", "4", params)
+    params = re.sub(r"(^|;)4:\d", r"\g<1>4", params)
     codes = [int(c) if c else 0 for c in re.split(r"[;:]", params)] if params else [0]
     fg, bg, attrs = style.fg, style.bg, set(style.attrs)
     i = 0
@@ -117,13 +117,23 @@ PATTERNS = [
     ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
     ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
     ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
-    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?"),  # semver
-    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}\b(?::\d+){0,2}"),  # name.ext[:line[:col]]
+    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not 192.168.1.100)
+    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
 ]
 PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
 WORD = re.compile(r"\w(?:[\w./:@~+=%-]*\w)?")
 MIN_WORD = 3
 TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
+CLOSERS = {")": "(", "]": "[", "}": "{"}
+
+
+def trim_url(text):
+    """Drop sentence punctuation after a URL, but keep a closing bracket that balances an opening one."""
+    while text and text[-1] in TRAILING_PUNCTUATION:
+        if text[-1] in CLOSERS and text.count(text[-1]) <= text.count(CLOSERS[text[-1]]):
+            break
+        text = text[:-1]
+    return text
 
 
 def find_patterns(plain):
@@ -131,7 +141,7 @@ def find_patterns(plain):
     taken, found = [], []
     for label, rx in PATTERNS:
         for m in rx.finditer(plain):
-            text = m.group().rstrip(TRAILING_PUNCTUATION if label == "url" else ".,")
+            text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
             s, e = m.start(), m.start() + len(text)
             if text and not any(s < te and ts < e for ts, te in taken):
                 taken.append((s, e))
@@ -174,8 +184,17 @@ def compose(selection, mode):
     return " ".join(selection)
 
 
+BUFFER = "optmux-extract"
+
+
 def tmux(*args, **kw):
     return subprocess.run(["tmux", *args], check=True, **kw)
+
+
+def load_buffer(text, clipboard=False):
+    """Put text in our own tmux buffer (and the clipboard via OSC 52 if asked). Through stdin, because as
+    an argument tmux drops a trailing `;`, refuses more than ~16 KB, and keeps the old buffer when empty."""
+    tmux("load-buffer", *(["-w"] if clipboard else []), "-b", BUFFER, "-", input=text, text=True)
 
 
 def get_option(name, choices, default):
@@ -185,9 +204,9 @@ def get_option(name, choices, default):
 
 def copy(text, method):
     if method == "osc52":
-        tmux("set-buffer", "-w", "--", text)  # tmux emits OSC 52 itself (set-clipboard on), which also works over SSH
+        load_buffer(text, clipboard=True)  # tmux emits OSC 52 itself (set-clipboard on), which also works over SSH
         return
-    tmux("set-buffer", "--", text)
+    load_buffer(text)
     if method == "native":
         for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
             if shutil.which(cmd[0]):
@@ -210,6 +229,12 @@ def labels(filter_name, copier):
                 f"--prompt={filter_name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
+
+
+def parse_fzf_output(stdout):
+    """(query, key, texts) from `fzf --print-query --expect=...`; texts in screen order, not pick order."""
+    query, key, *picked = stdout.split("\n")[:-1] or ["", "esc"]
+    return query, key, [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in picked))]
 
 
 def pick(pane):
@@ -244,11 +269,11 @@ def pick(pane):
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
+        if proc.returncode not in (0, 1, 130):
+            input(f"[optmux-extract] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
         if proc.returncode not in (0, 1):
             return proc.returncode
-        query, key, *chosen = proc.stdout.split("\n")[:-1] or ["", "esc"]
-        # fzf returns picks in the order they were made; type them in screen order
-        chosen = [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in chosen))]
+        query, key, chosen = parse_fzf_output(proc.stdout)
         if key in ("ctrl-f", "ctrl-alt-x"):
             mode = cycle(FILTERS, shown)
             tmux("set-option", "-g", FILTER_OPTION, mode)
@@ -259,12 +284,14 @@ def pick(pane):
             return 0
         else:
             text = compose(chosen, shown)
+            if not text.strip():  # only blank lines picked: there is nothing to type or copy
+                return 0
             if key == "ctrl-y":
                 copy(text, copier)
                 tmux("display-message", "-d", "1500", f"copied {len(text)} characters ({copier})")
             else:
-                tmux("set-buffer", "--", text)
-                tmux("paste-buffer", "-p", "-d", "-t", pane)
+                load_buffer(text)
+                tmux("paste-buffer", "-p", "-d", "-b", BUFFER, "-t", pane)
             return 0
 
 

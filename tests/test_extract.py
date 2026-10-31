@@ -1,7 +1,12 @@
 import importlib.util
+import shutil
+import subprocess
 import sys
+import tempfile
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
+import pytest
 
 sys.dont_write_bytecode = True  # a __pycache__ in data/bin would be installed as if it were a script
 loader = SourceFileLoader("optmux_extract", str(Path(__file__).parent.parent / "optmux/data/bin/optmux-extract"))
@@ -87,3 +92,46 @@ def test_colon_sub_parameters_do_not_leak_bogus_attributes():
     assert style.fg == (38, 2, 1, 2, 4) and not style.attrs
     _, [(_, _, style)] = pt.parse_line("\x1b[4:3mcurly\x1b[0m")
     assert style.attrs == {4}
+
+
+def test_parse_fzf_output_returns_picks_in_screen_order_with_blank_lines():
+    out = "query\nenter\n7\tlast\td7\n2\t\td2\n4\tmiddle\td4\n"
+    assert pt.parse_fzf_output(out) == ("query", "enter", ["", "middle", "last"])
+    assert pt.parse_fzf_output("q\n\n") == ("q", "", [])
+    assert pt.parse_fzf_output("") == ("", "esc", [])
+
+
+def test_ip_addresses_and_dotted_libraries_are_not_truncated():
+    texts = [t for _, _, t in pt.find_patterns("ip 192.168.1.100 and lib.so.6 and v1.2.3.")]
+    assert "192.168.1" not in texts and "lib.so" not in texts
+    assert "lib.so.6" in texts and "v1.2.3" in texts
+
+
+def test_url_keeps_a_balanced_closing_paren_but_not_sentence_punctuation():
+    assert [t for _, _, t in pt.find_patterns("see http://x.com/Foo_(bar).")] == ["http://x.com/Foo_(bar)"]
+    assert [t for _, _, t in pt.find_patterns("(see http://x.com/a)")] == ["http://x.com/a"]
+
+
+def test_colon_rgb_with_a_4_keeps_following_attributes():
+    _, [(_, _, style)] = pt.parse_line("\x1b[38:2::1:4:5;1mx\x1b[0m")
+    assert style.fg == (38, 2, 1, 4, 5) and style.attrs == {1}
+
+
+needs_tmux = pytest.mark.skipif(shutil.which("tmux") is None, reason="tmux not installed")
+
+
+@needs_tmux
+def test_load_buffer_keeps_trailing_semicolons_and_large_text():
+    sock = tempfile.mkdtemp(prefix="optmux-x-") + "/s"  # short: unix socket paths are limited to ~104 characters
+    tmux = ["tmux", "-S", sock, "-f", "/dev/null"]
+    subprocess.run([*tmux, "new-session", "-d", "-s", "t", "cat"], check=True)
+    try:
+        real = pt.tmux
+        pt.tmux = lambda *a, **kw: subprocess.run([*tmux, *a], check=True, **kw)
+        for text in ["echo hi;", ";", "a;b;", "x" * 50000]:
+            pt.load_buffer(text)
+            shown = subprocess.run([*tmux, "show-buffer", "-b", pt.BUFFER], capture_output=True, text=True).stdout
+            assert shown == text
+    finally:
+        pt.tmux = real
+        subprocess.run([*tmux, "kill-server"], capture_output=True)
