@@ -374,7 +374,18 @@ def test_e2e_pane_menu_new_window_uses_clicked_pane_cwd(tmux_env, tmp_path):
 
         assert len(windows) == 2
         new_window = next(fields for fields in windows if fields[0] == "1")
-        assert os.path.realpath(new_window[1]) == os.path.realpath(clicked_dir)
+        # TEMPORARY CI diagnostics
+        def _t(*a):
+            r = subprocess.run([*tmux, *a], capture_output=True, text=True, env=env)
+            return r.stdout + r.stderr
+        diag = "\n".join([
+            _t("-V"),
+            _t("list-panes", "-a", "-F", "#{pane_id} active=#{pane_active} dead=#{pane_dead} pid=#{pane_pid} cmd=#{pane_current_command} path=[#{pane_current_path}] start=[#{pane_start_path}]"),
+            _t("show-messages"),
+            _t("show", "-g", "default-shell", "default-command"),
+            _t("list-keys", "-T", "root"),
+        ])
+        assert os.path.realpath(new_window[1]) == os.path.realpath(clicked_dir), diag
     finally:
         subprocess.run([*tmux, "kill-server"], capture_output=True, env=env)
         try:
