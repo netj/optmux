@@ -221,8 +221,9 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
-                "--header=" + f"{shown} filtered (C-f or C-M-x to switch);  Up/Down to select;  Tab to multiselect\n"
-                f"Enter to insert;  C-y to copy ({copier}; C-t to switch)",
+                "--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  "
+                f"C-y to copy ({copier}; C-t to switch)",
+                f"--prompt={shown} filtered (C-f or C-M-x to switch) > ",
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
