@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""optmux-extract — optmux eXtract: text from a pane, typed back or copied.
+
+Usage: optmux-extract [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
+
+Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
+a multiline script survives the round trip. `C-M-x` (or `^f`) cycles what is listed: lines, spans (runs of text the
+program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
+hashes, versions) and words. Enter types the selection into the pane; `^y` copies it, by the method
+`^t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
+method are remembered (tmux options on the server) for the next time.
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import textwrap
+from dataclasses import dataclass
+
+SGR = re.compile(r"\x1b\[([0-9;:]*)m")
+# any other escape sequence (OSC 8 hyperlinks, cursor movement, ...) is noise for our purposes
+OTHER_ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;:?]*[A-Za-ln-z]|\x1b[()][A-Z0-9]")
+
+# whatever is left after stripping escapes must not reach the pane: a stray ESC[201~ would end the
+# bracketed paste early and run the rest as typed input
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+MIN_SPAN = 2  # characters; shorter styled runs are bullets, punctuation and the like
+
+
+@dataclass(frozen=True)
+class Style:
+    fg: tuple = ()
+    bg: tuple = ()
+    attrs: frozenset = frozenset()  # SGR codes: 1 bold, 2 dim, 3 italic, 4 underline, 7 reverse, 9 strike
+
+    @property
+    def plain(self):
+        return not (self.fg or self.bg or self.attrs)
+
+    def sgr(self):
+        """The escape sequence that switches to this style from a clean slate."""
+        params = sorted(self.attrs) + [*self.fg, *self.bg]
+        return "\x1b[0;" + ";".join(map(str, params)) + "m" if params else "\x1b[0m"
+
+
+def apply_sgr(style, params):
+    """Style after applying one SGR escape's parameters."""
+    # colon sub-parameters: 38:2::R:G:B is 38;2;R;G;B, and 4:3 (a curly underline) is just underline
+    params = re.sub(r"\b([34]8):2::", r"\1;2;", params)
+    params = re.sub(r"(^|;)4:\d", r"\g<1>4", params)
+    codes = [int(c) if c else 0 for c in re.split(r"[;:]", params)] if params else [0]
+    fg, bg, attrs = style.fg, style.bg, set(style.attrs)
+    i = 0
+    while i < len(codes):
+        c = codes[i]
+        if c == 0:
+            fg, bg, attrs = (), (), set()
+        elif c in (1, 2, 3, 4, 7, 9):
+            attrs.add(c)
+        elif c == 22:
+            attrs -= {1, 2}
+        elif c in (23, 24, 27, 29):
+            attrs.discard(c - 20)
+        elif 30 <= c <= 37 or 90 <= c <= 97:
+            fg = (c,)
+        elif c == 39:
+            fg = ()
+        elif 40 <= c <= 47 or 100 <= c <= 107:
+            bg = (c,)
+        elif c == 49:
+            bg = ()
+        elif c in (38, 48):
+            n = {5: 3, 2: 5}.get(codes[i + 1] if i + 1 < len(codes) else None)  # 38;5;N or 38;2;R;G;B
+            if n is None:
+                break
+            color = tuple(codes[i : i + n])
+            fg, bg = (color, bg) if c == 38 else (fg, color)
+            i += n - 1
+        i += 1
+    return Style(fg, bg, frozenset(attrs))
+
+
+def parse_line(raw):
+    """(plain text, [(start, end, Style)]) for one captured line; spans cover non-default style runs."""
+    raw = OTHER_ESCAPES.sub("", raw)
+    plain, runs, style, start, pos = [], [], Style(), 0, 0
+    for piece in re.split(r"(\x1b\[[0-9;:]*m)", raw):
+        m = SGR.fullmatch(piece)
+        if m:
+            new = apply_sgr(style, m.group(1))
+            if new != style:
+                if not style.plain and pos > start:
+                    runs.append((start, pos, style))
+                style, start = new, pos
+        else:
+            piece = CONTROL_CHARS.sub("", piece)
+            plain.append(piece)
+            pos += len(piece)
+    if not style.plain and pos > start:
+        runs.append((start, pos, style))
+    return "".join(plain), runs
+
+
+FILTERS = ["lines", "spans", "patterns", "words"]
+COPIERS = ["osc52", "native", "buffer"]
+FILTER_OPTION = "@optmux-extract-filter"
+COPY_OPTION = "@optmux-extract-copy"
+
+# Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
+# is not listed again, and nothing overlaps within a line.
+PATH_CHARS = r"[\w.@%+=,~-]"
+PATTERNS = [
+    ("url", r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"'`]+"),
+    ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
+    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
+    ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
+    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not 192.168.1.100)
+    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
+]
+PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
+WORD = re.compile(r"\w(?:[\w./:@~+=%-]*\w)?")
+MIN_WORD = 3
+TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
+CLOSERS = {")": "(", "]": "[", "}": "{"}
+
+
+def trim_url(text):
+    """Drop sentence punctuation after a URL, but keep a closing bracket that balances an opening one."""
+    while text and text[-1] in TRAILING_PUNCTUATION:
+        if text[-1] in CLOSERS and text.count(text[-1]) <= text.count(CLOSERS[text[-1]]):
+            break
+        text = text[:-1]
+    return text
+
+
+def find_patterns(plain):
+    """[(start, label, text)] for the well-known patterns in a line, left to right, without overlaps."""
+    taken, found = [], []
+    for label, rx in PATTERNS:
+        for m in rx.finditer(plain):
+            text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
+            s, e = m.start(), m.start() + len(text)
+            if text and not any(s < te and ts < e for ts, te in taken):
+                taken.append((s, e))
+                found.append((s, label, text))
+    return sorted(found)
+
+
+def choices(capture, mode):
+    """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows."""
+    parsed = [(parse_line(raw), raw) for raw in capture.expandtabs(4).splitlines()]
+    while parsed and not parsed[-1][0][0].strip():
+        parsed.pop()
+    if mode == "lines":
+        return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
+    found = {}  # repeats stay once, at their latest position
+    for (plain, runs), _ in parsed:
+        if mode == "spans":
+            for s, e, style in runs:
+                text = plain[s:e].strip()
+                # a whole line with a background is a highlighted block (diff line, prompt box): lines mode has it
+                if len(text) >= MIN_SPAN and not (style.bg and text == plain.strip()):
+                    found.pop(text, None)
+                    found[text] = f"{style.sgr()}{text}\x1b[0m"
+        elif mode == "patterns":
+            for _, label, text in find_patterns(plain):
+                found.pop(text, None)
+                found[text] = f"\x1b[2m{label:<4}\x1b[0m {text}"
+        else:
+            for m in WORD.finditer(plain):
+                if len(m.group()) >= MIN_WORD:
+                    found.pop(m.group(), None)
+                    found[m.group()] = m.group()
+    return list(found.items())
+
+
+def compose(selection, mode):
+    """The text to type for the picked items: lines joined by newlines (dedented), anything else by spaces."""
+    if mode == "lines":
+        return textwrap.dedent("\n".join(selection)).strip("\n")
+    return " ".join(selection)
+
+
+BUFFER = "optmux-extract"
+
+
+def tmux(*args, **kw):
+    return subprocess.run(["tmux", *args], check=True, **kw)
+
+
+def load_buffer(text, clipboard=False):
+    """Put text in our own tmux buffer (and the clipboard via OSC 52 if asked). Through stdin, because as
+    an argument tmux drops a trailing `;`, refuses more than ~16 KB, and keeps the old buffer when empty."""
+    tmux("load-buffer", *(["-w"] if clipboard else []), "-b", BUFFER, "-", input=text, text=True)
+
+
+def get_option(name, choices, default):
+    value = subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
+    return value if value in choices else default
+
+
+def copy(text, method):
+    if method == "osc52":
+        load_buffer(text, clipboard=True)  # tmux emits OSC 52 itself (set-clipboard on), which also works over SSH
+        return
+    load_buffer(text)
+    if method == "native":
+        for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
+            if shutil.which(cmd[0]):
+                subprocess.run(cmd, input=text, text=True, check=True)
+                return
+        raise RuntimeError("no system clipboard command found (pbcopy, wl-copy, xclip, xsel)")
+
+
+def cycle(values, current):
+    return values[(values.index(current) + 1) % len(values)]
+
+
+NARROW = 90  # columns; below this the hints shrink to fit
+
+
+def labels(filter_name, copier):
+    """fzf's --header and --prompt: what is listed and which keys do what (C-f also cycles, unadvertised)."""
+    if shutil.get_terminal_size().columns < NARROW:
+        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)",
+                f"--prompt={filter_name} (C-M-x) > "]
+    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)",
+            f"--prompt={filter_name} filtered (C-M-x to switch) > "]
+
+
+def parse_fzf_output(stdout):
+    """(query, key, texts) from `fzf --print-query --expect=...`; texts in screen order, not pick order."""
+    query, key, *picked = stdout.split("\n")[:-1] or ["", "esc"]
+    return query, key, [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in picked))]
+
+
+def pick(pane):
+    history = os.environ.get("OPTMUX_EXTRACT_HISTORY", "1000")
+    capture = tmux(
+        "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
+        capture_output=True, text=True,
+    ).stdout
+    mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
+    copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
+    query = ""
+    while True:
+        # fall through to the next filter when the remembered one has nothing here, without forgetting it
+        shown = mode
+        for _ in FILTERS:
+            items = choices(capture, shown)
+            if items:
+                break
+            shown = cycle(FILTERS, shown)
+        else:
+            tmux("display-message", "-d", "2000", "optmux-extract: nothing to pick on screen")
+            return 1
+        # newest first: fzf's default layout grows upward from the prompt, so the screen reads in its
+        # natural order with the most recent choices under the cursor (and ahead among equal matches)
+        numbered = reversed(list(enumerate(items)))
+        proc = subprocess.run(
+            [
+                "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
+                "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
+                "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
+                *labels(shown, copier),
+            ],
+            input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
+        )
+        if proc.returncode not in (0, 1, 130):
+            input(f"[optmux-extract] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
+        if proc.returncode not in (0, 1):
+            return proc.returncode
+        query, key, chosen = parse_fzf_output(proc.stdout)
+        if key in ("ctrl-f", "ctrl-alt-x"):
+            mode = cycle(FILTERS, shown)
+            tmux("set-option", "-g", FILTER_OPTION, mode)
+        elif key == "ctrl-t":
+            copier = cycle(COPIERS, copier)
+            tmux("set-option", "-g", COPY_OPTION, copier)
+        elif key in ("ctrl-c", "ctrl-g", "esc") or not chosen:
+            return 0
+        else:
+            text = compose(chosen, shown)
+            if not text.strip():  # only blank lines picked: there is nothing to type or copy
+                return 0
+            if key == "ctrl-y":
+                copy(text, copier)
+                tmux("display-message", "-d", "1500", f"copied {len(text)} characters ({copier})")
+            else:
+                load_buffer(text)
+                tmux("paste-buffer", "-p", "-d", "-b", BUFFER, "-t", pane)
+            return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        sys.exit(__doc__)
+    # a popup's shell command is not format-expanded, but its TMUX env still points at the right session
+    pane = sys.argv[1] if len(sys.argv) == 2 else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
+    try:
+        sys.exit(pick(pane))
+    except Exception:  # the popup closes on exit, so keep the error on screen
+        import traceback
+
+        traceback.print_exc()
+        input("[optmux-extract] failed. Press Return/Enter to dismiss...")
+        sys.exit(1)
