@@ -16,8 +16,10 @@ def test_lines_keep_order_duplicates_and_blanks():
     assert texts == ["if x; then", '  git commit -m "msg"', "fi", "", "fi", "all green"]
 
 
-def test_spans_are_styled_runs_but_not_whole_lines():
-    assert [t for t, _ in pt.choices(CAPTURE, "spans")] == ["git commit", '"msg"']
+def test_spans_are_styled_runs_including_bold_headings_but_not_highlighted_lines():
+    assert [t for t, _ in pt.choices(CAPTURE, "spans")] == ["git commit", '"msg"', "all green"]
+    cap = "\x1b[1mWhat changed:\x1b[0m\n\x1b[48;5;237mhighlighted whole line\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["What changed:"]
 
 
 def test_repeated_spans_appear_once_at_latest_position():

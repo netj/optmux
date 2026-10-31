@@ -144,8 +144,8 @@ def choices(capture, mode):
         if mode == "spans":
             for s, e, style in runs:
                 text = plain[s:e].strip()
-                # a span that is the whole line is already a choice in lines mode
-                if len(text) >= MIN_SPAN and text != plain.strip():
+                # a whole line with a background is a highlighted block (diff line, prompt box): lines mode has it
+                if len(text) >= MIN_SPAN and not (style.bg and text == plain.strip()):
                     found.pop(text, None)
                     found[text] = f"{style.sgr()}{text}\x1b[0m"
         elif mode == "patterns":
