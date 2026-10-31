@@ -139,7 +139,7 @@ DEFAULT_MENUS = {
         _item(
             "Vertical Split",
             "'#{?#{!:#{pane_floating_flag}},Vertical Split,}'", "'v'",
-            "{split-window -v}",
+            "{split-window -v -b}",
         ),
         _sep(),
         _item(

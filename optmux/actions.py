@@ -96,7 +96,9 @@ def build_action_parts(opts, label):
     elif use_window:
         open_cmd = "new-window" + detach_flag
     else:
-        open_cmd = "split-window -v" + detach_flag
+        # -b opens the pane above, so the active pane keeps its bottom edge and a
+        # bottom-anchored prompt (claude, fzf, a shell) doesn't jump as splits open.
+        open_cmd = "split-window -v" + detach_flag + " -b"
     # A detached split unzooms the window twice over: split-window unzooms as it
     # makes room, and tmux unzooms again when the pane dies. Capture the origin
     # pane's zoom (also true of a lone pane) so the split can restore it.
