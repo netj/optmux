@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""optmux-pick-text — pick lines (or colored/styled spans) from a pane and type them into it.
+"""optmux-pick-text — pick lines, styled spans, URLs/paths/hashes/versions or words from a pane and type them into it.
 
 Usage: optmux-pick-text [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
-a multiline script survives the round trip. `^s` switches to spans: runs of text the program itself
-styled (colored, bold, underlined, ...), which is usually exactly the command, path or name worth
-copying. Enter pastes the selection into the pane, `^y` copies it to the tmux buffer and clipboard.
+a multiline script survives the round trip. `^f` cycles what is listed: lines, spans (runs of text the
+program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
+hashes, versions) and words. Enter types the selection into the pane; `^y` copies it, by the method
+`^t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
+method are remembered (tmux options on the server) for the next time.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -94,6 +97,41 @@ def parse_line(raw):
     return "".join(plain), runs
 
 
+FILTERS = ["lines", "spans", "patterns", "words"]
+COPIERS = ["osc52", "native", "buffer"]
+FILTER_OPTION = "@optmux-pick-text-filter"
+COPY_OPTION = "@optmux-pick-text-copy"
+
+# Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
+# is not listed again, and nothing overlaps within a line.
+PATH_CHARS = r"[\w.@%+=,~-]"
+PATTERNS = [
+    ("url", r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"'`]+"),
+    ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
+    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
+    ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
+    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?"),  # semver
+    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}\b(?::\d+){0,2}"),  # name.ext[:line[:col]]
+]
+PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
+WORD = re.compile(r"\w(?:[\w./:@~+=%-]*\w)?")
+MIN_WORD = 3
+TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
+
+
+def find_patterns(plain):
+    """[(start, label, text)] for the well-known patterns in a line, left to right, without overlaps."""
+    taken, found = [], []
+    for label, rx in PATTERNS:
+        for m in rx.finditer(plain):
+            text = m.group().rstrip(TRAILING_PUNCTUATION if label == "url" else ".,")
+            s, e = m.start(), m.start() + len(text)
+            if text and not any(s < te and ts < e for ts, te in taken):
+                taken.append((s, e))
+                found.append((s, label, text))
+    return sorted(found)
+
+
 def choices(capture, mode):
     """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows."""
     parsed = [(parse_line(raw), raw) for raw in capture.splitlines()]
@@ -101,19 +139,29 @@ def choices(capture, mode):
         parsed.pop()
     if mode == "lines":
         return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
-    spans = {}
+    found = {}  # repeats stay once, at their latest position
     for (plain, runs), _ in parsed:
-        for s, e, style in runs:
-            text = plain[s:e].strip()
-            # a span that is the whole line is already a choice in lines mode
-            if len(text) >= MIN_SPAN and text != plain.strip():
-                spans.pop(text, None)  # repeated spans stay once, at their latest position
-                spans[text] = style
-    return [(text, f"{style.sgr()}{text}\x1b[0m") for text, style in spans.items()]
+        if mode == "spans":
+            for s, e, style in runs:
+                text = plain[s:e].strip()
+                # a span that is the whole line is already a choice in lines mode
+                if len(text) >= MIN_SPAN and text != plain.strip():
+                    found.pop(text, None)
+                    found[text] = f"{style.sgr()}{text}\x1b[0m"
+        elif mode == "patterns":
+            for _, label, text in find_patterns(plain):
+                found.pop(text, None)
+                found[text] = f"\x1b[2m{label:<4}\x1b[0m {text}"
+        else:
+            for m in WORD.finditer(plain):
+                if len(m.group()) >= MIN_WORD:
+                    found.pop(m.group(), None)
+                    found[m.group()] = m.group()
+    return list(found.items())
 
 
 def compose(selection, mode):
-    """The text to type for the picked items: lines joined by newlines (dedented), spans by spaces."""
+    """The text to type for the picked items: lines joined by newlines (dedented), anything else by spaces."""
     if mode == "lines":
         return textwrap.dedent("\n".join(selection)).strip("\n")
     return " ".join(selection)
@@ -123,28 +171,57 @@ def tmux(*args, **kw):
     return subprocess.run(["tmux", *args], check=True, **kw)
 
 
+def get_option(name, choices, default):
+    value = subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
+    return value if value in choices else default
+
+
+def copy(text, method):
+    if method == "osc52":
+        tmux("set-buffer", "-w", "--", text)  # tmux emits OSC 52 itself (set-clipboard on), which also works over SSH
+        return
+    tmux("set-buffer", "--", text)
+    if method == "native":
+        for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
+            if shutil.which(cmd[0]):
+                subprocess.run(cmd, input=text, text=True, check=True)
+                return
+        raise RuntimeError("no system clipboard command found (pbcopy, wl-copy, xclip, xsel)")
+
+
+def cycle(values, current):
+    return values[(values.index(current) + 1) % len(values)]
+
+
 def pick(pane):
     history = os.environ.get("OPTMUX_PICK_TEXT_HISTORY", "1000")
     capture = tmux(
         "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
         capture_output=True, text=True,
     ).stdout
-    mode, query = "lines", ""
+    mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
+    copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
+    query = ""
     while True:
-        items = choices(capture, mode)
-        if not items:
-            tmux("display-message", "-d", "2000", f"optmux-pick-text: no {mode} on screen")
+        # fall through to the next filter when the remembered one has nothing here, without forgetting it
+        shown = mode
+        for _ in FILTERS:
+            items = choices(capture, shown)
+            if items:
+                break
+            shown = cycle(FILTERS, shown)
+        else:
+            tmux("display-message", "-d", "2000", "optmux-pick-text: nothing to pick on screen")
             return 1
-        other = "spans" if mode == "lines" else "lines"
         # newest first: fzf's default layout grows upward from the prompt, so the screen reads in its
         # natural order with the most recent choices under the cursor (and ahead among equal matches)
         numbered = reversed(list(enumerate(items)))
         proc = subprocess.run(
             [
-                "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if mode == "lines" else []),
+                "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
-                "--expect=ctrl-s,ctrl-y,ctrl-c,ctrl-g,esc",
-                f"--header=tab=select  enter=insert  ^y=copy  ^s={other}  [{mode}]",
+                "--expect=ctrl-f,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
+                f"--header=tab=select  enter=insert  ^y=copy:{copier} (^t)  ^f=next filter  [{shown}]",
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -153,14 +230,19 @@ def pick(pane):
         query, key, *chosen = proc.stdout.split("\n")[:-1] or ["", "esc"]
         # fzf returns picks in the order they were made; type them in screen order
         chosen = [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in chosen))]
-        if key == "ctrl-s":
-            mode = other
+        if key == "ctrl-f":
+            mode = cycle(FILTERS, shown)
+            tmux("set-option", "-g", FILTER_OPTION, mode)
+        elif key == "ctrl-t":
+            copier = cycle(COPIERS, copier)
+            tmux("set-option", "-g", COPY_OPTION, copier)
         elif key in ("ctrl-c", "ctrl-g", "esc") or not chosen:
             return 0
         else:
-            text = compose(chosen, mode)
+            text = compose(chosen, shown)
             if key == "ctrl-y":
-                tmux("set-buffer", "-w", "--", text)
+                copy(text, copier)
+                tmux("display-message", "-d", "1500", f"copied {len(text)} characters ({copier})")
             else:
                 tmux("set-buffer", "--", text)
                 tmux("paste-buffer", "-p", "-d", "-t", pane)

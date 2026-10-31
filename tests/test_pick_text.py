@@ -34,3 +34,27 @@ def test_parse_line_strips_hyperlinks_and_tracks_256_and_rgb_colors():
 def test_compose_dedents_lines_and_joins_spans_with_spaces():
     assert pt.compose(["    a", "      b", ""], "lines") == "a\n  b"
     assert pt.compose(["git commit", '"msg"'], "spans") == 'git commit "msg"'
+
+
+def test_patterns_find_urls_paths_files_hashes_and_versions_without_overlaps():
+    line = "see https://github.com/netj/optmux/pull/38. ~/a/cli.py:12:3 foo.py eb0eb3f v0.13.2 1452 deadbeef"
+    assert [(label, text) for _, label, text in pt.find_patterns(line)] == [
+        ("url", "https://github.com/netj/optmux/pull/38"),
+        ("path", "~/a/cli.py:12:3"),
+        ("file", "foo.py"),
+        ("hash", "eb0eb3f"),
+        ("ver", "v0.13.2"),
+    ]
+
+
+def test_pattern_choices_are_labelled_and_deduplicated_at_latest_position():
+    cap = "a.py b.py\nc.py a.py\n"
+    assert [t for t, _ in pt.choices(cap, "patterns")] == ["b.py", "c.py", "a.py"]
+
+
+def test_words_skip_short_ones():
+    assert [t for t, _ in pt.choices("an ox, tiger-lily (rose)\n", "words")] == ["tiger-lily", "rose"]
+
+
+def test_cycle_wraps_around():
+    assert pt.cycle(pt.FILTERS, pt.FILTERS[-1]) == pt.FILTERS[0]

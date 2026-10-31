@@ -83,7 +83,7 @@ So edit the file yourself, then point the agent at your edit:
 The agent reads `git diff` and gets your intent exactly, down to naming, formatting, and edge cases.
 Because you left the example unstaged, your edit and the agent's follow-up show up together in lazygit, and you can check that it really did it *the same way*.
 
-To hand the agent a few lines from another pane (a failing test, a log, a stack trace), press **`C-M-x`** from the agent's pane: a picker lists the lines on screen (in order, duplicates and all, so a multiline script survives), you pick some with `Tab`, and `Enter` types them into Claude Code's `!` shell mode. `Ctrl-s` switches to the colored or styled spans instead, so the command or path a program highlighted is one keystroke away. For words, URLs, paths and hashes, use extrakto (`C-t X`).
+To hand the agent a few lines from another pane (a failing test, a log, a stack trace), press **`C-M-x`** from the agent's pane: a picker lists the lines on screen (in order, duplicates and all, so a multiline script survives), you pick some with `Tab`, and `Enter` types them into Claude Code's `!` shell mode. `Ctrl-f` cycles to the colored or styled spans (the command or path a program highlighted), then URLs/paths/hashes/versions, then plain words; `C-t X` opens the same picker anywhere.
 
 This works in reverse too: when the agent's diff is *almost* right, fix the one line yourself instead of describing the fix.
 The agent picks up the change the next time it looks at the file.
