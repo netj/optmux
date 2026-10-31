@@ -108,7 +108,7 @@ optmux:
             send-keys BSpace "!"  # Backspace leaves any ! shell mode, then ! enters it fresh
           }
           # pick lines in screen order, duplicates and all (extrakto dedups and reorders)
-          display-popup -E -w 100% -h 60% -t "#{pane_id}" '"$OPTMUX_DIR/bin/optmux-pick-text" "#{pane_id}"'
+          display-popup -E -w 100% -h 60% '"$OPTMUX_DIR/bin/optmux-pick-text" "#{pane_id}"'
         }
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
