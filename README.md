@@ -262,9 +262,8 @@ this over there"). Set either explicitly to override.
 ```yaml
 optmux:
   plugins:
-    laktak/extrakto:
-      extrakto_grab_area: window recent     # same as: set -g @extrakto_grab_area "window recent"
-      extrakto_filter_order: word all line
+    netj/claritmux:
+      claritmux_status_hostname: 1          # same as: set -g @claritmux_status_hostname "1"
     tmux-plugins/tmux-resurrect:
     - set -g @resurrect-dir "$OPTMUX_DIR/tmux/resurrect"   # or raw tmux lines
     Morantron/tmux-fingers: false    # disable a bundled plugin
@@ -275,9 +274,9 @@ A dict entry may also carry `_tip_url:` (a string or a list) to showcase a great
 ```yaml
 optmux:
   plugins:
-    laktak/extrakto:
+    netj/claritmux:
       _tip_url: https://www.youtube.com/watch?v=VIDEO_ID
-      extrakto_key: X
+      claritmux_status_hostname: 1
 ```
 
 Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole (including `_tip_url`). See `optmux/data/optmux-defaults.yaml` for the bundled list.
@@ -487,6 +486,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
 | `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-extract [PANE]` | Picks lines, styled spans, URLs/paths/hashes/versions or words from a pane's screen and types or copies them (`C-t X`, `C-M-x`). See [optmux eXtract](#optmux-extract-text-from-the-screen) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
 ## Session persistence
@@ -509,6 +509,15 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 **Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
 **Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (window 0, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
+
+### optmux eXtract: text from the screen
+
+`C-t X` (or `C-M-x`, without the prefix) opens optmux eXtract, a picker over the pane's screen and scrollback. `Tab` selects several, `Enter` types them into the pane, `^y` copies them. Lines keep their screen order and duplicates, so a multiline script survives (extrakto, which this replaces, dedups and reorders).
+
+- **`^f`** (or **`C-M-x`** again, so the key that opened the picker keeps cycling) cycles what is listed: **lines**, **spans** (runs of text the program colored or styled: the command, path or name worth copying), **patterns** (URLs, paths, file names with an optional `:line:col`, commit hashes, semver versions) and **words**. The last one used is remembered.
+- **`^y`** copies by the method **`^t`** cycles: `osc52` (tmux emits OSC 52, so it reaches your local clipboard over SSH too), `native` (`pbcopy`, `wl-copy`, `xclip` or `xsel`) or `buffer` (the tmux buffer only). Also remembered. Either way the tmux buffer holds the text afterwards.
+- Picks are pasted as a bracketed paste, so a shell (or Claude Code) takes several lines as one paste. A program that doesn't ask for bracketed paste (plain `cat`, some REPLs) receives each newline as `Enter`.
+- Both are kept as tmux options on the project's server (`@optmux-extract-filter`, `@optmux-extract-copy`), so they last until it stops.
 
 ## Development
 
