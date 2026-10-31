@@ -125,12 +125,12 @@ def test_custom_tips_are_the_non_bundled_shortcuts():
     assert generate_custom_tips_content({"C-t z": {"tip": "x"}}, bundled_keys={"C-t z"}) == ""
 
 
-def test_bundled_reference_lists_window_chooser_and_text_picker_next_to_fingers():
+def test_bundled_reference_lists_window_chooser_and_extract_next_to_fingers():
     from optmux.cli import load_bundled_defaults
     shortcuts = load_bundled_defaults()["shortcuts"]
     keys = list(shortcuts)
     assert "list all windows" in shortcuts["C-t w"]["tip"]
-    assert "pick" in shortcuts["X"]["tip"]
+    assert "eXtract" in shortcuts["X"]["tip"]
     assert keys.index("X") == keys.index("C-t F") + 1  # right after fingers
 
 

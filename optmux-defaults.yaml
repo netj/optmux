@@ -93,8 +93,8 @@ optmux:
       tip: open PR (or repo) on GitHub
     C-M-x:
       tmux: |
-        display-popup -E -w 100% -h 60% '"$OPTMUX_DIR/bin/optmux-pick-text"'
-      tip: same as C-t X, without the prefix
+        display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+      tip: same as C-t X, without the prefix (optmux eXtract)
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true
@@ -138,10 +138,10 @@ optmux:
       tip: tmux-fingers (copy URLs/paths/hashes)
     X:
       tmux: |
-        display-popup -E -w 100% -h 60% '"$OPTMUX_DIR/bin/optmux-pick-text"'
+        display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       tip: >
-        pick lines, colored spans, URLs/paths/hashes/versions or words on screen to type or copy
-        (^f cycles, ^y copies)
+        optmux eXtract: lines, colored spans, URLs/paths/hashes/versions or words on screen,
+        to type or copy (C-f or C-M-x cycles, C-y copies)
     C-t h/j/k/l:
       tip: navigate panes
     C-t t:

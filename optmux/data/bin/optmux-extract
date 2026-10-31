@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""optmux-pick-text — pick lines, styled spans, URLs/paths/hashes/versions or words from a pane and type them into it.
+"""optmux-extract — optmux eXtract: lines, styled spans, URLs/paths/hashes/versions or words from a pane, typed or copied.
 
-Usage: optmux-pick-text [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
+Usage: optmux-extract [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
 a multiline script survives the round trip. `^f` (or `C-M-x` again, so the opening key keeps cycling) cycles what is listed: lines, spans (runs of text the
@@ -99,8 +99,8 @@ def parse_line(raw):
 
 FILTERS = ["lines", "spans", "patterns", "words"]
 COPIERS = ["osc52", "native", "buffer"]
-FILTER_OPTION = "@optmux-pick-text-filter"
-COPY_OPTION = "@optmux-pick-text-copy"
+FILTER_OPTION = "@optmux-extract-filter"
+COPY_OPTION = "@optmux-extract-copy"
 
 # Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
 # is not listed again, and nothing overlaps within a line.
@@ -194,7 +194,7 @@ def cycle(values, current):
 
 
 def pick(pane):
-    history = os.environ.get("OPTMUX_PICK_TEXT_HISTORY", "1000")
+    history = os.environ.get("OPTMUX_EXTRACT_HISTORY", "1000")
     capture = tmux(
         "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
         capture_output=True, text=True,
@@ -211,7 +211,7 @@ def pick(pane):
                 break
             shown = cycle(FILTERS, shown)
         else:
-            tmux("display-message", "-d", "2000", "optmux-pick-text: nothing to pick on screen")
+            tmux("display-message", "-d", "2000", "optmux-extract: nothing to pick on screen")
             return 1
         # newest first: fzf's default layout grows upward from the prompt, so the screen reads in its
         # natural order with the most recent choices under the cursor (and ahead among equal matches)
@@ -221,7 +221,8 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
-                f"--header=tab=select  enter=insert  ^y=copy:{copier} (^t)  ^f/C-M-x=next filter  [{shown}]",
+                "--header=" + f"{shown} filtered (C-f or C-M-x to switch);  Up/Down to select;  Tab to multiselect\n"
+                f"Enter to insert;  C-y to copy ({copier}; C-t to switch)",
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -260,5 +261,5 @@ if __name__ == "__main__":
         import traceback
 
         traceback.print_exc()
-        input("[optmux-pick-text] failed. Press Return/Enter to dismiss...")
+        input("[optmux-extract] failed. Press Return/Enter to dismiss...")
         sys.exit(1)

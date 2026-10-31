@@ -4,7 +4,7 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # a __pycache__ in data/bin would be installed as if it were a script
-loader = SourceFileLoader("optmux_pick_text", str(Path(__file__).parent.parent / "optmux/data/bin/optmux-pick-text"))
+loader = SourceFileLoader("optmux_extract", str(Path(__file__).parent.parent / "optmux/data/bin/optmux-extract"))
 pt = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(pt)
 
