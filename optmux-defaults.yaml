@@ -92,17 +92,9 @@ optmux:
       new_window: true
       tip: open PR (or repo) on GitHub
     C-M-x:
-      tip: pick lines (^f for colored spans, URLs, ...) into claude's ! shell mode (tab multi-select, enter inserts)
       tmux: |
-        {
-          if-shell "ps -t #{pane_tty} -o command= | grep -Eq '(^|/)claude( |$|/)'" {
-            # run only in claude: a single C-c clears its prompt without the delays of M-Enter/Escape-based resets
-            send-keys C-c
-            send-keys BSpace "!"  # Backspace leaves any ! shell mode, then ! enters it fresh
-          }
-          # pick lines in screen order, duplicates and all (extrakto deduped and reordered them)
-          display-popup -E -w 100% -h 60% '"$OPTMUX_DIR/bin/optmux-pick-text"'
-        }
+        display-popup -E -w 100% -h 60% '"$OPTMUX_DIR/bin/optmux-pick-text"'
+      tip: same as C-t X, without the prefix
     C-M-h:
       command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
       new_window: true
