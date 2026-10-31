@@ -368,7 +368,12 @@ def test_e2e_pane_menu_new_window_uses_clicked_pane_cwd(tmux_env, tmp_path):
                 env=env,
             ).stdout.strip()
             windows = [line.split("\t", 1) for line in output.splitlines() if line]
-            if len(windows) == 2:
+            # On Linux a fresh pane reports tmux's own cwd (from /proc) until its shell has started
+            # in the requested directory, so wait for the path to settle, not just for the window.
+            if len(windows) == 2 and any(
+                fields[0] == "1" and os.path.realpath(fields[1]) == os.path.realpath(clicked_dir)
+                for fields in windows
+            ):
                 break
             time.sleep(0.05)
 
