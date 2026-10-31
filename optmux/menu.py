@@ -141,6 +141,11 @@ DEFAULT_MENUS = {
             "'#{?#{!:#{pane_floating_flag}},Vertical Split,}'", "'v'",
             "{split-window -v -b}",
         ),
+        _item(
+            "Split Below",
+            "'#{?#{!:#{pane_floating_flag}},Split Below,}'", "'_'",
+            "{split-window -v}",
+        ),
         _sep(),
         _item(
             "Swap Up",
