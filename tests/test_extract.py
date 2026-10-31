@@ -69,3 +69,21 @@ def test_labels_shrink_in_narrow_terminals(monkeypatch):
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
     assert pt.labels("words", "osc52")[1] == "--prompt=words (C-M-x) > "
     assert len(pt.labels("words", "osc52")[0]) < 80
+
+
+def test_control_characters_never_survive_into_the_text_to_type():
+    # an unterminated-looking paste end would let the rest of the text run as typed input
+    plain, _ = pt.parse_line("echo hi\x1b[201~; rm -rf ~\x07\r")
+    assert "\x1b" not in plain and "\r" not in plain and "\x07" not in plain
+
+
+def test_tabs_become_spaces_so_fzf_fields_stay_intact():
+    [(text, _)] = pt.choices("a\tb\n", "lines")
+    assert "\t" not in text
+
+
+def test_colon_sub_parameters_do_not_leak_bogus_attributes():
+    _, [(_, _, style)] = pt.parse_line("\x1b[38:2::1:2:4mrgb\x1b[0m")
+    assert style.fg == (38, 2, 1, 2, 4) and not style.attrs
+    _, [(_, _, style)] = pt.parse_line("\x1b[4:3mcurly\x1b[0m")
+    assert style.attrs == {4}
