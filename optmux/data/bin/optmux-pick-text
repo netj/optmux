@@ -4,7 +4,7 @@
 Usage: optmux-pick-text [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
-a multiline script survives the round trip. `^f` cycles what is listed: lines, spans (runs of text the
+a multiline script survives the round trip. `^f` (or `C-M-x` again, so the opening key keeps cycling) cycles what is listed: lines, spans (runs of text the
 program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
 hashes, versions) and words. Enter types the selection into the pane; `^y` copies it, by the method
 `^t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
@@ -220,8 +220,8 @@ def pick(pane):
             [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
-                "--expect=ctrl-f,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
-                f"--header=tab=select  enter=insert  ^y=copy:{copier} (^t)  ^f=next filter  [{shown}]",
+                "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
+                f"--header=tab=select  enter=insert  ^y=copy:{copier} (^t)  ^f/C-M-x=next filter  [{shown}]",
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -230,7 +230,7 @@ def pick(pane):
         query, key, *chosen = proc.stdout.split("\n")[:-1] or ["", "esc"]
         # fzf returns picks in the order they were made; type them in screen order
         chosen = [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in chosen))]
-        if key == "ctrl-f":
+        if key in ("ctrl-f", "ctrl-alt-x"):
             mode = cycle(FILTERS, shown)
             tmux("set-option", "-g", FILTER_OPTION, mode)
         elif key == "ctrl-t":
