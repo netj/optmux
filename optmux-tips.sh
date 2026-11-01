@@ -84,10 +84,11 @@ bundled_tool() {
     if ! command -v "$name" >/dev/null 2>&1; then
         mark="✗"
         note="   (missing: brew install $formula)"
-    elif [[ "$name" == ctags ]] && ! ctags --version 2>/dev/null | grep -q Universal; then
-        # macOS's own /usr/bin/ctags reads no file list and only knows C-like languages
+    elif [[ "$name" == ctags ]] && ! (cd "${TMPDIR:-/tmp}" && ctags --version 2>/dev/null) | grep -q Ctags; then
+        # macOS's own /usr/bin/ctags rejects --version (and a file list); universal and exuberant say "... Ctags".
+        # Run from a scratch dir, in case some ctags takes --version for a file name and writes ./tags.
         mark="✗"
-        note="   (not universal-ctags: brew install universal-ctags)"
+        note="   (macOS's own ctags can't index: brew install universal-ctags)"
     elif [[ "$name" == less ]]; then
         # --mouse needs less 551+, clickable OSC 8 links 661+ (macOS ships 668; 702+ has the newer link protocol)
         local less_version
