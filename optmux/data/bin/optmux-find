@@ -524,7 +524,10 @@ def source_title(source, detail):
         how = f"lsp {detail}" if detail else "lsp"
     else:
         found = tags_file(check=False)
-        how = f"ctags: {os.path.relpath(found, repo_root() or os.getcwd())}" if found else "ctags"
+        shown = os.path.relpath(found, repo_root() or os.getcwd()) if found else ""
+        if shown.startswith(".."):  # outside the project: where it is, not how to climb to it
+            shown = str(found).replace(str(Path.home()), "~", 1)
+        how = f"ctags: {shown}" if found else "ctags"
     return f"{SOURCE_NAMES[source]} ({how})"
 
 
