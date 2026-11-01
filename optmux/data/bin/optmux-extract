@@ -16,6 +16,7 @@ and `C-M-f` searches everything (optmux Find, started in this same popup with th
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -280,15 +281,20 @@ def find_query(chosen, typed):
 
 
 def open_find(pane, source, query):
-    """Continue as optmux Find in this popup, started in `source` with `query`, working on `pane`'s project. Does
-    not return, unless it cannot: then the text is kept in the tmux buffer, so the lookup is not lost."""
+    """Hand the lookup to optmux Find: this popup closes and Find opens in a popup of its own (a popup's title cannot
+    change, and this one says eXtract), started in `source` with `query`, working on `pane`'s project. If that cannot
+    be set up, the text is kept in the tmux buffer, so the lookup is not lost."""
     find = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-find")
     try:
         path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
-        if path and os.path.isdir(path):
-            os.chdir(path)
         argv = [find, pane, f"--mode={source}", f"--query={query}"]  # `--query=` in one piece: the text may start with a dash
-        os.execv(*((find, argv) if os.access(find, os.X_OK) else (sys.executable, [sys.executable, *argv])))
+        if not os.access(find, os.X_OK):
+            argv = [sys.executable, *argv]
+        popup = ["tmux", "display-popup", "-E", "-t", pane, *(["-d", path] if path else []), "-w", "100%", "-h", "60%",
+                 "-b", "rounded", "-T", " optmux Find ", shlex.join(argv)]
+        # in the background and a moment later: this popup has to be gone first, or the new one opens over it
+        tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(popup)}")
+        return 0
     except (subprocess.CalledProcessError, OSError) as e:
         load_buffer(query)
         tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
