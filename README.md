@@ -486,6 +486,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
 | `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-find [PANE]` | Finds a file, a line (live `git grep`) or a ctags tag and opens it in an editor split at that line (`C-M-f`). Resumes where you left off (mode, query, cursor). See [optmux Find](#optmux-find-open-a-file-line-or-tag) |
 | `optmux-extract [PANE]` | Picks lines, styled spans, URLs/paths/hashes/versions or words from a pane's screen and types or copies them (`C-t X`, `C-M-x`). See [optmux eXtract](#optmux-extract-text-from-the-screen) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
@@ -509,6 +510,18 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 **Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
 **Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (window 0, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
+
+### optmux Find: open a file, line or tag
+
+`C-M-f` opens a picker over the project with three modes, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
+
+- **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
+- **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
+- **`^t` tags**: a `tags` file at the repo root, or one built on first use (into `.git/optmux-tags`) when [universal-ctags](https://ctags.io) is installed (`brew install universal-ctags`; macOS's own `ctags` is not enough).
+
+`C-M-f` again (the key that opened it) cycles the modes. Each source resumes on its own, since a fuzzy file name, a grep regex and a tag name are different kinds of query: the last mode, that source's last query, and the cursor on the entry it was on. `^u` clears the query for a new search; `^p` recalls that source's earlier queries (`^n` goes forward), including ones you left with `Esc` or a mode switch. Grep results are sorted by file and line. State is per project and per source, in `.optmux.d/find/` (`MODE.last`, `MODE.history`; `~/.local/state/optmux/` outside optmux); the mode is the tmux option `@optmux-find-mode`.
+
+There is no LSP mode: language servers speak JSON-RPC to an editor, and no standard command line asks one for `workspace/symbol`. Tags cover "jump to a definition" without one.
 
 ### optmux eXtract: text from the screen
 

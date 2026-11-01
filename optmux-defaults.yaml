@@ -70,8 +70,10 @@ optmux:
       remain: false
       tip: wtcode
     C-M-f:
-      command: ${VISUAL:-${EDITOR:-vim}} $(fzf || echo .)
-      tip: find file to edit
+      tmux: |
+        display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+      tip: >
+        find a file, a line (git grep) or a tag to edit; C-M-f cycles them and it resumes where you left off
     C-M-g:
       command: |
         (sleep 0.5; tmux send-keys Enter '*' Enter) &
