@@ -4,7 +4,7 @@
 Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 One picker with four sources, like ctrl-p in vim but remembering where you were:
-  all    (^a)  the three below blended: tags, then file names, then grep lines, each row labeled
+  omni   (^o)  the three below blended: tags, then file names, then grep lines, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
@@ -28,9 +28,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-MODES = ["all", "files", "grep", "tags"]
-MODE_KEYS = {"all": "ctrl-a", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
-LIVE = {"grep", "all"}  # sources that search as you type (fzf only displays their list)
+MODES = ["omni", "files", "grep", "tags"]
+MODE_KEYS = {"omni": "ctrl-o", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
+LIVE = {"grep", "omni"}  # sources that search as you type (fzf only displays their list)
 MODE_OPTION = "@optmux-find-mode"
 CYCLE_KEY = "ctrl-alt-f"
 MAX_RESULTS = 3000
@@ -168,7 +168,7 @@ def list_tags(_query, warn=True):
         yield f"{path}\t{line}\t{name}  {kind}  {path}:{line}"
 
 
-ALL_LIMITS = {"tag": 40, "file": 40, "grep": 200}  # rows per section in the blended list
+OMNI_LIMITS = {"tag": 40, "file": 40, "grep": 200}  # rows per section in the blended list
 
 
 def fuzzy(entries, query):
@@ -185,15 +185,15 @@ def label(kind, entries, limit):
         yield f"{f}\t{n}\t{kind:<5} {display}"
 
 
-def list_all(query):
-    """Every source at once: tag definitions, then file names (both fuzzy), then lines of text (grep). A
+def list_omni(query):
+    """Every source at once (omni): tag definitions, then file names (both fuzzy), then lines of text (grep). A
     section per source, best match nearest the prompt; the label says where a row came from."""
-    yield from label("tag", fuzzy(list(list_tags("", warn=False)), query), ALL_LIMITS["tag"])
-    yield from label("file", fuzzy(list(list_files("")), query), ALL_LIMITS["file"])
-    yield from label("grep", list(list_grep(query)), ALL_LIMITS["grep"])
+    yield from label("tag", fuzzy(list(list_tags("", warn=False)), query), OMNI_LIMITS["tag"])
+    yield from label("file", fuzzy(list(list_files("")), query), OMNI_LIMITS["file"])
+    yield from label("grep", list(list_grep(query)), OMNI_LIMITS["grep"])
 
 
-LISTERS = {"all": list_all, "files": list_files, "grep": list_grep, "tags": list_tags}
+LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags}
 
 
 # ---- opening -------------------------------------------------------------------------------------------
@@ -292,7 +292,7 @@ def pick(pane):
         candidates = list(LISTERS[mode](query))
         pos = cursor_position(candidates, query, entry, filtered=mode not in LIVE)
         # The list goes in on stdin for every source. Once loaded, move the cursor and stop watching `load`
-        # (later changes, from typing, are not ours to steer). The live sources (grep, all): fzf matches nothing itself and each
+        # (later changes, from typing, are not ours to steer). The live sources (grep, omni): fzf matches nothing itself and each
         # keystroke re-runs the search, debounced by the sleep (fzf kills a pending reload on the next key).
         # `change` must wait for that first load, because the initial --query counts as a change, and the
         # reload it triggers would put the cursor back on top. (The reload is parenthesized, or it swallows the
