@@ -486,6 +486,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
 | `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
+| `optmux-find [PANE]` | Finds a file, a line (live `git grep`), a ctags tag, or tags and files ranked together (omni) and opens it in an editor split at that line (`C-M-f`). Resumes where you left off (mode, query, cursor). See [optmux Find](#optmux-find-open-a-file-line-or-tag) |
 | `optmux-extract [PANE]` | Picks lines, styled spans, URLs/paths/hashes/versions or words from a pane's screen and types or copies them (`C-t X`, `C-M-x`). See [optmux eXtract](#optmux-extract-text-from-the-screen) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
@@ -509,6 +510,21 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 **Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
 **Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (window 0, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
+
+### optmux Find: open a file, line or tag
+
+`C-M-f` opens a picker over the project with four sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
+
+- **`^o` omni** (the default): tags and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag is matched on its name, a file on its path). Rows are labeled `tag` or `file`; the best 100 are shown. Grep stays on its own key, `^g`.
+- **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
+- **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
+- **`^t` tags**: a `tags` file at the repo root (a `post-commit` hook running `ctags` keeps it fresh), or one built on first use (into `.git/optmux-tags`) when [universal-ctags](https://ctags.io) is installed (`brew install universal-ctags`; macOS's own `ctags` is not enough).
+
+`C-M-f` again (the key that opened it) cycles the sources, or jump straight to one with its key. Switching carries the text you typed along, so what you searched in omni can be tried as grep, then as tags (the same text means different things in each: fuzzy for omni, files and tags, a regex or plain text for grep). Each source keeps its own record, since a fuzzy file name, a regex and a tag name are different kinds of query. Opening the picker afresh resumes the last source with its own last query and the cursor on the entry it was on; `^u` clears the query for a new search, and `^p` recalls that source's earlier queries (`^n` goes forward), including ones you left with `Esc` or a switch. Grep results are sorted by file and line.
+
+**Recency.** What you open is remembered per project, and pulls those files and tags up: with an empty query the lists start with what you opened last (like ctrl-p's most-recently-used list). In omni the boost is bounded: the most recent file or tag may jump up to 20 places, the next one a place less, so a strong match still beats a weak recent one. Files and tags are matched by fzf itself, so there recency decides ties and the empty list, but cannot lift a weaker match over a stronger one. Grep order stays by file and line. State is per project and per source, in `.optmux.d/find/` (`SOURCE.last`, `SOURCE.history`, `recent.json`; `~/.local/state/optmux/` outside optmux); the source is the tmux option `@optmux-find-mode`.
+
+There is no LSP mode: language servers speak JSON-RPC to an editor, and no standard command line asks one for `workspace/symbol`. Tags cover "jump to a definition" without one.
 
 ### optmux eXtract: text from the screen
 

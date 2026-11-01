@@ -39,7 +39,7 @@ Everything you need for a task is one keystroke away, as extra panes in *that sa
 | `C-M-s` | shell | run tests, poke around |
 | `C-M-g` | lazygit | review, stage, commit |
 | `C-M-d` | diff | what the PR will contain |
-| `C-M-f` | editor | fuzzy-find a file and edit it |
+| `C-M-f` | editor | find a file or a tag (ranked together, omni) or a line (git grep) and edit it; `C-M-f` again cycles, it resumes where you left off |
 
 Each opens zoomed over the agent; `C-M-z` toggles the zoom, and `C-M-o` jumps back to the agent.
 

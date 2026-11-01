@@ -22,11 +22,12 @@ jobs:
       - uses: actions/checkout@v7
       # Python comes from .python-version (what dev uses); optmux is a CLI, not a library
       - uses: astral-sh/setup-uv@v7
-      # e2e tests skip themselves when tmux is missing, so a failed install must fail the job
-      - name: Install tmux
+      # e2e tests skip themselves when tmux is missing (the finder's, fzf), so a failed install must fail the job
+      - name: Install tmux and fzf
         run: |
-          if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
+          if [ "$RUNNER_OS" = macOS ]; then brew install tmux fzf; else sudo apt-get update && sudo apt-get install -y tmux fzf; fi
           tmux -V
+          fzf --version
       - run: uv sync --locked
       - run: uv run pytest -rs
 

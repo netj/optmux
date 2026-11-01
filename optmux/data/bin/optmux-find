@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""optmux-find — optmux Find: a file, a line or a symbol, opened in your editor.
+
+Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
+
+One picker with four sources, like ctrl-p in vim but remembering where you were:
+  omni   (^o)  tags and file paths ranked together, best match first, each row labeled
+  files  (^f)  git ls-files (or find outside a repo)
+  grep   (^g)  git grep, live: the list is re-searched as you type
+  tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
+`C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
+the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
+afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
+query, and `^p` (then older ones; `^n` goes forward) recalls that source's earlier queries (fzf's own history,
+which also records queries you left with Esc or a switch). Enter opens the pick in an editor split next to the
+agent, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
+$OPTMUX_DIR/find/ (per project): SOURCE.{last,history}, and recent.json, what you opened, which pulls
+those files and tags up the lists (to the top with no query; in omni, up to 20 places).
+
+Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
+"""
+
+import json
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+MODES = ["omni", "files", "grep", "tags"]
+MODE_KEYS = {"omni": "ctrl-o", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
+LIVE = {"grep", "omni"}  # lists made per query (fzf only displays them): grep searches, omni ranks
+MODE_OPTION = "@optmux-find-mode"
+CYCLE_KEY = "ctrl-alt-f"
+MAX_RESULTS = 3000
+# editors that do not take `+LINE FILE`
+LINE_ARGS = {
+    "code": lambda f, n: ["-g", f"{f}:{n}"], "cursor": lambda f, n: ["-g", f"{f}:{n}"],
+    "wtcode": lambda f, n: ["-g", f"{f}:{n}"], "zed": lambda f, n: [f"{f}:{n}"],
+    "hx": lambda f, n: [f"{f}:{n}"], "micro": lambda f, n: [f"{f}:{n}"],
+}
+
+
+def run(*cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def tmux(*args, **kw):
+    return subprocess.run(["tmux", *args], check=True, **kw)
+
+
+def tmux_option(name):
+    return run("tmux", "show-options", "-gqv", name).stdout.rstrip("\n")
+
+
+def set_tmux_option(name, value):
+    tmux("set-option", "-g", name, value)
+
+
+def repo_root():
+    out = run("git", "rev-parse", "--show-toplevel")
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def state_dir():
+    """Per project: $OPTMUX_DIR (the project's .NAME.optmux.d) holds a tmux server's own state. Outside optmux,
+    the user-wide XDG state dir."""
+    base = os.environ.get("OPTMUX_DIR")
+    d = Path(base, "find") if base else Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state", "optmux")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+# ---- candidates: lines of `FILE \t LINE \t DISPLAY` ----------------------------------------------------
+
+def list_files(_query):
+    if repo_root():
+        out = run("git", "ls-files", "-co", "--exclude-standard").stdout
+    else:
+        out = run("find", ".", "-type", "f", "-not", "-path", "*/.git/*").stdout
+    for f in sorted(set(out.splitlines())):
+        if f and os.path.isfile(f):
+            yield f"{f}\t1\t{f}"
+
+
+MIN_GREP_QUERY = 2  # characters; one letter matches half the repo and only makes the list churn
+
+
+def grep_command(query, fixed=False):
+    # smart case, like fzf and ripgrep: ignore case unless the query has a capital
+    flags = [*([] if query != query.lower() else ["-i"]), *(["-F"] if fixed else [])]
+    return (["git", "grep", "-nI", "--no-color", *flags, "-e", query] if repo_root()
+            else ["grep", "-rnI", "--exclude-dir=.git", *flags, "-e", query, "."])
+
+
+def list_grep(query):
+    """Matches of a regex, or of the literal text while the regex is still half-typed (`foo(`, `[a-`), sorted by
+    file and line (git grep's own order varies from run to run: it searches on several threads)."""
+    if len(query.strip()) < MIN_GREP_QUERY:
+        return
+    for fixed in (False, True):
+        proc = subprocess.Popen(grep_command(query, fixed), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, errors="replace")
+        # fzf kills us on the next keystroke: take the search down with us rather than leave it running
+        signal.signal(signal.SIGTERM, lambda *_: (proc.kill(), sys.exit(1)))
+        hits = []
+        for line in proc.stdout:
+            m = re.match(r"(.+?):(\d+):(.*)", line.rstrip("\n"))
+            if m:
+                hits.append((m[1].removeprefix("./"), int(m[2]), m[3].strip()))
+            if len(hits) >= MAX_RESULTS:
+                proc.kill()
+                break
+        status = 0 if len(hits) >= MAX_RESULTS else proc.wait()
+        if status not in (2, 128) or hits:  # 128 (git) / 2 (grep): not a valid regex; retry as plain text
+            break
+    for f, n, text in sorted(hits):
+        yield f"{f}\t{n}\t{f}:{n}: {text}"
+
+
+def tags_file():
+    """An existing `tags` file, else one built (outside the work tree) by universal-ctags."""
+    root = repo_root() or os.getcwd()
+    existing = Path(root, "tags")
+    if existing.is_file():
+        return existing
+    ctags = next((c for c in ("universal-ctags", "uctags", "ctags") if shutil.which(c)), None)
+    # probe from a scratch dir: some ctags (macOS's) treat --version as a file list and write ./tags
+    if not ctags or "Universal" not in run(ctags, "--version", cwd=state_dir()).stdout:
+        return None
+    out = Path(run("git", "rev-parse", "--git-dir").stdout.strip() or state_dir(), "optmux-tags").resolve()
+    files = run("git", "ls-files", "-co", "--exclude-standard").stdout if repo_root() else None
+    subprocess.run([ctags, "--fields=+nK", "-f", str(out), *(["-L", "-"] if files is not None else ["-R"])],
+                   input=files, text=True, cwd=root, stderr=subprocess.DEVNULL)
+    return out if out.is_file() else None
+
+
+def tag_line(root, path, excmd):
+    """Line number of a tag whose ex command is a /pattern/ rather than a number."""
+    if excmd.isdigit():
+        return excmd
+    pattern = re.sub(r"^/\^?|\$?/$", "", excmd).replace("\\/", "/").replace("\\\\", "\\")
+    try:
+        for n, line in enumerate(Path(root, path).read_text(errors="replace").splitlines(), 1):
+            if line.rstrip("\n") == pattern or (pattern and pattern in line):
+                return str(n)
+    except OSError:
+        pass
+    return "1"
+
+
+def list_tags(_query, warn=True):
+    tags = tags_file()
+    if not tags:
+        if warn:
+            print("no tags file; install universal-ctags (brew install universal-ctags) or run ctags -R", file=sys.stderr)
+        return
+    root = tags.parent if tags.name == "tags" else (repo_root() or os.getcwd())
+    for raw in tags.read_text(errors="replace").splitlines():
+        if raw.startswith("!_TAG_"):
+            continue
+        name, path, rest = (raw.split("\t", 2) + ["", ""])[:3]
+        excmd, _, ext = rest.partition(';"')
+        fields = dict(f.split(":", 1) for f in ext.split("\t") if ":" in f)
+        kind = fields.get("kind") or (ext.split("\t")[1] if len(ext.split("\t")) > 1 and ":" not in ext.split("\t")[1] else "")
+        line = fields.get("line") or tag_line(root, path, excmd)
+        yield f"{path}\t{line}\t{name}  {kind}  {path}:{line}"
+
+
+RECENT_KEEP = 300   # entries remembered
+RECENT_BOOST = 20   # places the most recently opened entry may jump in omni; the 20th gets none
+
+
+def tag_key(name, path):
+    return f"{name}\t{path}"
+
+
+def load_recent():
+    """Keys of what was opened here (a file's path, or a tag's name and path), most recent first."""
+    try:
+        keys = json.loads((state_dir() / "recent.json").read_text())
+        return [k for k in keys if isinstance(k, str)]
+    except (OSError, ValueError):
+        return []
+
+
+def record_opened(mode, entry):
+    """Remember an opened entry: its file, and its tag too if it was one."""
+    f, _, display = (entry.split("\t", 2) + ["", ""])[:3]
+    keys = [f]
+    if mode == "tags":
+        keys.insert(0, tag_key(display.split("  ", 1)[0], f))
+    elif mode == "omni" and display.startswith("tag "):
+        keys.insert(0, tag_key(display[5:].split("  ", 1)[0], f))
+    (state_dir() / "recent.json").write_text(json.dumps((keys + [k for k in load_recent() if k not in keys])[:RECENT_KEEP]))
+
+
+def by_recency(entries, key_of, recent):
+    """Entries with the recently opened first (most recent first), the rest in their order."""
+    where = {k: i for i, k in enumerate(recent)}
+    return sorted(entries, key=lambda e: where.get(key_of(e), len(recent)))
+
+
+def boost(keys, recent):
+    """Positions of `keys` (given in match order) after recency pulls the recently opened ahead: the most recent
+    by up to RECENT_BOOST places, the next one a place less, and so on. Bounded, so a strong match still beats
+    a weak recent one."""
+    where = {k: i for i, k in enumerate(recent)}
+    return sorted(range(len(keys)), key=lambda p: (p - max(0, RECENT_BOOST - where.get(keys[p], RECENT_BOOST)), p))
+
+
+OMNI_LIMIT = 100  # rows; the best matches of tags and files together
+
+
+def rank(matchables, query):
+    """Indexes of `matchables` matching `query` the way fzf would rank them, best first (one pass over all of
+    them, so scores from different sources compete: an exact file name beats a weak tag hit; of equal
+    scores the shorter, i.e. the more specific, wins)."""
+    if not query:
+        return list(range(len(matchables)))
+    out = run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=2", "--tiebreak=length,index",
+              input="".join(f"{i}\t{m}\n" for i, m in enumerate(matchables))).stdout
+    return [int(line.split("\t", 1)[0]) for line in out.splitlines()]
+
+
+def list_omni(query):
+    """Tags and file paths in one list, the stronger matches higher whichever source they come from. A tag is
+    matched on its name (its path is the file's row), a file on its path; the label says which is which.
+    What you opened lately is pulled up (see boost); with no query, it comes first."""
+    rows = []  # (what is matched, label, recency key, entry)
+    for e in list_tags("", warn=False):
+        f, n, display = e.split("\t", 2)
+        name = display.split("  ", 1)[0]
+        rows.append((name, "tag", tag_key(name, f), e))
+    for e in list_files(""):
+        rows.append((e.split("\t", 1)[0], "file", e.split("\t", 1)[0], e))
+    recent = load_recent()
+    if query:
+        order = rank([m for m, _, _, _ in rows], query)
+        order = [order[p] for p in boost([rows[i][2] for i in order], recent)]
+    else:
+        where = {k: i for i, k in enumerate(recent)}
+        order = sorted(range(len(rows)), key=lambda i: where.get(rows[i][2], len(recent)))
+    for i in order[:OMNI_LIMIT]:
+        _, kind, _, e = rows[i]
+        f, n, display = e.split("\t", 2)
+        yield f"{f}\t{n}\t{kind:<4} {display}"
+
+
+LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags}
+
+
+# ---- opening -------------------------------------------------------------------------------------------
+
+def editor_command(path, line):
+    editor = shlex.split(os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vim")
+    args = LINE_ARGS.get(os.path.basename(editor[0]), lambda f, n: [f"+{n}", f])(path, line)
+    return " ".join(shlex.quote(a) for a in [*editor, *args])
+
+
+def open_in_split(pane, path, line):
+    """Same placement as the other C-M-* splits: above the pane, or across the window edge when out of room."""
+    cwd = os.getcwd()
+    fits = run(os.path.join(os.environ["OPTMUX_DIR"], "bin", "optmux-split-fits"), pane).returncode == 0
+    new = tmux("split-window", "-P", "-F", "#{pane_id}", *([] if fits else ["-f"]), "-v", "-b", "-c", cwd,
+               "-t", pane, editor_command(path, line), capture_output=True, text=True).stdout.strip()
+    tmux("resize-pane", "-Z", "-t", new)
+
+
+def dedupe_history(path):
+    """fzf appends every accepted query, repeats included; keep the latest occurrence of each (^p walks back)."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return
+    kept = list(dict.fromkeys(reversed([l for l in lines if l.strip()])))[::-1]
+    if kept != lines:
+        path.write_text("\n".join(kept) + "\n" if kept else "")
+
+
+def remember_query(path, query):
+    """fzf records only queries accepted with Enter; also keep the ones left by Esc or a mode switch."""
+    if query.strip():
+        with open(path, "a") as f:
+            f.write(query + "\n")
+        dedupe_history(path)
+
+
+# ---- the picker ----------------------------------------------------------------------------------------
+
+def header(mode):
+    tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', '^')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', '^')}"
+                     for m in MODES)
+    return f"{tabs}   C-M-f: next;  ^u: clear;  ^p/^n: history;  Enter: open"
+
+
+def parse_output(stdout):
+    """(query, key, line) from `fzf --print-query --expect=...`; line is the whole `FILE \t LINE \t DISPLAY` entry
+    under the cursor (also when leaving by Esc or a mode key), or None."""
+    query, key, *picked = stdout.split("\n")[:-1] or ["", "esc"]
+    return query, key, picked[0] if picked else None
+
+
+def target(entry):
+    f, n, _ = (entry.split("\t", 2) + ["1", ""])[:3]
+    return f, n
+
+
+def load_state(mode):
+    """(query, entry) this source was left with: its search text, and the entry the cursor was on."""
+    try:
+        d = json.loads((state_dir() / f"{mode}.last").read_text())
+        return str(d.get("query", "")), d.get("entry")
+    except (OSError, ValueError, AttributeError):
+        return "", None
+
+
+def save_state(mode, query, entry):
+    (state_dir() / f"{mode}.last").write_text(json.dumps({"query": query, "entry": entry}))
+
+
+def cursor_position(entries, query, entry, filtered=True):
+    """1-based position of `entry` in the list as fzf will show it for `query` (best match first), or None.
+    `filtered`: fzf fuzzy-matches the query against the entries (not so for grep, whose list is already the answer)."""
+    if not entry or not entries:
+        return None
+    if query and filtered:
+        entries = run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
+                      input="\n".join(entries) + "\n").stdout.splitlines()
+    return entries.index(entry) + 1 if entry in entries else None
+
+
+def pick(pane):
+    mode = tmux_option(MODE_OPTION)
+    mode = mode if mode in MODES else MODES[0]
+    me = os.path.abspath(sys.argv[0])
+    carried = None  # what was typed in the source we just switched away from
+    while True:
+        # A fresh start resumes the source's own query and the cursor on the entry it was on. After a switch
+        # the text just typed comes along (the cursor is only restored if it is the same query as the saved one).
+        query, entry = load_state(mode)
+        if carried is not None:
+            query, entry = carried, (entry if carried == query else None)
+        history = state_dir() / f"{mode}.history"
+        dedupe_history(history)
+        fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode in LIVE else "--tiebreak=index",
+               "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
+               f"--history={history}", "--history-size=200",
+               f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
+        candidates = list(LISTERS[mode](query))
+        if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
+            candidates = by_recency(candidates, lambda e: e.split("\t", 1)[0], load_recent())
+        elif mode == "tags":
+            candidates = by_recency(candidates, lambda e: tag_key(e.split("\t", 2)[2].split("  ", 1)[0], e.split("\t", 1)[0]), load_recent())
+        pos = cursor_position(candidates, query, entry, filtered=mode not in LIVE)
+        # The list goes in on stdin for every source. Once loaded, move the cursor and stop watching `load`
+        # (later changes, from typing, are not ours to steer). The live sources (grep, omni): fzf matches nothing itself and each
+        # keystroke re-runs the search, debounced by the sleep (fzf kills a pending reload on the next key).
+        # `change` must wait for that first load, because the initial --query counts as a change, and the
+        # reload it triggers would put the cursor back on top. (The reload is parenthesized, or it swallows the
+        # next binding.)
+        first_load = (f"pos({pos})+" if pos else "") + "unbind(load)"
+        if mode in LIVE:
+            fzf += ["--disabled", "--bind=start:unbind(change)", f"--bind=load:{first_load}+rebind(change)",
+                    f"--bind=change:reload(sleep 0.1; {shlex.quote(me)} --list {mode} {{q}})"]
+        else:
+            fzf += [f"--bind=load:{first_load}"]
+        stdin = "\n".join(candidates) + "\n"
+        proc = subprocess.run(fzf, input=stdin, stdout=subprocess.PIPE, text=True)
+        if proc.returncode not in (0, 1, 130):
+            input(f"[optmux-find] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
+            return proc.returncode
+        query, key, entry = parse_output(proc.stdout)
+        remember_query(history, query)
+        save_state(mode, query, entry)
+        carried = query
+        if key == CYCLE_KEY:
+            mode = MODES[(MODES.index(mode) + 1) % len(MODES)]
+        elif key in MODE_KEYS.values():
+            mode = next(m for m, k in MODE_KEYS.items() if k == key)
+        else:
+            set_tmux_option(MODE_OPTION, mode)
+            if key not in ("ctrl-c", "esc") and entry:
+                record_opened(mode, entry)
+                open_in_split(pane, *target(entry))
+            return 0
+        set_tmux_option(MODE_OPTION, mode)
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] == ["--list"]:
+        mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
+        sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))
+        sys.exit(0)
+    if len(sys.argv) > 2:
+        sys.exit(__doc__)
+    pane = sys.argv[1] if len(sys.argv) == 2 else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
+    sys.exit(pick(pane))
