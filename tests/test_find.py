@@ -447,25 +447,81 @@ def test_preview_shows_the_file_around_the_line_with_the_line_marked(tmp_path, m
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(fd.shutil, "which", lambda name: None)  # no bat: the plain renderer
     Path("a.py").write_text("".join(f"line {i}\n" for i in range(1, 101)))
-    assert fd.preview("a.py", "50", "x", 12) == 0
+    assert fd.preview("files", "a.py", "50", "x", 12) == 0
     out = capsys.readouterr().out.splitlines()
-    assert len(out) == 12 and "line 50" in "".join(l for l in out if l.lstrip("\x1b[1;33m").startswith(">"))
-    assert any(">" in l and "line 50" in l for l in out) and not any("line 40" in l for l in out) and any("line 47" in l for l in out)
-    fd.preview("a.py", "1", "x", 5)  # the top of a file: start at line 1
-    assert "line 1" in capsys.readouterr().out.splitlines()[0]
+    assert len(out) == 12
+    marked = [l for l in out if ">" in l.split("\x1b[0m")[0]]
+    assert len(marked) == 1 and marked[0].endswith("line 50")
+    assert any(l.endswith("line 47") for l in out) and not any(l.endswith("line 40") for l in out)
+    fd.preview("files", "a.py", "1", "x", 5)  # the top of a file: start at line 1
+    assert capsys.readouterr().out.splitlines()[0].endswith("line 1")
 
 
-def test_preview_copes_with_binary_missing_and_marker_rows(tmp_path, monkeypatch, capsys):
+def test_preview_copes_with_binary_missing_directory_empty_and_marker_rows(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(fd.shutil, "which", lambda name: None)
     Path("b.bin").write_bytes(b"\x00\x01\x02")
-    fd.preview("b.bin", "1", "", 10)
-    fd.preview("gone.py", "1", "", 10)
-    fd.preview("!install:go", "0", fd.with_icon("install", "go: no language server installed.  Enter runs: brew install gopls"), 10)
-    fd.preview("x.py", "not a number", "", 10)
+    Path("sub").mkdir()
+    Path("c.txt").write_text("a\x1b[31mred\x1b[0m\rb\tc\n")
+    fd.preview("files", "b.bin", "1", "", 10)
+    fd.preview("files", "gone.py", "1", "", 10)
+    fd.preview("files", "sub", "1", "", 10)
+    fd.preview("files", "", "", "", 10)  # nothing selected: fzf passes empty placeholders
+    fd.preview("files", "x.py", "not a number", "", 10)
+    fd.preview("lsp", "!install:go", "0", fd.with_icon("install", "go: no language server installed.  Enter runs: brew install gopls"), 10)
+    fd.preview("files", "c.txt", "1", "", 10)
     out = capsys.readouterr().out
-    assert "(binary file)" in out and "(gone.py is not there)" in out
+    assert "(binary file)" in out and "(gone.py is not there)" in out and "(sub is a directory)" in out
     assert "go: no language server installed.  Enter runs: brew install gopls" in out and "📥" not in out
+    assert "a·[31mred·[0m·b\tc" in out and "\x1b[31m" not in out and "\r" not in out  # the file's own control bytes are defused
+
+
+def test_a_file_named_like_a_marker_is_previewed_as_a_file_outside_the_lsp_source(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fd.shutil, "which", lambda name: None)
+    Path("!important.md").write_text("hello\n")
+    for mode in ("files", "grep", "tags", "omni"):
+        fd.preview(mode, "!important.md", "1", "x", 5)
+    assert capsys.readouterr().out.count("hello") == 4
+
+
+def test_bat_is_used_when_there_is_one_under_either_name(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    Path("a.py").write_text("x\n" * 40)
+    ran = []
+    monkeypatch.setattr(fd.os, "execvp", lambda exe, argv: ran.append((exe, argv)))
+    for name in fd.BAT:
+        monkeypatch.setattr(fd.shutil, "which", lambda n, name=name: f"/x/{n}" if n == name else None)
+        fd.preview("files", "a.py", "20", "x", 30)
+    assert [exe for exe, _ in ran] == ["bat", "batcat"]
+    argv = ran[0][1]
+    assert "--highlight-line=20" in argv and "--line-range=10:39" in argv and "--wrap=never" in argv and argv[-2:] == ["--", "a.py"]
+
+
+def test_the_symbol_kind_survives_a_name_with_a_double_space_and_unknown_kinds():
+    assert fd.symbol_kind("describe  it works  function  mod  a.py:1") == "call"
+    assert fd.symbol_kind("x  function  a.py:1") == "call" and fd.symbol_kind("x    a.py:1") == "sym"
+
+
+def test_the_fzf_preview_options_hide_a_narrow_preview_and_pass_the_mode_and_row(monkeypatch):
+    args = fd.preview_args("/b/optmux-find", "lsp")
+    assert args[0] == "--preview" and "--preview lsp {1} {2} {3}" in args[1] and "/b/optmux-find" in args[1]
+    window = [a for a in args if a.startswith("--preview-window=")][0]
+    assert "nowrap" in window and "<55(hidden)" in window and any("toggle-preview" in a for a in args)
+
+
+def test_the_preview_command_fzf_runs_end_to_end(tmp_path):
+    (tmp_path / "a.py").write_text("".join(f"row {i}\n" for i in range(1, 60)))
+    script = Path(__file__).parent.parent / "optmux/data/bin/optmux-find"
+    env = {**__import__("os").environ, "FZF_PREVIEW_LINES": "8", "PATH": "/usr/bin:/bin"}  # no bat
+    out = subprocess.run([sys.executable, str(script), "--preview", "files", "a.py", "30", "a.py"], cwd=tmp_path, env=env,
+                         capture_output=True, text=True).stdout.splitlines()
+    assert len(out) == 8 and out[0].endswith("row 28") and ">" in out[2].split("\x1b[0m")[0]  # a third of it before line 30
+    # fzf with an empty list passes empty placeholders (or none at all)
+    assert subprocess.run([sys.executable, str(script), "--preview", "files", "", "", ""], cwd=tmp_path, env=env,
+                          capture_output=True, text=True).stdout == ""
+    assert subprocess.run([sys.executable, str(script), "--preview"], cwd=tmp_path, env=env, capture_output=True,
+                          text=True).stdout == ""
 
 
 def test_preview_is_on_unless_turned_off(monkeypatch, tmp_path):

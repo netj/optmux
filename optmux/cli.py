@@ -92,6 +92,8 @@ def _validate_optmux_section(optmux, source):
     find = optmux.get("find")
     if isinstance(find, dict):
         _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
+        if "preview" in find and not isinstance(find["preview"], bool):
+            print(f"optmux: {source}: find.preview: {find['preview']!r} is not true or false", file=sys.stderr)
         if find.get("icons") not in (None, "emoji", "nerd", "text"):
             print(f"optmux: {source}: find.icons: {find['icons']!r} is not one of emoji, nerd, text", file=sys.stderr)
         for lang, cfg in (find.get("lsp") or {}).items():
