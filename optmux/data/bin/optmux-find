@@ -518,9 +518,12 @@ def preview_header(what, path, line):
     directory, base = os.path.split(path)
     kind_text = {"file": "", "hit": ""}.get(kind, kind)
     print(f"\x1b[1m{name[:room]}\x1b[0m")
-    print(f"{DIM}{' · '.join(x for x in (kind_text, SOURCE_NAMES[source]) if x)}{UNDIM}")
-    place = f"{directory + '/' if directory else ''}{base}" + (f":{line}" if source != "files" else "")
-    print(f"{DIM}{place[:room - len(container) - 5 if container else room]}{UNDIM}" + (f"  {DIM}in {container}{UNDIM}" if container else ""))
+    print(f"{DIM}{' · '.join(x for x in (SOURCE_NAMES[source], kind_text) if x)}{UNDIM}")  # the source first: it is one of four
+    where = f"{base}:{line}" if source != "files" else base  # the file is bright, the directory before it dim
+    context = f"  in {container}" if container else ""
+    directory = (directory + "/") if directory else ""
+    directory = directory[:max(0, room - len(where) - len(context))]
+    print(f"{DIM}{directory}{UNDIM}{where}" + (f"{DIM}{context[:max(0, room - len(directory) - len(where))]}{UNDIM}" if container else ""))
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES

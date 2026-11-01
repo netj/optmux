@@ -488,7 +488,7 @@ def test_the_preview_opens_with_what_the_row_is_and_where(tmp_path, monkeypatch,
     fd.preview("lsp", "pkg/a.go", "30", "x", fd.FIELD_SEP.join(what), 20)
     out = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in capsys.readouterr().out.splitlines()]
     assert len(out) == 20  # the header is part of the window's height
-    assert out[:3] == ["Gui.Layout", "method · symbol (language server)", "pkg/a.go:30  in Gui"]
+    assert out[:3] == ["Gui.Layout", "symbol (language server) · method", "pkg/a.go:30  in Gui"]
     assert out[3].startswith("──") and any(l.endswith("line 30") for l in out[4:])
     fd.preview("files", "pkg/a.go", "1", "x", fd.FIELD_SEP.join(fd.what_of(fd.row("files", "file", "a.go", "pkg/a.go", 1))), 10)
     assert re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out).splitlines()[:3] == ["a.go", "file", "pkg/a.go"]
