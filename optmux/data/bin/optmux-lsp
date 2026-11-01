@@ -274,8 +274,16 @@ class LanguageServer:
             self.proc.kill()
 
 
+def short_name(name):
+    """A symbol's name without the package that qualifies it: gopls says `github.com/org/repo/pkg/gui.Gui.layout`,
+    where `Gui.layout` is the name (the file says where it is)."""
+    head, slash, tail = name.rpartition("/")
+    return tail.partition(".")[2] or tail if slash and "." in tail else name
+
+
 def rows_of(symbols, root):
-    """optmux Find rows (`FILE \\t LINE \\t DISPLAY`) for LSP SymbolInformation / WorkspaceSymbol items."""
+    """optmux Find rows (`FILE \\t LINE \\t NAME ^_ KIND ^_ CONTAINER`, with ^_ the unit separator, \\x1f) for LSP
+    SymbolInformation / WorkspaceSymbol items."""
     for sym in symbols:
         loc = sym.get("location") or {}
         if not loc.get("uri"):
@@ -287,8 +295,7 @@ def rows_of(symbols, root):
             pass  # outside the project (a library): keep the absolute path
         line = ((loc.get("range") or {}).get("start") or {}).get("line", 0) + 1
         kind = SYMBOL_KINDS[sym["kind"] - 1] if isinstance(sym.get("kind"), int) and 0 < sym["kind"] <= 26 else ""
-        where = f"  {sym['containerName']}" if sym.get("containerName") else ""
-        yield f"{path}\t{line}\t{sym.get('name', '')}  {kind}{where}  {path}:{line}"
+        yield f"{path}\t{line}\t{short_name(sym.get('name', ''))}\x1f{kind}\x1f{sym.get('containerName') or ''}"
 
 
 # ---- the hub: one per project --------------------------------------------------------------------------

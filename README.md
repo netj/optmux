@@ -515,7 +515,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 `C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
-- **`^o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows carry an icon for what they are (📄 file, 🔖 tag, and for a language-server symbol its kind: 🔧 function or method, 🧱 class, struct or interface, 📦 module, 📌 variable or field, 🧩 anything else); the best 100 are shown. Grep stays on its own key, `^g`.
+- **`^o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows are drawn alike in every source (see below); the best 100 are shown. Grep stays on its own key, `^g`.
 - **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
 - **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`^t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own, the way such a hook would (`git ls-files | ctags -L -`), the first time, and refreshes it in the background whenever the commit or the tracked files that changed differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It needs [universal-ctags](https://ctags.io) (`brew install universal-ctags`, a dependency of the Homebrew formula; exuberant ctags should do too, minus line numbers it can find from patterns). macOS's own `/usr/bin/ctags` does not: it takes no file list and only knows C-like languages. It is stored per project in `.optmux.d/find/`.
@@ -557,7 +557,18 @@ The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-def
 
 A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `^/` (or `^_`, which is what macOS Terminal.app sends for `ctrl-/` and `ctrl--`, or `alt-p`) toggles it; while it is on, grep's list shows just `path:line` (the preview has the text); it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.
 
-Rows are marked with emoji by default, which render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses short words (`file`, `tag`, `fn`, `type`, `mod`, `val`, `sym`):
+**How a row reads.** The same for files, matches, tags and symbols: a dim letter for the source (`F` file, `G` grep match, `T` tag, `L` language-server symbol), an icon for what it is, the name, then where: `file:line`, and the directory in dim parens:
+
+```
+T🔧 build_tags  optmux-find:172  (optmux/data/bin)
+L🔧 Gui.Layout  layout.go:12  (pkg/gui)
+F📄 layout.go  (pkg/gui)
+G🔍 layout.go:12  (pkg/gui)
+```
+
+The icon is the kind: 🔧 function or method, 🧱 class, struct or interface, 📦 module or package, 📌 variable, constant or field, 🧩 anything else, 📄 file, 🔍 grep match. Tags and symbols share them (ctags is asked for full kind names, so a tag's kind is not a bare letter), and a language server's package qualifier is left off the name (`helpers.Gui.Layout` is shown `Gui.Layout`: the file is next to it). The first lines of the preview say it all again, in words: the name, its kind and source, and the full directory (and the container, if the server gave one).
+
+Emoji are the default, because they render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses letters (`Tf` is a tag that is a function; `t` type, `m` module, `v` value, `o` other, `-` file, `/` match):
 
 ```yaml
 optmux:

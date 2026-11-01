@@ -95,15 +95,21 @@ def test_rows_use_relative_paths_one_based_lines_and_kind_names(tmp_path):
         {"name": "NoRange", "kind": 13, "location": {"uri": (tmp_path / "b.py").as_uri()}},
         {"name": "NoLocation"},
     ], root))
-    assert rows == ["src/a.py\t5\trun  function  App  src/a.py:5",
-                    "/usr/lib/lib.py\t1\tLib  class  /usr/lib/lib.py:1",
-                    "b.py\t1\tNoRange  variable  b.py:1"]
+    assert rows == ["src/a.py\t5\trun\x1ffunction\x1fApp",
+                    "/usr/lib/lib.py\t1\tLib\x1fclass\x1f",
+                    "b.py\t1\tNoRange\x1fvariable\x1f"]
+
+
+def test_a_package_qualifier_is_dropped_from_a_symbols_name():
+    assert lsp.short_name("github.com/org/repo/pkg/gui/controllers/helpers.MergeAndRebaseHelper.Run") == "MergeAndRebaseHelper.Run"
+    assert lsp.short_name("github.com/org/repo/pkg/gui.Gui") == "Gui"
+    assert lsp.short_name("Gui.Layout") == "Gui.Layout" and lsp.short_name("a/b") == "a/b" and lsp.short_name("") == ""
 
 
 def test_hub_asks_the_fake_server_and_answers_with_rows(project):
     rows = wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")
     assert [r[:2] for r in rows] == [["a.py", "1"], ["b.py", "4"]]
-    assert rows[0][2] == "hello_world  function  mod  a.py:1"
+    assert rows[0][2] == "hello_world\x1ffunction\x1fmod"
     # one more query: answered by the same hub, no new server
     assert [r[0] for r in query(project, "other")] == ["b.py"]
 
