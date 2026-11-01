@@ -620,3 +620,11 @@ def test_tags_built_before_kind_names_were_asked_for_count_as_stale(repo, monkey
     before = fd.tags_stamp(str(repo))
     monkeypatch.setattr(fd, "TAGS_FORMAT", "something-else")
     assert fd.tags_stamp(str(repo)) != before
+
+
+def test_the_cursor_comes_back_to_a_row_whose_display_has_dim_codes():
+    rows = [fd.row("grep", "hit", f"a.py:{n}", "a.py", n, text=f"line {n}") for n in (1, 5, 9)]
+    printed = fd.ANSI.sub("", rows[2])  # fzf --ansi prints the row without the codes
+    assert printed != rows[2]
+    assert fd.cursor_position(rows, "", printed, filtered=False) == 3
+    assert fd.cursor_position(rows, "", fd.ANSI.sub("", fd.row("grep", "hit", "a.py:7", "a.py", 7)), filtered=False) is None

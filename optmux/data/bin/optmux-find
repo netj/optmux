@@ -716,14 +716,20 @@ def save_state(mode, query, entry):
     (state_dir() / f"{mode}.last").write_text(json.dumps({"query": query, "entry": entry}))
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def cursor_position(entries, query, entry, filtered=True):
     """1-based position of `entry` in the list as fzf will show it for `query` (best match first), or None.
-    `filtered`: fzf fuzzy-matches the query against the entries (not so for grep, whose list is already the answer)."""
+    `filtered`: fzf fuzzy-matches the query against the entries (not so for grep, whose list is already the answer).
+    The entry is what fzf printed, which has the dim codes of the display stripped (--ansi): compared without them."""
     if not entry or not entries:
         return None
     if query and filtered:
         entries = run("fzf", "--ansi", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
                       input="\n".join(entries) + "\n").stdout.splitlines()
+    entries = [ANSI.sub("", e) for e in entries]
+    entry = ANSI.sub("", entry)
     return entries.index(entry) + 1 if entry in entries else None
 
 
