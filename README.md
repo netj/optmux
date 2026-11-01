@@ -515,7 +515,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 `C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
-- **`^o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows carry an icon for what they are (📄 file, 🔖 tag, 🧩 symbol); the best 100 are shown. Grep stays on its own key, `^g`.
+- **`^o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows carry an icon for what they are (📄 file, 🔖 tag, and for a language-server symbol its kind: 🔧 function or method, 🧱 class, struct or interface, 📦 module, 📌 variable or field, 🧩 anything else); the best 100 are shown. Grep stays on its own key, `^g`.
 - **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
 - **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`^t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own, the way such a hook would (`git ls-files | ctags -L -`), the first time, and refreshes it in the background whenever the commit or the tracked files that changed differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It needs [universal-ctags](https://ctags.io) (`brew install universal-ctags`, a dependency of the Homebrew formula; exuberant ctags should do too, minus line numbers it can find from patterns). macOS's own `/usr/bin/ctags` does not: it takes no file list and only knows C-like languages. It is stored per project in `.optmux.d/find/`.
@@ -555,12 +555,15 @@ optmux:
 
 The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
 
+A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat) if you have it, which highlights syntax), or what an install row will do. `^/` (or `alt-p`) toggles it; it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off.
+
 Rows are marked with emoji by default, which render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses short words (`file`, `tag`, `lsp`):
 
 ```yaml
 optmux:
   find:
     icons: nerd
+    preview: false
 ```
 
 ### optmux eXtract: text from the screen

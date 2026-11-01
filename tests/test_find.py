@@ -334,9 +334,12 @@ def test_the_picker_works_from_the_project_root(repo, monkeypatch, tmp_path_fact
 @pytest.fixture(autouse=True)
 def fresh_icon_style(monkeypatch):
     monkeypatch.delenv("OPTMUX_FIND_ICONS", raising=False)
+    monkeypatch.delenv("OPTMUX_FIND_PREVIEW", raising=False)
     fd.icon_style.cache_clear()
+    fd.find_config.cache_clear()
     yield
     fd.icon_style.cache_clear()
+    fd.find_config.cache_clear()
 
 
 def test_icons_by_style_and_back(monkeypatch):
@@ -369,8 +372,8 @@ def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_
     monkeypatch.setattr(fd, "lsp_finish", lambda proc, timeout: symbols)
     rows = [(fd.split_icon(r.split("\t")[2]), r.split("\t")[:2]) for r in fd.list_omni("hello")]
     kinds = [k for (k, _), _ in rows]
-    assert kinds.count("tag") == 0 and kinds.count("sym") == 2  # the symbol took the tag's place; the marker row is no symbol
-    assert rows[0][0][0] == "sym" and rows[0][1] == ["app.py", "3"]  # best match, and the server's richer row
+    assert kinds.count("tag") == 0 and sorted(kinds) == ["call", "type"]  # symbols took the tag's place (Hello is a function, HelloNotes a class); the marker row is no symbol
+    assert rows[0][0][0] == "call" and rows[0][1] == ["app.py", "3"]  # best match, and the server's richer row
     assert all(not f.startswith("!") for _, (f, _) in rows)
     assert asked == [["--fast", "hello"]]
 
@@ -386,7 +389,7 @@ def test_lsp_source_rows_get_icons_and_hint_rows_their_own(monkeypatch):
             "!wait\t0\tpython: language server starting, try again in a moment", "!note\t0\tpython: language server exited"]
     monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: rows)
     got = [(r.split("\t")[0], fd.split_icon(r.split("\t")[2])[0]) for r in fd.list_lsp("x")]
-    assert got == [("a.py", "sym"), ("!install:go", "install"), ("!wait", "wait"), ("!note", "note")]
+    assert got == [("a.py", "call"), ("!install:go", "install"), ("!wait", "wait"), ("!note", "note")]
     assert list(fd.list_lsp("  ")) == []
 
 
@@ -427,3 +430,58 @@ def test_the_install_pane_runs_under_sh_whatever_tmuxs_shell_is(monkeypatch):
     monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
     fd.install_in_split("%1", "go")
     assert ran[0].startswith("exec sh -c ") and "install --yes go" in ran[0]
+
+
+def test_symbol_kinds_are_grouped_into_a_few_icons_and_unknown_ones_fall_back():
+    kind = lambda word: fd.symbol_kind(f"x  {word}  mod  a.py:1")
+    assert [kind(w) for w in ("function", "method", "constructor")] == ["call"] * 3
+    assert [kind(w) for w in ("class", "struct", "interface", "enum")] == ["type"] * 4
+    assert [kind(w) for w in ("module", "namespace", "package")] == ["mod"] * 3
+    assert [kind(w) for w in ("variable", "constant", "field", "property")] == ["val"] * 4
+    assert kind("somethingnew") == "sym" and fd.symbol_kind("no kind here") == "sym"
+    assert fd.with_icon("sym", "run  function  a.py:1").startswith("🔧 ") and fd.with_icon("sym", "Foo  class  a.py:1").startswith("🧱 ")
+    assert fd.split_icon(fd.with_icon("sym", "Foo  class  a.py:1")) == ("type", "Foo  class  a.py:1")
+
+
+def test_preview_shows_the_file_around_the_line_with_the_line_marked(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fd.shutil, "which", lambda name: None)  # no bat: the plain renderer
+    Path("a.py").write_text("".join(f"line {i}\n" for i in range(1, 101)))
+    assert fd.preview("a.py", "50", "x", 12) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert len(out) == 12 and "line 50" in "".join(l for l in out if l.lstrip("\x1b[1;33m").startswith(">"))
+    assert any(">" in l and "line 50" in l for l in out) and not any("line 40" in l for l in out) and any("line 47" in l for l in out)
+    fd.preview("a.py", "1", "x", 5)  # the top of a file: start at line 1
+    assert "line 1" in capsys.readouterr().out.splitlines()[0]
+
+
+def test_preview_copes_with_binary_missing_and_marker_rows(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fd.shutil, "which", lambda name: None)
+    Path("b.bin").write_bytes(b"\x00\x01\x02")
+    fd.preview("b.bin", "1", "", 10)
+    fd.preview("gone.py", "1", "", 10)
+    fd.preview("!install:go", "0", fd.with_icon("install", "go: no language server installed.  Enter runs: brew install gopls"), 10)
+    fd.preview("x.py", "not a number", "", 10)
+    out = capsys.readouterr().out
+    assert "(binary file)" in out and "(gone.py is not there)" in out
+    assert "go: no language server installed.  Enter runs: brew install gopls" in out and "📥" not in out
+
+
+def test_preview_is_on_unless_turned_off(monkeypatch, tmp_path):
+    assert fd.preview_enabled()
+    (tmp_path / "find.json").write_text('{"preview": false}')
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    fd.find_config.cache_clear()
+    assert not fd.preview_enabled()
+    (tmp_path / "find.json").write_text('{"preview": true}')
+    fd.find_config.cache_clear()
+    assert fd.preview_enabled()
+    monkeypatch.setenv("OPTMUX_FIND_PREVIEW", "0")
+    assert not fd.preview_enabled()
+
+
+def test_header_marks_the_current_source_and_keeps_the_keys_on_a_line_of_their_own():
+    tabs, keys = fd.header("grep").split("\n")
+    assert "[grep ^g]" in tabs and "omni ^o" in tabs and "[omni" not in tabs
+    assert "C-M-f: next" in keys and "^/: preview" in keys

@@ -70,6 +70,8 @@ optmux:
   find:
     # How a row says what it is: emoji (works everywhere), nerd (Nerd Font glyphs), or text.
     icons: emoji
+    # The selected row's file around its line, beside the list (^/ toggles it; hidden on narrow screens).
+    preview: true
     lsp:
       python:
         extensions: [py, pyi]

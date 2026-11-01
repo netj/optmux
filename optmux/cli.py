@@ -59,7 +59,7 @@ def parse_project_name(yaml_path_str):
 
 
 KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit", "find"}
-KNOWN_FIND_KEYS = {"lsp", "icons"}
+KNOWN_FIND_KEYS = {"lsp", "icons", "preview"}
 KNOWN_LSP_LANGUAGE_KEYS = {"extensions", "servers", "command", "install", "enabled", "open_first_file", "language_id"}
 KNOWN_LSP_SERVER_KEYS = {"command", "install"}
 KNOWN_SHORTCUT_KEYS = {
