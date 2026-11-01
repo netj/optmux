@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """optmux-find — optmux Find: a file, a line or a symbol, opened in your editor.
 
-Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
+Usage: optmux-find [PANE_ID] [--mode SOURCE] [--query TEXT]
+(meant to run in a tmux popup; the active pane by default; --mode and --query start in that source with that
+query, as optmux-extract does for a selection)
 
 One picker with five sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
@@ -21,6 +23,7 @@ those files and tags up the lists (to the top with no query; in omni, up to 20 p
 Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
 """
 
+import argparse
 import functools
 import hashlib
 import json
@@ -657,12 +660,22 @@ def enter_project_root():
     return root
 
 
-def pick(pane):
+def parse_args(argv):
+    """([pane id], {mode, query}) of optmux-find's command line."""
+    parser = argparse.ArgumentParser(prog="optmux-find", description="optmux Find: a file, a line or a symbol, opened in your editor.")
+    parser.add_argument("pane", nargs="?", help="the tmux pane to work on (the active one by default)")
+    parser.add_argument("--mode", choices=MODES, help="start in this source")
+    parser.add_argument("--query", help="start with this query")
+    ns = parser.parse_args(argv)
+    return ([ns.pane] if ns.pane else []), {k: v for k, v in (("mode", ns.mode), ("query", ns.query)) if v is not None}
+
+
+def pick(pane, start_mode=None, start_query=None):
     enter_project_root()
-    mode = tmux_option(MODE_OPTION)
+    mode = start_mode if start_mode in MODES else tmux_option(MODE_OPTION)
     mode = mode if mode in MODES else MODES[0]
     me = os.path.abspath(sys.argv[0])
-    carried = None  # what was typed in the source we just switched away from
+    carried = start_query  # what was typed in the source we just switched away from (or handed to us)
     while True:
         # A fresh start resumes the source's own query and the cursor on the entry it was on. After a switch
         # the text just typed comes along (the cursor is only restored if it is the same query as the saved one).
@@ -742,7 +755,6 @@ if __name__ == "__main__":
         mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
         sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))
         sys.exit(0)
-    if len(sys.argv) > 2:
-        sys.exit(__doc__)
-    pane = sys.argv[1] if len(sys.argv) == 2 else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
-    sys.exit(pick(pane))
+    args, options = parse_args(sys.argv[1:])
+    pane = args[0] if args else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
+    sys.exit(pick(pane, options.get("mode"), options.get("query")))

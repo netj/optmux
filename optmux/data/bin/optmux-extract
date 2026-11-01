@@ -4,11 +4,14 @@
 Usage: optmux-extract [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
-a multiline script survives the round trip. `C-M-x` (or `^f`) cycles what is listed: lines, spans (runs of text the
+a multiline script survives the round trip. `C-M-x` cycles what is listed: lines, spans (runs of text the
 program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
 hashes, versions) and words. Enter types the selection into the pane; `^y` copies it, by the method
 `^t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
 method are remembered (tmux options on the server) for the next time.
+
+The selection can also be looked up in the project instead: `^f` finds it among the files, `^g` greps for it
+and `C-M-f` searches everything (optmux Find, started in this same popup with the text as its query).
 """
 
 import os
@@ -247,15 +250,49 @@ def cycle(values, current):
 
 
 NARROW = 90  # columns; below this the hints shrink to fit
+# keys that look the selection up in the project (optmux-find), and the source each starts in
+FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
+MAX_QUERY = 200  # characters of selection handed to Find
 
 
 def labels(filter_name, copier):
-    """fzf's --header and --prompt: what is listed and which keys do what (C-f also cycles, unadvertised)."""
+    """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
+    do what."""
     if shutil.get_terminal_size().columns < NARROW:
-        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)",
+        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)\nC-f: files;  C-g: grep;  C-M-f: all",
                 f"--prompt={filter_name} (C-M-x) > "]
-    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)",
+    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)\n"
+            "Look it up in the project:  C-f in files;  C-g by grep;  C-M-f everywhere",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
+
+
+PATH_POSITION = re.compile(r"^([^\s:]*[/.][^\s:]*):\d+(?::\d+)?$")  # path:line or path:line:col, as a program prints it
+FZF_SYNTAX = re.compile(r"(^|\s)[\'^!]+|\$(?=\s|$)")  # fzf's 'exact ^prefix !negated suffix$: not part of the text
+
+
+def find_query(chosen, typed):
+    """The text to look up: the picks on one line (control bytes and extra whitespace gone, a `:line:col` after a
+    path dropped, since a path has none), else what was typed in the filter (minus fzf's search syntax)."""
+    words = [CONTROL_CHARS.sub(" ", pick).split() for pick in chosen]
+    picks = [PATH_POSITION.sub(r"\1", " ".join(w)) for w in words if w]
+    text = " ".join(picks).strip() or FZF_SYNTAX.sub(r"\1", CONTROL_CHARS.sub(" ", typed)).strip()
+    return text[:MAX_QUERY]
+
+
+def open_find(pane, source, query):
+    """Continue as optmux Find in this popup, started in `source` with `query`, working on `pane`'s project. Does
+    not return, unless it cannot: then the text is kept in the tmux buffer, so the lookup is not lost."""
+    find = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-find")
+    try:
+        path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
+        if path and os.path.isdir(path):
+            os.chdir(path)
+        argv = [find, pane, f"--mode={source}", f"--query={query}"]  # `--query=` in one piece: the text may start with a dash
+        os.execv(*((find, argv) if os.access(find, os.X_OK) else (sys.executable, [sys.executable, *argv])))
+    except (subprocess.CalledProcessError, OSError) as e:
+        load_buffer(query)
+        tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
+        return 1
 
 
 def parse_fzf_output(stdout):
@@ -292,7 +329,7 @@ def pick(pane):
             [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
-                "--expect=ctrl-f,ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,ctrl-g,esc",
+                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,esc,{','.join(FIND_KEYS)}",
                 *labels(shown, copier),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
@@ -302,13 +339,18 @@ def pick(pane):
         if proc.returncode not in (0, 1):
             return proc.returncode
         query, key, chosen = parse_fzf_output(proc.stdout)
-        if key in ("ctrl-f", "ctrl-alt-x"):
+        if key in FIND_KEYS:
+            text = find_query(chosen, query)
+            if not text:
+                return 0
+            return open_find(pane, FIND_KEYS[key], text)  # does not return, unless it cannot
+        elif key == "ctrl-alt-x":
             mode = cycle(FILTERS, shown)
             tmux("set-option", "-g", FILTER_OPTION, mode)
         elif key == "ctrl-t":
             copier = cycle(COPIERS, copier)
             tmux("set-option", "-g", COPY_OPTION, copier)
-        elif key in ("ctrl-c", "ctrl-g", "esc") or not chosen:
+        elif key in ("ctrl-c", "esc") or not chosen:
             return 0
         else:
             text = compose(chosen, shown)
