@@ -261,12 +261,19 @@ def editor_command(path, line):
     return " ".join(shlex.quote(a) for a in [*editor, *args])
 
 
+def interactive_shell(command):
+    """Run `command` the way typing it in a pane of yours would: through your interactive shell, so it gets what
+    your rc files set up (locale, COLORTERM, ...). Started bare, an editor can misjudge the terminal and garble
+    the screen (only `reset` repairs it)."""
+    return f"exec {shlex.quote(os.environ.get('SHELL') or '/bin/sh')} -ic {shlex.quote('exec ' + command)}"
+
+
 def open_in_split(pane, path, line):
     """Same placement as the other C-M-* splits: above the pane, or across the window edge when out of room."""
     cwd = os.getcwd()
     fits = run(os.path.join(os.environ["OPTMUX_DIR"], "bin", "optmux-split-fits"), pane).returncode == 0
     new = tmux("split-window", "-P", "-F", "#{pane_id}", *([] if fits else ["-f"]), "-v", "-b", "-c", cwd,
-               "-t", pane, editor_command(path, line), capture_output=True, text=True).stdout.strip()
+               "-t", pane, interactive_shell(editor_command(path, line)), capture_output=True, text=True).stdout.strip()
     tmux("resize-pane", "-Z", "-t", new)
 
 
