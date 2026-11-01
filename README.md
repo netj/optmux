@@ -18,7 +18,7 @@ uvx optmux .
 brew install netj/tap/optmux
 ```
 
-`brew install netj/tap/optmux` pulls in tmux, [wtcode](https://github.com/netj/wtcode), [lazygit](https://github.com/jesseduffield/lazygit), [delta](https://github.com/dandavison/delta), a recent `less`, fzf, and gh as dependencies. See [Git, diffs, and links](#git-diffs-and-links).
+`brew install netj/tap/optmux` pulls in tmux, [wtcode](https://github.com/netj/wtcode), [lazygit](https://github.com/jesseduffield/lazygit), [delta](https://github.com/dandavison/delta), a recent `less`, fzf, universal-ctags, and gh as dependencies. See [Git, diffs, and links](#git-diffs-and-links).
 
 **New here?** Read **[The optmux Way](OPTMUX-WAY.md)**. It shows how to be an effective mentor and manager of AI coding agents like Claude Code: one worktree and window per task, with lazygit, your editor, and a shell a keystroke away in sibling panes.
 
@@ -518,7 +518,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 - **`^o` omni** (the default): tags and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag is matched on its name, a file on its path). Rows are labeled `tag` or `file`; the best 100 are shown. Grep stays on its own key, `^g`.
 - **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
 - **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
-- **`^t` tags**: a `tags` file at the repo root (a `post-commit` hook running `ctags` keeps it fresh), or one built on first use (into `.git/optmux-tags`) when [universal-ctags](https://ctags.io) is installed (`brew install universal-ctags`; macOS's own `ctags` is not enough).
+- **`^t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own with [universal-ctags](https://ctags.io) (`brew install universal-ctags`; macOS's own `ctags` is not enough) the first time, and refreshes it in the background whenever the commit or the changed files differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It is stored per project in `.optmux.d/find/`.
 
 `C-M-f` again (the key that opened it) cycles the sources, or jump straight to one with its key. Switching carries the text you typed along, so what you searched in omni can be tried as grep, then as tags (the same text means different things in each: fuzzy for omni, files and tags, a regex or plain text for grep). Each source keeps its own record, since a fuzzy file name, a regex and a tag name are different kinds of query. Opening the picker afresh resumes the last source with its own last query and the cursor on the entry it was on; `^u` clears the query for a new search, and `^p` recalls that source's earlier queries (`^n` goes forward), including ones you left with `Esc` or a switch. Grep results are sorted by file and line.
 

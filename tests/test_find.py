@@ -181,3 +181,56 @@ def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo):
         assert [r.split("\t")[0] for r in fd.list_omni("s")][0] == "sub/notes.md"
     finally:
         del os.environ["OPTMUX_DIR"]
+
+
+@pytest.fixture
+def fake_ctags(tmp_path_factory, monkeypatch):
+    """A stand-in universal-ctags: says what it is, and writes one tag per file it is told to index."""
+    outside = tmp_path_factory.mktemp("outside")  # not in the test repo, or ctags would index it
+    bin_dir = outside / "bin"
+    bin_dir.mkdir()
+    exe = bin_dir / "universal-ctags"
+    exe.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = --version ]; then echo "Universal Ctags 6.1.0"; exit 0; fi\n'
+        'while [ $# -gt 0 ]; do [ "$1" = -f ] && out=$2; shift; done\n'
+        'echo run >> "$FAKE_CTAGS_LOG"\n'
+        'while read f; do printf "sym_%s\\t%s\\t1;\\"\\tf\\tline:1\\n" "$(basename $f .py)" "$f"; done > "$out"\n')
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+    monkeypatch.setenv("FAKE_CTAGS_LOG", str(outside / "ctags.log"))
+    monkeypatch.setenv("OPTMUX_DIR", str(outside / "od"))
+    return outside / "ctags.log"
+
+
+def test_tags_are_built_on_first_use_and_reused_while_the_project_is_unchanged(repo, fake_ctags):
+    assert [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")] == ["sym_app", "sym_notes.md"]  # the files git lists
+    assert fake_ctags.read_text().count("run") == 1
+    list(fd.list_tags(""))
+    assert fake_ctags.read_text().count("run") == 1  # unchanged: no rebuild, no refresh
+
+
+def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
+    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
+    assert [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")] == ["mine"]
+    assert not fake_ctags.exists()
+
+
+def test_stale_tags_are_served_while_a_refresh_is_started(repo, fake_ctags, monkeypatch):
+    list(fd.list_tags(""))
+    stamp = fd.tags_stamp(str(repo))
+    (repo / "new.py").write_text("x")  # an untracked file is a change
+    assert fd.tags_stamp(str(repo)) != stamp
+    started = []
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: started.append(root))
+    names = [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")]
+    assert names == ["sym_app", "sym_notes.md"] and started == [str(repo)]
+    fd.list_tags("")  # a refresh is under way (lock): do not start another
+    list(fd.list_tags(""))
+    assert len(started) == 1
+
+
+def test_no_universal_ctags_means_no_tags(repo, monkeypatch, tmp_path_factory):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od")))
+    monkeypatch.setattr(fd, "universal_ctags", lambda: None)
+    assert fd.tags_file() is None

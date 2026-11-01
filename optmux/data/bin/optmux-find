@@ -7,7 +7,7 @@ One picker with four sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
-  tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
+  tags   (^t)  a ctags `tags` file; without one, universal-ctags builds it on first use and keeps it fresh
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
 afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
@@ -20,6 +20,7 @@ those files and tags up the lists (to the top with no query; in omni, up to 20 p
 Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
 """
 
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 MODES = ["omni", "files", "grep", "tags"]
@@ -121,21 +123,75 @@ def list_grep(query):
         yield f"{f}\t{n}\t{f}:{n}: {text}"
 
 
+def universal_ctags():
+    """The universal-ctags executable, if there is one (macOS's own ctags is a different, older program)."""
+    for c in ("universal-ctags", "uctags", "ctags"):
+        # probe from a scratch dir: some ctags treat --version as a file list and write ./tags
+        if shutil.which(c) and "Universal" in run(c, "--version", cwd=state_dir()).stdout:
+            return c
+    return None
+
+
+def tags_stamp(root):
+    """What the tags were built from: the commit, and which files are changed since and when. Differs once
+    something worth re-indexing happened."""
+    if not repo_root():
+        return str(int(time.time() // 3600))  # no git to ask: refresh hourly
+    dirty = []
+    for line in run("git", "status", "--porcelain=v1", "-uall", cwd=root).stdout.splitlines():
+        path = line[3:].split(" -> ")[-1]
+        try:
+            dirty.append(f"{path}:{os.stat(Path(root, path)).st_mtime_ns}")
+        except OSError:
+            dirty.append(path)
+    head = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
+    return hashlib.sha1("\n".join([head, *dirty]).encode()).hexdigest()
+
+
+def build_tags(root, out):
+    """Index the project (the files git knows, else everything) into `out`, replacing it only once complete."""
+    ctags = universal_ctags()
+    if not ctags:
+        return False
+    files = run("git", "ls-files", "-co", "--exclude-standard", cwd=root).stdout if repo_root() else None
+    tmp = out.with_suffix(".tmp")
+    done = subprocess.run([ctags, "--fields=+nK", "-f", str(tmp), *(["-L", "-"] if files is not None else ["-R"])],
+                          input=files, text=True, cwd=root, stderr=subprocess.DEVNULL)
+    if done.returncode != 0 or not tmp.is_file():
+        return False
+    tmp.replace(out)
+    out.with_suffix(".stamp").write_text(tags_stamp(root))
+    return True
+
+
+def refresh_tags(root):
+    """Rebuild the tags in the background, detached, so opening the picker never waits for it."""
+    subprocess.Popen([os.path.abspath(sys.argv[0]), "--build-tags", root], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def tags_file():
-    """An existing `tags` file, else one built (outside the work tree) by universal-ctags."""
+    """Your `tags` file at the project root, if there is one (yours to keep fresh). Otherwise our own, built by
+    universal-ctags the first time and refreshed in the background when the project changed since."""
     root = repo_root() or os.getcwd()
     existing = Path(root, "tags")
     if existing.is_file():
         return existing
-    ctags = next((c for c in ("universal-ctags", "uctags", "ctags") if shutil.which(c)), None)
-    # probe from a scratch dir: some ctags (macOS's) treat --version as a file list and write ./tags
-    if not ctags or "Universal" not in run(ctags, "--version", cwd=state_dir()).stdout:
-        return None
-    out = Path(run("git", "rev-parse", "--git-dir").stdout.strip() or state_dir(), "optmux-tags").resolve()
-    files = run("git", "ls-files", "-co", "--exclude-standard").stdout if repo_root() else None
-    subprocess.run([ctags, "--fields=+nK", "-f", str(out), *(["-L", "-"] if files is not None else ["-R"])],
-                   input=files, text=True, cwd=root, stderr=subprocess.DEVNULL)
-    return out if out.is_file() else None
+    out = state_dir() / f"optmux-{hashlib.sha1(root.encode()).hexdigest()[:10]}.tags"
+    if not universal_ctags():
+        return out if out.is_file() else None
+    if not out.is_file():
+        print("optmux-find: indexing tags...", file=sys.stderr, flush=True)
+        return out if build_tags(root, out) else None
+    try:
+        fresh = out.with_suffix(".stamp").read_text() == tags_stamp(root)
+    except OSError:
+        fresh = False
+    lock = out.with_suffix(".lock")
+    if not fresh and not (lock.exists() and time.time() - lock.stat().st_mtime < 300):
+        lock.touch()  # one refresh at a time; this open still uses the tags it has
+        refresh_tags(root)
+    return out
 
 
 def tag_line(root, path, excmd):
@@ -391,6 +447,15 @@ def pick(pane):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--build-tags"]:  # the background refresh, see tags_file
+        root = sys.argv[2]
+        os.chdir(root)
+        out = state_dir() / f"optmux-{hashlib.sha1(root.encode()).hexdigest()[:10]}.tags"
+        try:
+            build_tags(root, out)
+        finally:
+            out.with_suffix(".lock").unlink(missing_ok=True)
+        sys.exit(0)
     if sys.argv[1:2] == ["--list"]:
         mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
         sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))

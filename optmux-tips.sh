@@ -95,7 +95,7 @@ bundled_tool() {
             note="   (links via the old protocol; brew install less for the newer one)"
         fi
     fi
-    printf '  %s %-8s %-40s %s%s\n' "$mark" "$name" "$description" "$url" "$note"
+    printf '  %s %-15s %-40s %s%s\n' "$mark" "$name" "$description" "$url" "$note"
 }
 
 # the whole screen except the footer, as lines on stdout
@@ -139,6 +139,7 @@ MOUSE
     bundled_tool delta "syntax-highlighted, clickable diffs" https://github.com/dandavison/delta git-delta
     bundled_tool less "mouse and clickable links in pagers" https://greenwoodsoftware.com/less
     bundled_tool fzf "fuzzy finder (C-M-f)" https://github.com/junegunn/fzf
+    bundled_tool universal-ctags "tags for optmux Find (C-M-f)" https://ctags.io universal-ctags
     bundled_tool gh "GitHub CLI (C-M-w)" https://cli.github.com
 
     local plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"
