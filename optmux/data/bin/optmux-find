@@ -3,11 +3,12 @@
 
 Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
-One picker with four sources, like ctrl-p in vim but remembering where you were:
+One picker with five sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
+  lsp    (^l)  symbols from the project's language servers, as you type (see optmux-lsp)
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
 afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
@@ -33,9 +34,9 @@ import sys
 import time
 from pathlib import Path
 
-MODES = ["omni", "files", "grep", "tags"]
-MODE_KEYS = {"omni": "ctrl-o", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
-LIVE = {"grep", "omni"}  # lists made per query (fzf only displays them): grep searches, omni ranks
+MODES = ["omni", "files", "grep", "tags", "lsp"]
+MODE_KEYS = {"omni": "ctrl-o", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t", "lsp": "ctrl-l"}
+LIVE = {"grep", "omni", "lsp"}  # lists made per query (fzf only displays them): grep searches, omni ranks
 MODE_OPTION = "@optmux-find-mode"
 CYCLE_KEY = "ctrl-alt-f"
 MAX_RESULTS = 3000
@@ -367,7 +368,19 @@ def list_omni(query):
         yield f"{f}\t{n}\t{kind:<4} {display}"
 
 
-LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags}
+def list_lsp(query):
+    """Symbols from the project's language servers (see optmux-lsp), as the user types."""
+    if not query.strip():
+        return
+    exe = Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")
+    try:
+        out = subprocess.run([sys.executable, str(exe), "query", query], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    yield from (line for line in out.splitlines() if line.count("\t") >= 2)
+
+
+LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags, "lsp": list_lsp}
 
 
 # ---- opening -------------------------------------------------------------------------------------------
@@ -467,6 +480,9 @@ def pick(pane):
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
+        if mode == "lsp":  # start the hub (and so the servers) now; they boot while the user types
+            subprocess.Popen([sys.executable, str(Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")), "status"],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         candidates = list(LISTERS[mode](query))
         if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
             candidates = by_recency(candidates, lambda e: e.split("\t", 1)[0], load_recent())
@@ -500,7 +516,7 @@ def pick(pane):
             mode = next(m for m, k in MODE_KEYS.items() if k == key)
         else:
             set_tmux_option(MODE_OPTION, mode)
-            if key not in ("ctrl-c", "esc") and entry:
+            if key not in ("ctrl-c", "esc") and entry and target(entry)[0]:  # hint rows have no file
                 record_opened(mode, entry)
                 open_in_split(pane, *target(entry))
             return 0

@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""optmux-lsp — language servers as a symbol source for optmux Find (`^l`).
+
+Usage:
+  optmux-lsp query QUERY          symbols matching QUERY, one per line, in optmux Find's `FILE LINE DISPLAY` format
+  optmux-lsp status               which languages were found, and which servers run, wait or are missing
+  optmux-lsp install [LANG...]    run the install command of each language that has files but no server
+  optmux-lsp stop                 shut the project's servers down
+  optmux-lsp serve ROOT           the hub itself (started by `query` when needed)
+(The project is the git repository of the current directory.)
+
+One hub process per project owns that project's language servers, so each keystroke costs one request on a
+unix socket, not a server start. The hub looks at the files git tracks, picks the languages with enough of
+them, and starts the first installed server of each (see `find.lsp` in optmux's defaults, which you can
+override in your optmux.yaml: `servers` per language, `extensions`, `enabled`, ...). It sends every query as
+LSP `workspace/symbol` to all running servers and merges the answers. It exits after OPTMUX_LSP_IDLE seconds
+(default 1800) without queries.
+
+The configuration is $OPTMUX_DIR/find.json, which optmux writes at launch from its merged `find:` section.
+"""
+
+import hashlib
+import itertools
+import json
+import os
+import shlex
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+SYMBOL_KINDS = (
+    "file module namespace package class method property field constructor enum interface function variable "
+    "constant string number boolean array object key null enummember struct event operator typeparameter"
+).split()
+IDLE_SECONDS = float(os.environ.get("OPTMUX_LSP_IDLE", "1800"))
+MIN_FILES = 3          # a language needs this many tracked files ...
+MIN_SHARE = 0.05       # ... and this share of all the files whose language we know, to get a server
+BOOT_TIMEOUT = 90      # seconds a server may take to answer `initialize`
+QUERY_TIMEOUT = 4      # seconds a server may take to answer one query
+MAX_ROWS = 200
+
+
+# ---- configuration -------------------------------------------------------------------------------------
+
+def config_path():
+    return Path(os.environ["OPTMUX_FIND_CONFIG"]) if os.environ.get("OPTMUX_FIND_CONFIG") \
+        else Path(os.environ.get("OPTMUX_DIR", ""), "find.json")
+
+
+def load_config():
+    """{language: settings} from find.json's `lsp` (disabled languages dropped)."""
+    try:
+        lsp = json.loads(config_path().read_text()).get("lsp") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {lang: cfg for lang, cfg in lsp.items() if isinstance(cfg, dict) and cfg.get("enabled", True)}
+
+
+def servers_of(cfg):
+    """The language's servers in order of preference, as [{command, install}]. `command` alone is a shorthand."""
+    servers = [s for s in cfg.get("servers") or [] if isinstance(s, dict) and s.get("command")]
+    if cfg.get("command"):
+        servers.insert(0, {"command": cfg["command"], "install": cfg.get("install", "")})
+    return servers
+
+
+def search_path():
+    """Homebrew's dirs first, as in a git hook: a tmux popup's PATH often lacks them."""
+    return os.pathsep.join(d for d in ("/opt/homebrew/bin", "/usr/local/bin", os.environ.get("PATH", "")) if d)
+
+
+def installed_server(cfg):
+    """(argv, server) of the first of the language's servers that is installed, else None."""
+    for server in servers_of(cfg):
+        argv = shlex.split(server["command"]) if isinstance(server["command"], str) else list(server["command"])
+        exe = shutil.which(argv[0], path=search_path()) if argv else None
+        if exe:
+            return [exe, *argv[1:]], server
+    return None
+
+
+def tracked_files(root):
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True).stdout
+    return [f for f in out.split("\0") if f]
+
+
+def detect_languages(files, config):
+    """{language: [files]} for the languages with enough of the project (see MIN_FILES and MIN_SHARE)."""
+    by_ext = {}
+    for lang, cfg in config.items():
+        for ext in cfg.get("extensions") or []:
+            by_ext[ext.lstrip(".").lower()] = lang
+    found = {}
+    for f in files:
+        lang = by_ext.get(f.rsplit(".", 1)[-1].lower()) if "." in f else None
+        if lang:
+            found.setdefault(lang, []).append(f)
+    total = sum(map(len, found.values()))
+    return {lang: fs for lang, fs in sorted(found.items(), key=lambda kv: -len(kv[1]))
+            if len(fs) >= MIN_FILES and len(fs) >= MIN_SHARE * total}
+
+
+def state_dir():
+    base = os.environ.get("OPTMUX_DIR")
+    d = Path(base, "find") if base else Path(tempfile.gettempdir(), f"optmux-lsp-{os.getuid()}")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def socket_path(root):
+    """Short, because unix socket paths are limited to about 100 bytes; per user and project."""
+    return str(Path(tempfile.gettempdir(), f"optmux-lsp-{os.getuid()}-{hashlib.sha1(root.encode()).hexdigest()[:10]}.sock"))
+
+
+# ---- one language server -------------------------------------------------------------------------------
+
+class LanguageServer:
+    def __init__(self, lang, cfg, argv, root, files, log):
+        self.lang, self.cfg, self.root, self.files = lang, cfg, root, files
+        self.ids, self.pending, self.ready, self.failed = itertools.count(1), {}, False, None
+        self.lock = threading.Lock()
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=root)
+        threading.Thread(target=self.read_loop, daemon=True).start()
+        threading.Thread(target=self.boot, daemon=True).start()
+
+    # framing: `Content-Length: N\r\n\r\n` and N bytes of JSON
+    def send(self, message):
+        body = json.dumps(message).encode()
+        with self.lock:
+            self.proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+            self.proc.stdin.flush()
+
+    def read_message(self):
+        length = None
+        while True:
+            line = self.proc.stdout.readline()
+            if not line:
+                return None
+            line = line.strip()
+            if not line:
+                break
+            if line.lower().startswith(b"content-length:"):
+                length = int(line.split(b":", 1)[1])
+        return json.loads(self.proc.stdout.read(length)) if length is not None else {}
+
+    def read_loop(self):
+        try:
+            while (msg := self.read_message()) is not None:
+                if "method" in msg and "id" in msg:  # the server asks us something: answer so it does not wait
+                    items = (msg.get("params") or {}).get("items") or []
+                    result = [None] * len(items) if msg["method"] == "workspace/configuration" else None
+                    self.send({"jsonrpc": "2.0", "id": msg["id"], "result": result})
+                elif "id" in msg and msg["id"] in self.pending:
+                    waiter = self.pending[msg["id"]]
+                    waiter[1] = msg
+                    waiter[0].set()
+        except (OSError, ValueError):
+            pass
+        finally:
+            self.ready = False
+            self.failed = self.failed or "exited"
+            for waiter in list(self.pending.values()):
+                waiter[0].set()
+
+    def request(self, method, params, timeout):
+        rid, waiter = next(self.ids), [threading.Event(), None]
+        self.pending[rid] = waiter
+        try:
+            self.send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+            if not waiter[0].wait(timeout) or waiter[1] is None:
+                raise TimeoutError(method)
+            return waiter[1].get("result") if "error" not in waiter[1] else None
+        finally:
+            self.pending.pop(rid, None)
+
+    def boot(self):
+        uri = Path(self.root).as_uri()
+        try:
+            self.request("initialize", {
+                "processId": os.getpid(), "rootUri": uri, "rootPath": self.root, "clientInfo": {"name": "optmux"},
+                "workspaceFolders": [{"uri": uri, "name": Path(self.root).name}],
+                "capabilities": {
+                    "workspace": {"workspaceFolders": True, "configuration": True,
+                                  "symbol": {"symbolKind": {"valueSet": list(range(1, 27))}}},
+                    "window": {"workDoneProgress": True},
+                },
+            }, BOOT_TIMEOUT)
+            self.send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            if self.cfg.get("open_first_file") and self.files:  # some servers pick their project from an open file
+                path = Path(self.root, self.files[0])
+                self.send({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {
+                    "uri": path.as_uri(), "languageId": self.cfg.get("language_id", self.lang), "version": 1,
+                    "text": path.read_text(errors="replace")}}})
+            self.ready = True
+        except (OSError, TimeoutError, ValueError) as e:
+            self.failed = f"did not start ({e})"
+
+    def symbols(self, query):
+        return self.request("workspace/symbol", {"query": query}, QUERY_TIMEOUT) or []
+
+    def stop(self):
+        try:
+            if self.ready:
+                self.request("shutdown", None, 2)
+                self.send({"jsonrpc": "2.0", "method": "exit"})
+        except (OSError, TimeoutError):
+            pass
+        try:
+            self.proc.wait(2)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
+
+def rows_of(symbols, root):
+    """optmux Find rows (`FILE \\t LINE \\t DISPLAY`) for LSP SymbolInformation / WorkspaceSymbol items."""
+    for sym in symbols:
+        loc = sym.get("location") or {}
+        if not loc.get("uri"):
+            continue
+        path = unquote(urlparse(loc["uri"]).path)
+        try:
+            path = str(Path(path).relative_to(root))
+        except ValueError:
+            pass  # outside the project (a library): keep the absolute path
+        line = ((loc.get("range") or {}).get("start") or {}).get("line", 0) + 1
+        kind = SYMBOL_KINDS[sym["kind"] - 1] if isinstance(sym.get("kind"), int) and 0 < sym["kind"] <= 26 else ""
+        where = f"  {sym['containerName']}" if sym.get("containerName") else ""
+        yield f"{path}\t{line}\t{sym.get('name', '')}  {kind}{where}  {path}:{line}"
+
+
+# ---- the hub: one per project --------------------------------------------------------------------------
+
+class Hub:
+    def __init__(self, root):
+        self.root, self.last_used, self.servers, self.missing = root, time.time(), {}, {}
+        self.stopping = False
+        config = load_config()
+        log = open(state_dir() / "lsp.log", "ab")
+        for lang, files in detect_languages(tracked_files(root), config).items():
+            found = installed_server(config[lang])
+            if found:
+                argv, server = found
+                try:
+                    self.servers[lang] = LanguageServer(lang, config[lang], argv, root, files, log)
+                except OSError as e:
+                    self.missing[lang] = {"install": server.get("install", ""), "why": str(e)}
+            else:
+                self.missing[lang] = {"install": (servers_of(config[lang]) or [{}])[0].get("install", ""),
+                                      "why": "no server installed"}
+
+    def status(self):
+        out = {lang: {"state": "ready" if s.ready else s.failed or "starting"} for lang, s in self.servers.items()}
+        out.update({lang: {"state": "missing", **info} for lang, info in self.missing.items()})
+        return out
+
+    def query(self, query):
+        rows, answers = [], {}
+
+        def ask(lang, server):
+            try:
+                answers[lang] = list(rows_of(server.symbols(query), self.root))
+            except (OSError, TimeoutError):
+                answers[lang] = []
+        threads = [threading.Thread(target=ask, args=(l, s)) for l, s in self.servers.items() if s.ready]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        for lang in self.servers:  # in the order of how much of the project each language is
+            rows.extend(answers.get(lang, []))
+        return rows[:MAX_ROWS]
+
+    def handle(self, request):
+        self.last_used = time.time()
+        if request.get("op") == "query":
+            return {"rows": self.query(request.get("q", "")), "status": self.status()}
+        if request.get("op") == "stop":
+            self.stopping = True
+        return {"status": self.status()}
+
+    def shutdown(self):
+        for server in self.servers.values():
+            server.stop()
+
+
+def serve(root):
+    path = socket_path(root)
+    probe = socket.socket(socket.AF_UNIX)
+    try:
+        probe.connect(path)
+        return 0  # a hub is already running for this project
+    except OSError:
+        Path(path).unlink(missing_ok=True)
+    finally:
+        probe.close()
+    listener = socket.socket(socket.AF_UNIX)
+    listener.bind(path)
+    os.chmod(path, 0o600)
+    listener.listen(8)
+    listener.settimeout(5)
+    hub = Hub(root)
+
+    def client(conn):
+        with conn:
+            try:
+                data = b""
+                while not data.endswith(b"\n"):
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        return
+                    data += chunk
+                conn.sendall(json.dumps(hub.handle(json.loads(data))).encode() + b"\n")
+            except (OSError, ValueError):
+                pass
+    try:
+        while not hub.stopping and time.time() - hub.last_used < IDLE_SECONDS:
+            try:
+                conn, _ = listener.accept()
+            except socket.timeout:
+                continue
+            threading.Thread(target=client, args=(conn,), daemon=True).start()
+    finally:
+        listener.close()
+        Path(path).unlink(missing_ok=True)
+        hub.shutdown()
+    return 0
+
+
+# ---- the client ----------------------------------------------------------------------------------------
+
+def ask_hub(root, request, start=True, timeout=12):
+    """The hub's answer, starting the hub first if there is none. None if it cannot be reached."""
+    path = socket_path(root)
+    for attempt in range(2 if start else 1):
+        try:
+            with socket.socket(socket.AF_UNIX) as conn:
+                conn.settimeout(timeout)
+                conn.connect(path)
+                conn.sendall(json.dumps(request).encode() + b"\n")
+                data = b""
+                while not data.endswith(b"\n"):
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+                return json.loads(data)
+        except (OSError, ValueError):
+            if attempt or not start:
+                return None
+            subprocess.Popen([os.path.abspath(sys.argv[0]), "serve", root], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=open(state_dir() / "lsp.log", "ab"))
+            deadline = time.time() + 5
+            while time.time() < deadline and not Path(path).exists():
+                time.sleep(0.05)
+    return None
+
+
+def hint_rows(status):
+    """Rows (no file: not openable) that say why there may be nothing: servers starting, or not installed."""
+    for lang, info in status.items():
+        if info["state"] == "missing":
+            yield f"\t0\t{lang}: no language server installed.  {info.get('install') or 'see find.lsp in optmux config'}"
+        elif info["state"] == "starting":
+            yield f"\t0\t{lang}: language server starting, try again in a moment"
+        elif info["state"] not in ("ready",):
+            yield f"\t0\t{lang}: language server {info['state']}"
+
+
+def project_root():
+    top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+    return os.path.realpath(top or os.getcwd())
+
+
+def main(argv):
+    cmd, rest = (argv[1] if len(argv) > 1 else ""), argv[2:]
+    if cmd == "serve" and rest:
+        return serve(os.path.realpath(rest[0]))
+    if cmd == "query":
+        query = " ".join(rest)
+        if not query.strip():
+            return 0
+        answer = ask_hub(project_root(), {"op": "query", "q": query})
+        if answer is None:
+            print("\t0\tlanguage server hub did not start (see lsp.log in the project's optmux find directory)")
+            return 0
+        for row in answer["rows"]:
+            print(row)
+        if not answer["rows"]:
+            for row in hint_rows(answer["status"]):
+                print(row)
+        return 0
+    if cmd == "status":
+        answer = ask_hub(project_root(), {"op": "status"})
+        print(json.dumps(answer["status"] if answer else {}, indent=2))
+        return 0
+    if cmd == "stop":
+        ask_hub(project_root(), {"op": "stop"}, start=False)
+        return 0
+    if cmd == "install":
+        root, config = project_root(), load_config()
+        for lang in rest or list(detect_languages(tracked_files(root), config)):
+            cfg = config.get(lang)
+            if not cfg or installed_server(cfg):
+                continue
+            install = (servers_of(cfg) or [{}])[0].get("install")
+            if install and input(f"{lang}: run `{install}`? [y/N] ").strip().lower() == "y":
+                subprocess.run(install, shell=True)
+        ask_hub(root, {"op": "stop"}, start=False)  # so the next query starts what is now installed
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
