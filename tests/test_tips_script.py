@@ -183,9 +183,10 @@ def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
             check=True,
         )
         state = ""
-        for _ in range(50):  # wait for the script to print and enter copy-mode
+        for _ in range(100):  # wait for the script to print, enter copy-mode and scroll to the top
             state = tmux_out("display-message", "-p", "#{pane_in_mode} #{scroll_position} #{history_size}")
-            if state.startswith("1 "):
+            mode, position, history = (state.split() + ["", "", ""])[:3]
+            if mode == "1" and history.isdigit() and int(history) > 0 and position == history:  # at the top
                 break
             time.sleep(0.1)
         in_mode, position, history = state.split()

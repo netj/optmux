@@ -83,8 +83,12 @@ def servers_of(cfg):
 
 
 def search_path():
-    """Homebrew's dirs first, as in a git hook: a tmux popup's PATH often lacks them."""
-    return os.pathsep.join(d for d in ("/opt/homebrew/bin", "/usr/local/bin", os.environ.get("PATH", "")) if d)
+    """Homebrew's dirs first, as in a git hook (a tmux popup's PATH often lacks them), and after the PATH the
+    places `go install`, `uv tool`, pipx and cargo put what they install, which a login shell would add."""
+    home = Path.home()
+    gobin = os.environ.get("GOBIN") or str(Path(os.environ.get("GOPATH") or home / "go", "bin"))
+    return os.pathsep.join(d for d in ("/opt/homebrew/bin", "/usr/local/bin", os.environ.get("PATH", ""), gobin,
+                                       str(home / ".local/bin"), str(home / ".cargo/bin")) if d)
 
 
 def installed_server(cfg):
@@ -97,6 +101,11 @@ def installed_server(cfg):
     return None
 
 
+def sh_first(server):
+    command = server["command"]
+    return (shlex.split(command) if isinstance(command, str) else list(command))[0]
+
+
 def install_options(server):
     """A server's install commands: `install` is one command, or a list of alternatives (brew, uv, npm, ...)."""
     install = server.get("install") or []
@@ -105,14 +114,17 @@ def install_options(server):
 
 def best_install(cfg):
     """The install command to offer for a language: the first one, of its servers in order of preference, whose
-    installer (brew, uv, npm, ...) is on the PATH; else simply the first one there is."""
-    first = ""
+    installer (brew, uv, npm, ...) is on the PATH. "" when none could run here."""
     for server in servers_of(cfg):
         for cmd in install_options(server):
-            first = first or cmd
             if shlex.split(cmd) and shutil.which(shlex.split(cmd)[0], path=search_path()):
                 return cmd
-    return first
+    return ""
+
+
+def first_install(cfg):
+    """The preferred install command, runnable here or not (to tell the user what to do by hand)."""
+    return next((cmd for server in servers_of(cfg) for cmd in install_options(server)), "")
 
 
 def tracked_files(root):
@@ -298,14 +310,14 @@ class Hub:
         cfg = self.config[lang]
         found = installed_server(cfg)
         if not found:
-            self.missing[lang] = {"install": best_install(cfg), "why": "no server installed"}
+            self.missing[lang] = {"install": best_install(cfg), "hint": first_install(cfg), "why": "no server installed"}
             return
         argv, server = found
         try:
             self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files.get(lang, []), self.log)
             self.missing.pop(lang, None)
         except OSError as e:
-            self.missing[lang] = {"install": best_install(cfg), "why": str(e)}
+            self.missing[lang] = {"install": best_install(cfg), "hint": first_install(cfg), "why": str(e)}
 
     def rescan(self):
         """Which languages the project has, and servers for them: at start, then again as things change, so a
@@ -465,9 +477,13 @@ def hint_rows(status):
     install command), `!wait` (servers still starting), `!note`. optmux Find shows them with an icon of their own."""
     for lang, info in status.items():
         if info["state"] == "missing":
-            how = info.get("install")
-            yield (f"!install:{lang}\t0\t{lang}: no language server installed.  Enter runs: {how}" if how
-                   else f"!note\t0\t{lang}: no language server installed (see find.lsp in your optmux config)")
+            if info.get("install"):
+                yield f"!install:{lang}\t0\t{lang}: no language server installed.  Enter runs: {info['install']}"
+            elif info.get("hint"):
+                yield (f"!note\t0\t{lang}: no language server installed, and none of the installers is here.  "
+                       f"By hand: {info['hint']}")
+            else:
+                yield f"!note\t0\t{lang}: no language server installed (see find.lsp in your optmux config)"
         elif info["state"] == "starting":
             yield f"!wait\t0\t{lang}: language server starting, try again in a moment"
         elif info["state"] != "ready":
@@ -489,7 +505,8 @@ def main(argv):
         if not query.strip():
             return 0
         if not load_config():
-            print(f"!note\t0\tno language server configuration ({config_path()}): restart optmux, which writes it")
+            if not fast:
+                print(f"!note\t0\tno language server configuration ({config_path()}): restart optmux, which writes it")
             return 0
         if fast:  # for omni: only a hub that is already up, and answers within a second; never wait, never start one
             answer = ask_hub(project_root(), {"op": "query", "q": query, "timeout": 0.8}, start=False, timeout=2)
@@ -523,11 +540,17 @@ def main(argv):
                 continue
             how = best_install(cfg)
             if not how:
-                print(f"{lang}: no install command known (set `install:` for its servers in find.lsp)")
+                print(f"{lang}: no installer here for it. By hand: {first_install(cfg) or 'set `install:` for its servers in find.lsp'}")
             elif yes or input(f"{lang}: run `{how}`? [y/N] ").strip().lower() == "y":
                 print(f"$ {how}", flush=True)
                 status = subprocess.run(how, shell=True, env={**os.environ, "PATH": search_path()}).returncode
-                print(f"{lang}: {'installed; optmux notices within a few seconds' if status == 0 else f'failed (exit {status})'}")
+                if status != 0:
+                    print(f"{lang}: failed (exit {status})")
+                elif installed_server(cfg):
+                    print(f"{lang}: installed; optmux notices within a few seconds")
+                else:
+                    print(f"{lang}: the command succeeded, but none of {', '.join(sorted({sh_first(s) for s in servers_of(cfg)}))}"
+                          f" is on the PATH optmux searches ({search_path()}). Add its directory to your PATH.")
         return 0
     print(__doc__)
     return 2

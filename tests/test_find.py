@@ -359,21 +359,25 @@ def test_icon_style_comes_from_the_find_config(monkeypatch, tmp_path):
 
 
 @skip_no_fzf
-def test_omni_blends_language_server_symbols_replacing_the_tag_for_the_same_line(repo, monkeypatch):
-    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
-    symbols = ["app.py\t3\tHello  function  mod  app.py:3", "sub/notes.md\t1\tHelloNotes  class  sub/notes.md:1"]
+def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_and_file(repo, monkeypatch):
+    # ctags says line 2 (the decorator), the server line 3: still one definition
+    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:2\n')
+    symbols = ["app.py\t3\tHello  function  mod  app.py:3", "sub/notes.md\t1\tHelloNotes  class  sub/notes.md:1",
+               "!note\t0\tno language server configuration"]
     asked = []
-    monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: asked.append(args) or symbols)
+    monkeypatch.setattr(fd, "lsp_start", lambda args: asked.append(args) or "proc")
+    monkeypatch.setattr(fd, "lsp_finish", lambda proc, timeout: symbols)
     rows = [(fd.split_icon(r.split("\t")[2]), r.split("\t")[:2]) for r in fd.list_omni("hello")]
     kinds = [k for (k, _), _ in rows]
-    assert kinds.count("tag") == 0 and kinds.count("sym") == 2  # the symbol took the tag's place (same file and line)
+    assert kinds.count("tag") == 0 and kinds.count("sym") == 2  # the symbol took the tag's place; the marker row is no symbol
     assert rows[0][0][0] == "sym" and rows[0][1] == ["app.py", "3"]  # best match, and the server's richer row
+    assert all(not f.startswith("!") for _, (f, _) in rows)
     assert asked == [["--fast", "hello"]]
 
 
 @skip_no_fzf
 def test_omni_asks_no_servers_without_a_query(repo, monkeypatch):
-    monkeypatch.setattr(fd, "lsp_query", lambda *a: pytest.fail("no query, nothing to ask"))
+    monkeypatch.setattr(fd, "lsp_start", lambda *a: pytest.fail("no query, nothing to ask"))
     assert list(fd.list_omni(""))
 
 
@@ -399,3 +403,27 @@ def test_enter_on_an_install_row_runs_the_installer_in_a_pane(monkeypatch):
     monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
     fd.install_in_split("%3", "go")
     assert "OPTMUX_DIR=/p/.optmux.d " in ran[0][1] and ran[0][0] == "%3" and "optmux-lsp" in ran[0][1] and "install --yes go" in ran[0][1] and "read _" in ran[0][1]
+
+
+def test_marker_rows_exist_only_in_the_language_server_source():
+    assert fd.marker_kind("lsp", "!install:go") == "install" and fd.marker_kind("lsp", "!wait") == "wait"
+    assert fd.marker_kind("lsp", "!note") == "note" and fd.marker_kind("lsp", "src/a.py") is None
+    for mode in ("files", "grep", "tags", "omni"):
+        assert fd.marker_kind(mode, "!important.md") is None  # a file that happens to be named like a marker
+    assert fd.marker_kind("lsp", "!important.md") is None  # not an exact marker either
+
+
+def test_a_tag_named_like_an_icon_word_is_still_recorded_as_its_tag(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    monkeypatch.setenv("OPTMUX_FIND_ICONS", "text")
+    fd.icon_style.cache_clear()
+    fd.record_opened("tags", "x.py\t1\tfile  f  x.py:1")  # a tag called `file`: tags rows are not drawn with icons
+    assert fd.load_recent()[:2] == ["file\tx.py", "x.py"]
+
+
+def test_the_install_pane_runs_under_sh_whatever_tmuxs_shell_is(monkeypatch):
+    ran = []
+    monkeypatch.setattr(fd, "split_pane", lambda pane, command: ran.append(command))
+    monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
+    fd.install_in_split("%1", "go")
+    assert ran[0].startswith("exec sh -c ") and "install --yes go" in ran[0]

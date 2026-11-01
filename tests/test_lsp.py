@@ -26,7 +26,7 @@ loader.exec_module(lsp)
 CONFIG = {
     "python": {"extensions": ["py"], "servers": [{"command": "nonexistent-lsp-xyz --stdio", "install": "brew install xyz"},
                                                   {"command": f"{sys.executable} {FAKE_SERVER}", "install": "n/a"}]},
-    "go": {"extensions": ["go"], "servers": [{"command": "no-such-gopls-xyz", "install": "brew install gopls"}]},
+    "go": {"extensions": ["go"], "servers": [{"command": "no-such-gopls-xyz", "install": "echo install-gopls"}]},
 }
 
 
@@ -113,7 +113,7 @@ def test_no_rows_explains_why_with_unopenable_hint_rows(project):
     (project / "e.go").write_text("package e\n")
     subprocess.run(["git", "add", "."], cwd=project, check=True)
     rows = wait_for(project, "zzzz", lambda r: any("gopls" in x[2] for x in r))
-    assert [r[:3] for r in rows if r[0] == "!install:go"] == [["!install:go", "0", "go: no language server installed.  Enter runs: brew install gopls"]]
+    assert [r[:3] for r in rows if r[0] == "!install:go"] == [["!install:go", "0", "go: no language server installed.  Enter runs: echo install-gopls"]]
     assert all(r[0].startswith("!") for r in rows)  # markers, not files: the picker will not try to open them
 
 
@@ -130,7 +130,8 @@ def test_status_lists_each_language_and_its_state(project):
             break
         time.sleep(0.3)
     assert status["python"]["state"] == "ready"
-    assert status["go"] == {"state": "missing", "install": "brew install gopls", "why": "no server installed"}
+    assert status["go"] == {"state": "missing", "install": "echo install-gopls", "hint": "echo install-gopls",
+                            "why": "no server installed"}
 
 
 def test_a_slow_server_answers_starting_then_rows(project, monkeypatch):
@@ -354,10 +355,12 @@ def test_the_install_offered_is_the_first_whose_installer_is_present(tmp_path, m
     monkeypatch.setattr(lsp, "search_path", lambda: os.environ["PATH"])
     server = lambda *cmds: {"command": "x", "install": list(cmds) if len(cmds) > 1 else cmds[0]}
     assert lsp.best_install({"servers": [server("brew install a", "uv tool install a", "pip install a")]}) == "uv tool install a"
-    assert lsp.best_install({"servers": [server("brew install a")]}) == "brew install a"  # none present: the first there is
+    # none of the installers here: nothing to run, but the preferred command is still worth telling the user
+    assert lsp.best_install({"servers": [server("no-such-brew-xyz install a")]}) == ""
+    assert lsp.first_install({"servers": [server("no-such-brew-xyz install a", "no-such-uv-xyz tool install a")]}) == "no-such-brew-xyz install a"
     # a later server whose installer exists beats an earlier one whose does not
-    assert lsp.best_install({"servers": [server("brew install a"), server("uv tool install b")]}) == "uv tool install b"
-    assert lsp.best_install({"servers": [{"command": "x"}]}) == ""
+    assert lsp.best_install({"servers": [server("no-such-brew-xyz install a"), server("uv tool install b")]}) == "uv tool install b"
+    assert lsp.best_install({"servers": [{"command": "x"}]}) == "" and lsp.first_install({"servers": [{"command": "x"}]}) == ""
 
 
 def test_install_yes_runs_the_command_for_a_language_without_a_server(project, tmp_path):
@@ -404,3 +407,37 @@ def test_icons_setting_is_known_and_defaulted():
     with redirect_stderr(err):
         _validate_optmux_section({"find": {"icons": "sparkles"}}, "src")
     assert "sparkles" in err.getvalue() and "emoji" in err.getvalue()
+
+
+def test_without_a_usable_installer_the_row_is_a_note_not_an_install(project, tmp_path):
+    write_config({"go": {"extensions": ["go"], "servers": [{"command": "no-such-gopls-xyz", "install": ["no-such-brew-xyz install gopls"]}]}})
+    for name in ("x.go", "y.go", "z.go"):
+        (project / name).write_text("package x\n")
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    rows = wait_for(project, "zzzz", lambda r: any("gopls" in x[2] for x in r))
+    assert [r[0] for r in rows if "gopls" in r[2]] == ["!note"]
+    assert "By hand: no-such-brew-xyz install gopls" in [r[2] for r in rows if "gopls" in r[2]][0]
+
+
+def test_an_install_that_leaves_no_server_on_the_path_says_so(project):
+    write_config({"go": {"extensions": ["go"], "servers": [{"command": "no-such-gopls-xyz", "install": ["true"]}]}})
+    for name in ("x.go", "y.go", "z.go"):
+        (project / name).write_text("package x\n")
+    subprocess.run(["git", "add", "."], cwd=project, check=True)
+    out = subprocess.run([sys.executable, str(SCRIPT), "install", "--yes", "go"], cwd=project, env=os.environ,
+                         capture_output=True, text=True, timeout=30).stdout
+    assert "succeeded, but none of no-such-gopls-xyz is on the PATH" in out and "installed; optmux" not in out
+
+
+def test_fast_query_without_configuration_prints_nothing(project):
+    (Path(os.environ["OPTMUX_DIR"]) / "find.json").unlink()
+    out = subprocess.run([sys.executable, str(SCRIPT), "query", "--fast", "hello"], cwd=project, env=os.environ,
+                         capture_output=True, text=True, timeout=30).stdout
+    assert out == ""
+
+
+def test_the_places_installers_put_binaries_are_searched(monkeypatch):
+    monkeypatch.setenv("GOBIN", "/somewhere/gobin")
+    path = lsp.search_path().split(os.pathsep)
+    assert path[0] == "/opt/homebrew/bin" and "/somewhere/gobin" in path
+    assert str(Path.home() / ".local/bin") in path and str(Path.home() / ".cargo/bin") in path
