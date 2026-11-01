@@ -66,7 +66,11 @@ def test_render_context_custom_item_split_instead_of_window():
     items = menu.render_context(
         "pane", [{"key": "e", "title": "Edit", "command": "vim", "new_window": False}]
     )
-    assert items == "'Edit' 'e' { split-window -v -c '#{pane_current_path}' 'vim' ; resize-pane -Z }"
+    assert items == (
+        "'Edit' 'e' { if-shell '\"$OPTMUX_DIR/bin/optmux-split-fits\" #{pane_id}' "
+        "{ split-window -v -b -c '#{pane_current_path}' 'vim' } "
+        "{ split-window -f -v -b -c '#{pane_current_path}' 'vim' } ; resize-pane -Z }"
+    )
 
 
 def test_render_context_custom_item_float_window_no_spurious_warning(capsys):

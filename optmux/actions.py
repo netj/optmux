@@ -15,6 +15,12 @@ def sq(s):  # escape ' for single-quoted tmux string
     return s.replace("'", "'\\''")
 
 
+def split_if_fits(plain, full):
+    """tmux `if-shell` picking `plain` when optmux-split-fits says there is room, else `full`.
+    (Not a `split-window … || …`: a failed split aborts the rest of a binding, a fallback can't.)"""
+    return "if-shell '\"$OPTMUX_DIR/bin/optmux-split-fits\" #{pane_id}' { %s } { %s }" % (plain, full)
+
+
 def build_action_parts(opts, label):
     """Build the tmux command parts for an action opts dict.
 
@@ -96,7 +102,11 @@ def build_action_parts(opts, label):
     elif use_window:
         open_cmd = "new-window" + detach_flag
     else:
-        open_cmd = "split-window -v" + detach_flag
+        # -b opens the pane above, so the active pane keeps its bottom edge and a
+        # bottom-anchored prompt (claude, fzf, a shell) doesn't jump as splits open.
+        open_cmd = "split-window -v" + detach_flag + " -b"
+        # When the pane is too short to halve, split across the window edge instead (-f).
+        open_cmd_full = "split-window -f -v" + detach_flag + " -b"
     # A detached split unzooms the window twice over: split-window unzooms as it
     # makes room, and tmux unzooms again when the pane dies. Capture the origin
     # pane's zoom (also true of a lone pane) so the split can restore it.
@@ -106,6 +116,10 @@ def build_action_parts(opts, label):
         if opts.get("command"):
             return "%s -c '#{pane_current_path}' '%s'" % (cmd_name, sq(remain_wrap(opts["command"])))
         return "%s -c '#{pane_current_path}'" % cmd_name
+
+    def open_split(with_args):
+        """A split that falls back to -f when the plain one would run out of room."""
+        return split_if_fits(with_args(open_cmd), with_args(open_cmd_full))
 
     parts = []
     if preserve_zoom:
@@ -127,8 +141,11 @@ def build_action_parts(opts, label):
         )
     elif "send_keys" in opts:
         target = (":$" if use_window else ":.+") if detached else ""
-        parts.append("%s -c '#{pane_current_path}'" % open_cmd)
+        parts.append(open_split(lambda c: "%s -c '#{pane_current_path}'" % c) if is_split
+                     else "%s -c '#{pane_current_path}'" % open_cmd)
         parts.extend(send_keys_parts(opts["send_keys"], target=target))
+    elif is_split:
+        parts.append(open_split(open_with))
     else:
         parts.append(open_with(open_cmd))
     if preserve_zoom:

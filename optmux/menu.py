@@ -139,7 +139,17 @@ DEFAULT_MENUS = {
         _item(
             "Vertical Split",
             "'#{?#{!:#{pane_floating_flag}},Vertical Split,}'", "'v'",
-            "{split-window -v}",
+            "{%s}" % actions.split_if_fits("split-window -v -b", "split-window -f -v -b"),
+        ),
+        _item(
+            "Split Top, Full Width",
+            "'#{?#{!:#{pane_floating_flag}},Split Top Full Width,}'", "'-'",
+            "{split-window -f -v -b}",
+        ),
+        _item(
+            "Split Below",
+            "'#{?#{!:#{pane_floating_flag}},Split Below,}'", "'_'",
+            "{%s}" % actions.split_if_fits("split-window -v", "split-window -f -v"),
         ),
         _sep(),
         _item(
