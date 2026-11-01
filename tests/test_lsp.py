@@ -405,8 +405,8 @@ def test_icons_setting_is_known_and_defaulted():
         _validate_optmux_section({"find": {"icons": "nerd"}}, "src")
     assert err.getvalue() == ""
     with redirect_stderr(err):
-        _validate_optmux_section({"find": {"icons": "sparkles"}}, "src")
-    assert "sparkles" in err.getvalue() and "emoji" in err.getvalue()
+        _validate_optmux_section({"find": {"icons": "sparkles", "preview": "off"}}, "src")
+    assert "sparkles" in err.getvalue() and "emoji" in err.getvalue() and "find.preview: 'off'" in err.getvalue()
 
 
 def test_without_a_usable_installer_the_row_is_a_note_not_an_install(project, tmp_path):

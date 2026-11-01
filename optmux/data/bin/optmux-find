@@ -311,7 +311,7 @@ def record_opened(mode, entry):
     keys = [f]
     if mode in ("omni", "lsp"):  # rows drawn with an icon
         kind, rest = split_icon(display)
-        if kind in ("tag", "sym"):
+        if kind == "tag" or kind in SYMBOL_ICON_KINDS:
             keys.insert(0, tag_key(rest.split("  ", 1)[0], f))
     elif mode == "tags":
         keys.insert(0, tag_key(display.split("  ", 1)[0], f))
@@ -333,25 +333,51 @@ def boost(keys, recent):
 
 
 ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
-    "emoji": {"file": "📄", "tag": "🔖", "sym": "🧩", "install": "📥", "wait": "⏳", "note": "💬"},
-    "nerd": {"file": "\uf016", "tag": "\uf02b", "sym": "\uf1b2", "install": "\uf019", "wait": "\uf252", "note": "\uf05a"},
-    "text": {"file": "file", "tag": "tag ", "sym": "lsp ", "install": "get ", "wait": "wait", "note": "note"},
+    "emoji": {"file": "📄", "tag": "🔖", "sym": "🧩", "call": "🔧", "type": "🧱", "mod": "📦", "val": "📌",
+              "install": "📥", "wait": "⏳", "note": "💬"},
+    "nerd": {"file": "\uf016", "tag": "\uf02b", "sym": "\uf12e", "call": "\uf0ad", "type": "\uf1b2", "mod": "\uf1b3",
+             "val": "\uf08d", "install": "\uf019", "wait": "\uf252", "note": "\uf05a"},
+    "text": {"file": "file", "tag": "tag ", "sym": "sym ", "call": "fn  ", "type": "type", "mod": "mod ", "val": "val ",
+             "install": "get ", "wait": "wait", "note": "note"},
 }
 DEFAULT_ICONS = "emoji"
+# LSP symbol kinds (the words optmux-lsp prints) by what they are, so five icons say it at a glance
+SYMBOL_GROUPS = {
+    "call": "function method constructor operator event".split(),
+    "type": "class struct interface enum typeparameter".split(),
+    "mod": "module namespace package file".split(),
+    "val": "variable constant field property enummember key string number boolean array object null".split(),
+}
+SYMBOL_GROUP = {kind: group for group, kinds in SYMBOL_GROUPS.items() for kind in kinds}
+SYMBOL_ICON_KINDS = {"sym", *SYMBOL_GROUPS}  # every icon kind that stands for a language-server symbol
+
+
+@functools.lru_cache(maxsize=1)
+def find_config():
+    """The `find:` section of the optmux config ($OPTMUX_DIR/find.json), {} if there is none."""
+    try:
+        config = json.loads(Path(os.environ["OPTMUX_DIR"], "find.json").read_text())
+    except (KeyError, OSError, ValueError):
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
 @functools.lru_cache(maxsize=1)
 def icon_style():
-    """find.icons from the optmux config ($OPTMUX_DIR/find.json), or OPTMUX_FIND_ICONS."""
-    try:
-        configured = json.loads(Path(os.environ["OPTMUX_DIR"], "find.json").read_text()).get("icons")
-    except (KeyError, OSError, ValueError, AttributeError):
-        configured = None
-    style = os.environ.get("OPTMUX_FIND_ICONS") or configured
+    """find.icons, or OPTMUX_FIND_ICONS."""
+    style = os.environ.get("OPTMUX_FIND_ICONS") or find_config().get("icons")
     return style if style in ICON_STYLES else DEFAULT_ICONS
 
 
+def symbol_kind(display):
+    """The icon kind of a language-server row (`name  function  container  path:line`): by its kind word."""
+    parts = display.split("  ")  # [name..., kind, container?, path:line]; a name may itself hold a double space
+    return next((SYMBOL_GROUP[p] for p in reversed(parts[1:-1]) if p in SYMBOL_GROUP), "sym")
+
+
 def with_icon(kind, display):
+    if kind == "sym":
+        kind = symbol_kind(display)
     return f"{ICON_STYLES[icon_style()][kind]} {display}"
 
 
@@ -443,6 +469,64 @@ def list_omni(query):
 MARKER_KINDS = {"!install": "install", "!wait": "wait", "!note": "note"}
 
 
+BAT = ("bat", "batcat")  # Debian and Ubuntu install it as batcat
+CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # all but tab and newline: they would recolor or garble the pane
+
+
+def preview(mode, path, line, display, height):
+    """What fzf shows beside the selected row: the file around its line, or what a non-file row (install, wait,
+    note) means. Uses bat if there is one, else plain numbered lines with the line marked. Long lines are cut,
+    not wrapped, so the window holds `height` lines and the marked one stays in view."""
+    if not path:  # nothing selected
+        return 0
+    if marker_kind(mode, path):
+        print(split_icon(display)[1])
+        return 0
+    if os.path.isdir(path):
+        print(f"({path} is a directory)")
+        return 0
+    try:
+        target = max(1, int(line))
+    except ValueError:
+        target = 1
+    start = max(1, target - height // 3)
+    try:
+        with open(path, "rb") as f:
+            if b"\0" in f.read(8000):
+                print("(binary file)")
+                return 0
+            f.seek(0)
+            bat = next((b for b in BAT if shutil.which(b)), None)
+            if bat:
+                os.execvp(bat, [bat, "--color=always", "--style=numbers", "--paging=never", "--wrap=never",
+                                f"--highlight-line={target}", f"--line-range={start}:{start + height - 1}", "--", path])
+            for n, raw in enumerate(f, 1):
+                if n >= start + height:
+                    break
+                if n >= start:
+                    mark = "\x1b[1;33m" if n == target else "\x1b[2m"
+                    text = CONTROL.sub("·", raw.decode(errors="replace").rstrip("\r\n"))[:300]
+                    print(f"{mark}{'>' if n == target else ' '}{n:>5}\x1b[0m {text}")
+    except OSError:
+        print(f"({path} is not there)")
+    return 0
+
+
+def preview_args(me, mode):
+    """fzf's options for the preview beside the list."""
+    # `<55(hidden)`: fzf compares that with the preview's own width (55% of the screen), so it is hidden when the
+    # terminal is under about 100 columns
+    return ["--preview", f"{shlex.quote(sys.executable)} {shlex.quote(me)} --preview {shlex.quote(mode)} {{1}} {{2}} {{3}}",
+            "--preview-window=right,55%,border-left,nowrap,<55(hidden)", "--bind=ctrl-/:toggle-preview,alt-p:toggle-preview"]
+
+
+def preview_enabled():
+    """find.preview (default on), and OPTMUX_FIND_PREVIEW=0 to turn it off."""
+    if os.environ.get("OPTMUX_FIND_PREVIEW") == "0":
+        return False
+    return find_config().get("preview", True) is not False
+
+
 def marker_kind(mode, f):
     """What a row's FILE field stands for if it is not a file: "install", "wait" or "note". Only ^l has such rows
     (a tracked file may well be named `!x`)."""
@@ -525,7 +609,7 @@ def remember_query(path, query):
 def header(mode):
     tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', '^')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', '^')}"
                      for m in MODES)
-    return f"{tabs}   C-M-f: next;  ^u: clear;  ^p/^n: history;  Enter: open"
+    return f"{tabs}\nC-M-f: next;  ^u: clear;  ^p/^n: history;  ^/: preview;  Enter: open"  # two lines: the list may be narrow
 
 
 def parse_output(stdout):
@@ -591,6 +675,8 @@ def pick(pane):
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
+        if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
+            fzf += preview_args(me, mode)
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             subprocess.Popen([sys.executable, lsp_exe(), "status"],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -648,6 +734,9 @@ if __name__ == "__main__":
         os.chdir(sys.argv[2])
         build_locked(sys.argv[2], tags_cache(sys.argv[2]))
         sys.exit(0)
+    if sys.argv[1:2] == ["--preview"]:  # fzf's preview command: MODE FILE LINE DISPLAY, see preview()
+        args = (sys.argv[2:] + ["", "", "", ""])[:4]
+        sys.exit(preview(*args, int(os.environ.get("FZF_PREVIEW_LINES") or 30)))
     if sys.argv[1:2] == ["--list"]:
         CHECK_TAGS = False  # a reload per keystroke: read the tags, leave building and checking to the picker
         mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
