@@ -4,7 +4,7 @@
 Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 One picker with four sources, like ctrl-p in vim but remembering where you were:
-  omni   (^o)  the three below blended: tags, then file names, then grep lines, each row labeled
+  omni   (^o)  tags and file paths ranked together, best match first, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
@@ -30,7 +30,7 @@ from pathlib import Path
 
 MODES = ["omni", "files", "grep", "tags"]
 MODE_KEYS = {"omni": "ctrl-o", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
-LIVE = {"grep", "omni"}  # sources that search as you type (fzf only displays their list)
+LIVE = {"grep", "omni"}  # lists made per query (fzf only displays them): grep searches, omni ranks
 MODE_OPTION = "@optmux-find-mode"
 CYCLE_KEY = "ctrl-alt-f"
 MAX_RESULTS = 3000
@@ -168,29 +168,33 @@ def list_tags(_query, warn=True):
         yield f"{path}\t{line}\t{name}  {kind}  {path}:{line}"
 
 
-OMNI_LIMITS = {"tag": 40, "file": 40, "grep": 200}  # rows per section in the blended list
+OMNI_LIMIT = 100  # rows; the best matches of tags and files together
 
 
-def fuzzy(entries, query):
-    """Entries matching `query` the way fzf would show them, best first."""
+def rank(matchables, query):
+    """Indexes of `matchables` matching `query` the way fzf would rank them, best first (one pass over all of
+    them, so scores from different sources compete: an exact file name beats a weak tag hit; of equal
+    scores the shorter, i.e. the more specific, wins)."""
     if not query:
-        return entries
-    return run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
-               input="\n".join(entries) + "\n").stdout.splitlines()
-
-
-def label(kind, entries, limit):
-    for e in entries[:limit]:
-        f, n, display = e.split("\t", 2)
-        yield f"{f}\t{n}\t{kind:<5} {display}"
+        return list(range(len(matchables)))
+    out = run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=2", "--tiebreak=length,index",
+              input="".join(f"{i}\t{m}\n" for i, m in enumerate(matchables))).stdout
+    return [int(line.split("\t", 1)[0]) for line in out.splitlines()]
 
 
 def list_omni(query):
-    """Every source at once (omni): tag definitions, then file names (both fuzzy), then lines of text (grep). A
-    section per source, best match nearest the prompt; the label says where a row came from."""
-    yield from label("tag", fuzzy(list(list_tags("", warn=False)), query), OMNI_LIMITS["tag"])
-    yield from label("file", fuzzy(list(list_files("")), query), OMNI_LIMITS["file"])
-    yield from label("grep", list(list_grep(query)), OMNI_LIMITS["grep"])
+    """Tags and file paths in one list, the stronger matches higher whichever source they come from. A tag is
+    matched on its name (its path is the file's row), a file on its path; the label says which is which."""
+    rows = []  # (what is matched, label, entry)
+    for e in list_tags("", warn=False):
+        f, n, display = e.split("\t", 2)
+        rows.append((display.split("  ", 1)[0], "tag", e))
+    for e in list_files(""):
+        rows.append((e.split("\t", 1)[0], "file", e))
+    for i in rank([m for m, _, _ in rows], query)[:OMNI_LIMIT]:
+        _, kind, e = rows[i]
+        f, n, display = e.split("\t", 2)
+        yield f"{f}\t{n}\t{kind:<4} {display}"
 
 
 LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags}

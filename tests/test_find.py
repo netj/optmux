@@ -126,14 +126,17 @@ def test_cursor_position_in_grep_is_plain_list_index():
     assert fd.cursor_position(es, "zzz", es[1], filtered=False) == 2  # fzf would filter both out
 
 
-def test_omni_blends_tags_files_and_grep_in_labeled_sections(repo):
-    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
-    kinds = lambda q: [(r.split("\t")[0], r.split("\t")[2].split()[0]) for r in fd.list_omni(q)]
-    assert kinds("hello") == [("app.py", "tag"), ("app.py", "grep"), ("sub/notes.md", "grep")]
-    assert kinds("notes") == [("sub/notes.md", "file")]  # a file name; the word is not in any text
-    assert kinds("app") == [("app.py", "tag"), ("app.py", "file")]  # a tag row's text includes its path
+def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
+    (repo / "tags").write_text(
+        'hel_per_function_with_a_long_name\tapp.py\t/^x/;"\tf\tline:1\n'
+        'Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
+    (repo / "hello.txt").write_text("x")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    top = [r.split("\t")[2].split()[:2] for r in fd.list_omni("hello")]
+    # equal matches: the shorter first (the tag name, 5 letters, over hello.txt), the weak fuzzy tag hit last
+    assert top == [["tag", "Hello"], ["file", "hello.txt"], ["tag", "hel_per_function_with_a_long_name"]]
+    assert not any(r.split("\t")[2].startswith("grep") for r in fd.list_omni("hello"))  # grep is its own source
 
 
-def test_omni_without_tags_still_lists_files_and_text(repo):
-    kinds = {r.split("\t")[2].split()[0] for r in fd.list_omni("sub")}
-    assert kinds == {"file"}  # no tags file, and "sub" is not in any text
+def test_omni_without_tags_still_lists_files(repo):
+    assert [r.split("\t")[2] for r in fd.list_omni("notes")] == ["file sub/notes.md"]

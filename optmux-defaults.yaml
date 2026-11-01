@@ -73,7 +73,7 @@ optmux:
       tmux: |
         display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
       tip: >
-        find a file, a line (git grep) or a tag to edit, or all at once (omni); C-M-f cycles them and it resumes where you left off
+        find a file or a tag (ranked together, omni) or a line (git grep) to edit; C-M-f cycles them and it resumes where you left off
     C-M-g:
       command: |
         (sleep 0.5; tmux send-keys Enter '*' Enter) &

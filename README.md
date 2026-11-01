@@ -486,7 +486,7 @@ Bundled helper scripts in `$OPTMUX_DIR/bin`, available in every pane:
 | `optmux-open-url URI` | Opens a hyperlink: files in your editor at the linked line, web links in the browser |
 | `optmux-env CMD...` | Runs a command with optmux's settings. See [optmux-env](#optmux-env) |
 | `optmux-diff-base` | Diffs the branch against the default branch (`origin/HEAD`, else `origin/main`): a diffstat, then the patch, i.e. what a PR would contain (`C-M-d`, lazygit's `Ctrl-g`) |
-| `optmux-find [PANE]` | Finds a file, a line (live `git grep`), a ctags tag or all of them at once (omni) and opens it in an editor split at that line (`C-M-f`). Resumes where you left off (mode, query, cursor). See [optmux Find](#optmux-find-open-a-file-line-or-tag) |
+| `optmux-find [PANE]` | Finds a file, a line (live `git grep`), a ctags tag, or tags and files ranked together (omni) and opens it in an editor split at that line (`C-M-f`). Resumes where you left off (mode, query, cursor). See [optmux Find](#optmux-find-open-a-file-line-or-tag) |
 | `optmux-extract [PANE]` | Picks lines, styled spans, URLs/paths/hashes/versions or words from a pane's screen and types or copies them (`C-t X`, `C-M-x`). See [optmux eXtract](#optmux-extract-text-from-the-screen) |
 | `optmux-gh-open` | Opens the current branch's PR on GitHub, or the repo page (`C-M-w`) |
 
@@ -515,7 +515,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 `C-M-f` opens a picker over the project with four sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
-- **`^o` omni** (the default): the three below at once, as labeled sections: tag definitions, then file names (both fuzzy), then lines of text (grep). Each row says where it came from (`tag`, `file`, `grep`), and a few dozen of each are shown, so narrow with the query or switch to one source for the rest.
+- **`^o` omni** (the default): tags and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag is matched on its name, a file on its path). Rows are labeled `tag` or `file`; the best 100 are shown. Grep stays on its own key, `^g`.
 - **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
 - **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`^t` tags**: a `tags` file at the repo root (a `post-commit` hook running `ctags` keeps it fresh), or one built on first use (into `.git/optmux-tags`) when [universal-ctags](https://ctags.io) is installed (`brew install universal-ctags`; macOS's own `ctags` is not enough).
