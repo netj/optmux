@@ -140,3 +140,38 @@ def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
 
 def test_omni_without_tags_still_lists_files(repo):
     assert [r.split("\t")[2] for r in fd.list_omni("notes")] == ["file sub/notes.md"]
+
+
+def test_boost_pulls_recent_ahead_but_only_so_far():
+    keys = [f"k{i}" for i in range(50)]
+    assert fd.boost(keys, []) == list(range(50))  # nothing recent: match order
+    order = fd.boost(keys, ["k10"])  # most recent: up to 20 places
+    assert order.index(10) == 0 and order[1:11] == list(range(10))
+    assert fd.boost(keys, ["k40"]).index(40) == 21  # a weak match gets 20 places up, no further (it ties 20, behind it)
+    assert fd.boost(keys, ["k5", "k3"])[:3] == [3, 5, 0]  # both recent; the better match stays ahead of the newer
+
+
+def test_recent_roundtrip_and_ordering(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    assert fd.load_recent() == []
+    fd.record_opened("files", "a.py\t1\ta.py")
+    fd.record_opened("tags", "b.py\t7\tfoo  f  b.py:7")
+    fd.record_opened("omni", "a.py\t1\tfile a.py")
+    assert fd.load_recent() == ["a.py", "foo\tb.py", "b.py"]
+    fd.record_opened("omni", "c.py\t2\ttag  bar  f  c.py:2")
+    assert fd.load_recent()[:2] == ["bar\tc.py", "c.py"]
+    es = ["x\t1\tx", "b.py\t1\tb.py", "a.py\t1\ta.py"]
+    assert fd.by_recency(es, lambda e: e.split("\t")[0], ["a.py", "b.py"]) == [es[2], es[1], es[0]]
+
+
+def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo):
+    (repo / "tags").write_text("")
+    import os
+    os.environ["OPTMUX_DIR"] = str(repo / ".od")
+    try:
+        assert next(fd.list_omni("")).split("\t")[0] == "app.py"  # nothing opened yet: list order
+        fd.record_opened("files", "sub/notes.md\t1\tsub/notes.md")
+        assert next(fd.list_omni("")).split("\t")[0] == "sub/notes.md"
+        assert [r.split("\t")[0] for r in fd.list_omni("s")][0] == "sub/notes.md"
+    finally:
+        del os.environ["OPTMUX_DIR"]
