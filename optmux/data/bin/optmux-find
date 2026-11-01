@@ -357,7 +357,7 @@ SYMBOL_GROUP = {kind: group for group, kinds in SYMBOL_GROUPS.items() for kind i
 LETTER_GROUP = {**dict.fromkeys("fm", "call"), **dict.fromkeys("cstiegu", "type"), **dict.fromkeys("vdr", "val"),
                 **dict.fromkeys("pn", "mod")}
 SOURCE_LETTERS = {"files": "F", "grep": "G", "tags": "T", "lsp": "L"}
-SOURCE_NAMES = {"files": "file", "grep": "match", "tags": "tag (ctags)", "lsp": "symbol (language server)"}
+SOURCE_NAMES = {"files": "File path", "grep": "Grep match", "tags": "Symbol", "lsp": "Symbol"}
 FIELD_SEP = "\x1f"  # between the parts of a row's last field (see row)
 
 
@@ -402,18 +402,19 @@ def split_icon(display):
 DIM, UNDIM = "\x1b[2m", "\x1b[0m"
 
 
-def row(source, kind, name, path, line, container="", text=""):
+def row(source, kind, name, path, line, container="", text="", detail=""):
     """A candidate: `FILE \t LINE \t DISPLAY \t TEXT \t WHAT`. Every source is shown the same way: the source's letter
     and what it is (an icon), the name, then where: `file:line` and the directory in parens, dim. TEXT is
     what grep matched (the list shows it only when there is no preview). WHAT (SOURCE, kind word, name,
-    container, joined by FIELD_SEP) is for the program: recency, the preview's header."""
+    container, then which language server, and grep's text, joined by FIELD_SEP) is for the program: recency, the preview's header."""
     group = kind if kind in ("file", "hit") else kind_group(kind)
+    text = re.sub(r"[\t\x1f]", " ", text.strip())  # (source lines have tabs: they would split the row)
     directory, base = os.path.split(path)
     where = "" if source in ("files", "grep") else f"  {base}:{line}"
     shown = f"{DIM}{SOURCE_LETTERS[source]}{UNDIM}{ICON_STYLES[icon_style()][group]} {name}{where}"
     if directory:
         shown += f"  {DIM}({directory}){UNDIM}"
-    what = FIELD_SEP.join((source, kind, name, container))
+    what = FIELD_SEP.join((source, kind, name, container, detail, text[:300]))
     return f"{path}\t{line}\t{shown}\t{text}\t{what}"
 
 
@@ -421,6 +422,11 @@ def what_of(entry):
     """(source, kind word, name, container) of a row made by `row` (empty strings for a row without them)."""
     parts = (entry.split("\t") + [""] * 5)[4].split(FIELD_SEP)
     return tuple((parts + [""] * 4)[:4])
+
+
+def what_all(what):
+    """(source, kind word, name, container, detail, text) of a row's WHAT field."""
+    return tuple((what.split(FIELD_SEP) + [""] * 6)[:6])
 
 
 OMNI_LIMIT = 100  # rows; the best matches of tags and files together
@@ -504,26 +510,47 @@ BAT = ("bat", "batcat")  # Debian and Ubuntu install it as batcat
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # all but tab and newline: they would recolor or garble the pane
 
 
-PREVIEW_HEADER_LINES = 4
+PREVIEW_HEADER_LINES = 5
+
+
+def source_title(source, detail):
+    """Where a row came from, in words: `Symbol (ctags: tags)`, `Symbol (lsp go: gopls)`, `File path (git ls-files)`,
+    `Grep match (git grep)`."""
+    if source == "files":
+        how = "git ls-files" if repo_root() else "find"
+    elif source == "grep":
+        how = "git grep" if repo_root() else "grep"
+    elif source == "lsp":
+        how = f"lsp {detail}" if detail else "lsp"
+    else:
+        found = tags_file(check=False)
+        how = f"ctags: {os.path.relpath(found, repo_root() or os.getcwd())}" if found else "ctags"
+    return f"{SOURCE_NAMES[source]} ({how})"
 
 
 def preview_header(what, path, line):
-    """The preview's first lines, the same few every time (what changes is on the right of each line, and what
-    is always there, the kind and the source, stands on a line of its own): the name; what it is and where it is
-    from; where it is. The list is terse and this says it all. Returns how many lines it took."""
-    source, kind, name, container = (what.split(FIELD_SEP) + [""] * 4)[:4]
+    """The preview's first lines, the same five every time, each saying the same kind of thing whatever the row
+    (so that going up and down changes only what is new, and nothing is said twice):
+      where it comes from, the name (a file's name; what grep matched), what it is (`method in the module`),
+      where it is (`in dir/file:line`).
+    Returns how many lines it took."""
+    source, kind, name, container, detail, text = what_all(what)
     if source not in SOURCE_NAMES:
         return 0
     room = int(os.environ.get("FZF_PREVIEW_COLUMNS") or 80) - 8  # (fzf draws its position, 1/43, at the top right)
     directory, base = os.path.split(path)
-    kind_text = {"file": "", "hit": ""}.get(kind, kind)
-    print(f"\x1b[1m{name[:room]}\x1b[0m")
-    print(f"{DIM}{' · '.join(x for x in (SOURCE_NAMES[source], kind_text) if x)}{UNDIM}")  # the source first: it is one of four
-    where = f"{base}:{line}" if source != "files" else base  # the file is bright, the directory before it dim
-    context = f"  in {container}" if container else ""
-    directory = (directory + "/") if directory else ""
-    directory = directory[:max(0, room - len(where) - len(context))]
-    print(f"{DIM}{directory}{UNDIM}{where}" + (f"{DIM}{context[:max(0, room - len(directory) - len(where))]}{UNDIM}" if container else ""))
+    directory = directory + "/" if directory else ""
+    if source == "files":
+        title, kind_line, place = name, "file", (directory, "")
+    elif source == "grep":
+        title, kind_line, place = text or name, f"line {line}", (directory, base)
+    else:
+        title, kind_line, place = name, f"{kind} in {container}" if container and kind else (f"in {container}" if container else kind), (directory, f"{base}:{line}")
+    print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
+    print(f"\x1b[1m{title[:room]}\x1b[0m")
+    print(f"{DIM}{kind_line[:room]}{UNDIM}")
+    far, near = place[0][:max(0, room - len(place[1]) - 3)], place[1]  # the file name is bright, the directory before it dim
+    print(f"{DIM}in {far}{UNDIM}{near}")
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
@@ -614,8 +641,8 @@ def render_lsp(raw_rows):
         if marker:
             yield f"{f}\t{n}\t{with_icon(marker, display)}"
             continue
-        name, kind, container = (display.split(FIELD_SEP) + ["", ""])[:3]
-        yield row("lsp", kind, name, f, n, container)
+        name, kind, container, server = (display.split(FIELD_SEP) + ["", "", ""])[:4]
+        yield row("lsp", kind, name, f, n, container, detail=server)
 
 
 def list_lsp(query):

@@ -155,7 +155,7 @@ def state_dir():
     return d
 
 
-PROTOCOL = 2  # what rows look like; a hub left running by an older optmux is replaced, not spoken to
+PROTOCOL = 3  # what rows look like; a hub left running by an older optmux is replaced, not spoken to
 
 
 def socket_path(root):
@@ -168,6 +168,7 @@ def socket_path(root):
 class LanguageServer:
     def __init__(self, lang, cfg, argv, root, files, log):
         self.lang, self.cfg, self.root, self.files = lang, cfg, root, files
+        self.name = f"{lang}: {os.path.basename(argv[0])}"  # what rows say they come from
         self.ids, self.pending, self.ready, self.failed = itertools.count(1), {}, False, None
         self.lock = threading.Lock()
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=root,
@@ -284,9 +285,9 @@ def short_name(name):
     return tail.partition(".")[2] or tail if slash and "." in tail else name
 
 
-def rows_of(symbols, root):
-    """optmux Find rows (`FILE \\t LINE \\t NAME ^_ KIND ^_ CONTAINER`, with ^_ the unit separator, \\x1f) for LSP
-    SymbolInformation / WorkspaceSymbol items."""
+def rows_of(symbols, root, source=""):
+    """optmux Find rows (`FILE \\t LINE \\t NAME ^_ KIND ^_ CONTAINER ^_ SOURCE`, with ^_ the unit separator, \\x1f) for LSP
+    SymbolInformation / WorkspaceSymbol items; SOURCE says which server answered."""
     for sym in symbols:
         loc = sym.get("location") or {}
         if not loc.get("uri"):
@@ -298,7 +299,7 @@ def rows_of(symbols, root):
             pass  # outside the project (a library): keep the absolute path
         line = ((loc.get("range") or {}).get("start") or {}).get("line", 0) + 1
         kind = SYMBOL_KINDS[sym["kind"] - 1] if isinstance(sym.get("kind"), int) and 0 < sym["kind"] <= 26 else ""
-        yield f"{path}\t{line}\t{short_name(sym.get('name', ''))}\x1f{kind}\x1f{sym.get('containerName') or ''}"
+        yield f"{path}\t{line}\t{short_name(sym.get('name', ''))}\x1f{kind}\x1f{sym.get('containerName') or ''}\x1f{source}"
 
 
 # ---- the hub: one per project --------------------------------------------------------------------------
@@ -371,7 +372,7 @@ class Hub:
 
         def ask(lang, server):
             try:
-                answers[lang] = list(rows_of(server.symbols(query, timeout), self.root))
+                answers[lang] = list(rows_of(server.symbols(query, timeout), self.root, server.name))
             except (OSError, TimeoutError):
                 answers[lang] = []
         with self.lock:

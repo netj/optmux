@@ -95,9 +95,9 @@ def test_rows_use_relative_paths_one_based_lines_and_kind_names(tmp_path):
         {"name": "NoRange", "kind": 13, "location": {"uri": (tmp_path / "b.py").as_uri()}},
         {"name": "NoLocation"},
     ], root))
-    assert rows == ["src/a.py\t5\trun\x1ffunction\x1fApp",
-                    "/usr/lib/lib.py\t1\tLib\x1fclass\x1f",
-                    "b.py\t1\tNoRange\x1fvariable\x1f"]
+    assert rows == ["src/a.py\t5\trun\x1ffunction\x1fApp\x1f",
+                    "/usr/lib/lib.py\t1\tLib\x1fclass\x1f\x1f",
+                    "b.py\t1\tNoRange\x1fvariable\x1f\x1f"]
 
 
 def test_a_package_qualifier_is_dropped_from_a_symbols_name():
@@ -109,7 +109,7 @@ def test_a_package_qualifier_is_dropped_from_a_symbols_name():
 def test_hub_asks_the_fake_server_and_answers_with_rows(project):
     rows = wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")
     assert [r[:2] for r in rows] == [["a.py", "1"], ["b.py", "4"]]
-    assert rows[0][2] == "hello_world\x1ffunction\x1fmod"
+    assert rows[0][2].startswith("hello_world\x1ffunction\x1fmod\x1f") and rows[0][2].endswith("python")  # which server said so (LANG: command)
     # one more query: answered by the same hub, no new server
     assert [r[0] for r in query(project, "other")] == ["b.py"]
 

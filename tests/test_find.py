@@ -479,19 +479,24 @@ def test_the_source_and_its_dir_are_dimmed_in_the_list():
     assert r.startswith("\x1b[2mT\x1b[0m") and r.endswith("\x1b[2m(pkg/gui)\x1b[0m")
 
 
-def test_the_preview_opens_with_what_the_row_is_and_where(tmp_path, monkeypatch, capsys):
+def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_and_where_it_is(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(fd.shutil, "which", lambda name: None)
     Path("pkg").mkdir()
     Path("pkg/a.go").write_text("".join(f"line {i}\n" for i in range(1, 60)))
-    what = fd.what_of(fd.row("lsp", "method", "Gui.Layout", "pkg/a.go", 30, "Gui"))
-    fd.preview("lsp", "pkg/a.go", "30", "x", fd.FIELD_SEP.join(what), 20)
-    out = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in capsys.readouterr().out.splitlines()]
+    strip = lambda text: [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in text.splitlines()]
+    what = lambda *a, **kw: fd.FIELD_SEP.join(fd.what_all(fd.row(*a, **kw).split("\t")[4]))
+    fd.preview("lsp", "pkg/a.go", "30", "x", what("lsp", "method", "Gui.Layout", "pkg/a.go", 30, "Gui", detail="go: gopls"), 20)
+    out = strip(capsys.readouterr().out)
     assert len(out) == 20  # the header is part of the window's height
-    assert out[:3] == ["Gui.Layout", "symbol (language server) · method", "pkg/a.go:30  in Gui"]
-    assert out[3].startswith("──") and any(l.endswith("line 30") for l in out[4:])
-    fd.preview("files", "pkg/a.go", "1", "x", fd.FIELD_SEP.join(fd.what_of(fd.row("files", "file", "a.go", "pkg/a.go", 1))), 10)
-    assert re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out).splitlines()[:3] == ["a.go", "file", "pkg/a.go"]
+    assert out[:4] == ["Symbol (lsp go: gopls)", "Gui.Layout", "method in Gui", "in pkg/a.go:30"]
+    assert out[4].startswith("──") and any(l.endswith("line 30") for l in out[5:])
+    fd.preview("files", "pkg/a.go", "1", "x", what("files", "file", "a.go", "pkg/a.go", 1), 10)
+    assert strip(capsys.readouterr().out)[:4] == ["File path (find)", "a.go", "file", "in pkg/"]  # nothing said twice
+    fd.preview("grep", "pkg/a.go", "7", "x", what("grep", "hit", "a.go:7", "pkg/a.go", 7, text="x := \t1"), 10)
+    assert strip(capsys.readouterr().out)[:4] == ["Grep match (grep)", "x :=  1", "line 7", "in pkg/a.go"]
+    fd.preview("tags", "pkg/a.go", "3", "x", what("tags", "function", "Layout", "pkg/a.go", 3), 10)
+    assert strip(capsys.readouterr().out)[:2] == ["Symbol (ctags)", "Layout"]
 
 
 def test_preview_shows_the_file_around_the_line_with_the_line_marked(tmp_path, monkeypatch, capsys):
@@ -628,3 +633,9 @@ def test_the_cursor_comes_back_to_a_row_whose_display_has_dim_codes():
     assert printed != rows[2]
     assert fd.cursor_position(rows, "", printed, filtered=False) == 3
     assert fd.cursor_position(rows, "", fd.ANSI.sub("", fd.row("grep", "hit", "a.py:7", "a.py", 7)), filtered=False) is None
+
+
+def test_a_grep_match_with_tabs_in_it_does_not_split_the_row():
+    r = fd.row("grep", "hit", "a.go:7", "pkg/a.go", 7, text="\tif x {\t// go code")
+    assert len(r.split("\t")) == 5 and r.split("\t")[3] == "if x { // go code"
+    assert fd.what_all(r.split("\t")[4])[5] == "if x { // go code"
