@@ -40,6 +40,12 @@ def test_grep_is_smart_case_and_carries_line_numbers(repo):
     assert list(fd.list_grep("")) == [] and list(fd.list_grep("h")) == []  # too short to be worth listing
 
 
+def test_grep_rows_keep_the_matching_text_in_a_field_of_its_own(repo):
+    row = next(iter(fd.list_grep("Hello")))
+    f, n, shown, text = row.split("\t")
+    assert (f, n, shown) == ("app.py", "3", "app.py:3:") and "Hello" in text
+
+
 def test_tags_parse_line_field_and_search_patterns(repo):
     (repo / "tags").write_text(
         '!_TAG_FILE_FORMAT\t2\t/extended format/\n'
@@ -552,3 +558,19 @@ def test_find_starts_in_a_given_source_with_a_given_query(capsys):
     with pytest.raises(SystemExit):
         fd.parse_args(["--moed", "grep"])
     assert "invalid choice" in capsys.readouterr().err
+
+
+def test_the_preview_toggles_on_every_key_terminals_send_and_grep_drops_its_text_with_it():
+    args = fd.preview_args("/b/optmux-find", "grep", compact=True)
+    for key in ("ctrl-/", "ctrl-_", "alt-p"):  # Terminal.app sends ^_ for ctrl-/ and ctrl--
+        assert f"--bind={key}:toggle-preview+change-with-nth(3..4|3)" in args
+    assert "--bind=ctrl-_:toggle-preview+change-with-nth(3|3..4)" in fd.preview_args("/b/optmux-find", "grep")
+    assert "--bind=ctrl-_:toggle-preview" in fd.preview_args("/b/optmux-find", "files")  # rows without text stay as they are
+
+
+def test_the_preview_is_counted_on_screen_only_with_room_for_it(monkeypatch):
+    monkeypatch.setattr(fd, "preview_enabled", lambda: True)
+    monkeypatch.setattr(fd.os, "get_terminal_size", lambda fd_: type("S", (), {"columns": 120})())
+    assert fd.preview_showing()
+    monkeypatch.setattr(fd.os, "get_terminal_size", lambda fd_: type("S", (), {"columns": 80})())
+    assert not fd.preview_showing()

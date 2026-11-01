@@ -555,7 +555,7 @@ optmux:
 
 The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
 
-A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `^/` (or `alt-p`) toggles it; it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.
+A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `^/` (or `^_`, which is what macOS Terminal.app sends for `ctrl-/` and `ctrl--`, or `alt-p`) toggles it; while it is on, grep's list shows just `path:line` (the preview has the text); it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.
 
 Rows are marked with emoji by default, which render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses short words (`file`, `tag`, `fn`, `type`, `mod`, `val`, `sym`):
 

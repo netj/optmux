@@ -125,7 +125,7 @@ def list_grep(query):
         if status not in (2, 128) or hits:  # 128 (git) / 2 (grep): not a valid regex; retry as plain text
             break
     for f, n, text in sorted(hits):
-        yield f"{f}\t{n}\t{f}:{n}: {text}"
+        yield f"{f}\t{n}\t{f}:{n}:\t{text}"  # the text is field 4: the list drops it while the preview shows it
 
 
 def find_ctags():
@@ -515,12 +515,27 @@ def preview(mode, path, line, display, height):
     return 0
 
 
-def preview_args(me, mode):
-    """fzf's options for the preview beside the list."""
+PREVIEW_MIN_COLUMNS = 100  # narrower terminals have no room for the preview (see `<55(hidden)` below)
+PREVIEW_KEYS = ("ctrl-/", "ctrl-_", "alt-p")  # Terminal.app and some others send ^_ for ctrl-/ (and for ctrl--)
+
+
+def preview_showing():
+    """Whether the preview is on screen at the start: enabled, and room for it."""
+    try:
+        return preview_enabled() and os.get_terminal_size(2).columns >= PREVIEW_MIN_COLUMNS
+    except OSError:
+        return False
+
+
+def preview_args(me, mode, compact=False):
+    """fzf's options for the preview beside the list. `compact`: grep's rows go without the matching text
+    (the preview shows it) while the preview is on; the toggle swaps the two."""
     # `<55(hidden)`: fzf compares that with the preview's own width (55% of the screen), so it is hidden when the
     # terminal is under about 100 columns
-    return ["--preview", f"{shlex.quote(sys.executable)} {shlex.quote(me)} --preview {shlex.quote(mode)} {{1}} {{2}} {{3}}",
-            "--preview-window=right,55%,border-left,nowrap,<55(hidden)", "--bind=ctrl-/:toggle-preview,alt-p:toggle-preview"]
+    args = ["--preview", f"{shlex.quote(sys.executable)} {shlex.quote(me)} --preview {shlex.quote(mode)} {{1}} {{2}} {{3}}",
+            "--preview-window=right,55%,border-left,nowrap,<55(hidden)"]
+    swap = ("+change-with-nth(" + ("3..4|3" if compact else "3|3..4") + ")") if mode == "grep" else ""
+    return args + [f"--bind={key}:toggle-preview{swap}" for key in PREVIEW_KEYS]
 
 
 def preview_enabled():
@@ -684,12 +699,13 @@ def pick(pane, start_mode=None, start_query=None):
             query, entry = carried, (entry if carried == query else None)
         history = state_dir() / f"{mode}.history"
         dedupe_history(history)
-        fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode in LIVE else "--tiebreak=index",
+        compact = mode == "grep" and preview_showing()
+        fzf = ["fzf", "--delimiter=\t", "--with-nth=3" if compact or mode != "grep" else "--with-nth=3..4", "--no-sort" if mode in LIVE else "--tiebreak=index",
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
         if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
-            fzf += preview_args(me, mode)
+            fzf += preview_args(me, mode, compact)
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             subprocess.Popen([sys.executable, lsp_exe(), "status"],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
