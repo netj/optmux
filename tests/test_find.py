@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import skip_no_fzf
+
 sys.dont_write_bytecode = True
 loader = SourceFileLoader("optmux_find", str(Path(__file__).parent.parent / "optmux/data/bin/optmux-find"))
 fd = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
@@ -75,6 +77,7 @@ def test_state_roundtrip_is_per_project_and_source(tmp_path, monkeypatch):
     assert fd.load_state("grep") == ("", None)
 
 
+@skip_no_fzf
 def test_cursor_position_follows_fzf_ranking():
     es = ["src/a.py\t1\tsrc/a.py", "b.py\t1\tb.py", "src/b.py\t1\tsrc/b.py"]
     assert fd.cursor_position(es, "", es[2]) == 3
@@ -126,6 +129,7 @@ def test_cursor_position_in_grep_is_plain_list_index():
     assert fd.cursor_position(es, "zzz", es[1], filtered=False) == 2  # fzf would filter both out
 
 
+@skip_no_fzf
 def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
     (repo / "tags").write_text(
         'hel_per_function_with_a_long_name\tapp.py\t/^x/;"\tf\tline:1\n'
@@ -138,6 +142,7 @@ def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
     assert not any(r.split("\t")[2].startswith("grep") for r in fd.list_omni("hello"))  # grep is its own source
 
 
+@skip_no_fzf
 def test_omni_without_tags_still_lists_files(repo):
     assert [r.split("\t")[2] for r in fd.list_omni("notes")] == ["file sub/notes.md"]
 
@@ -164,6 +169,7 @@ def test_recent_roundtrip_and_ordering(tmp_path, monkeypatch):
     assert fd.by_recency(es, lambda e: e.split("\t")[0], ["a.py", "b.py"]) == [es[2], es[1], es[0]]
 
 
+@skip_no_fzf
 def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo):
     (repo / "tags").write_text("")
     import os

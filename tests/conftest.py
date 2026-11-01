@@ -4,6 +4,7 @@ import pytest
 
 HAS_TMUX = shutil.which("tmux") is not None
 skip_no_tmux = pytest.mark.skipif(not HAS_TMUX, reason="tmux not found on PATH")
+skip_no_fzf = pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not found on PATH")
 
 
 @pytest.fixture
