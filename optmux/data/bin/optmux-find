@@ -378,12 +378,21 @@ def editor_command(path, line):
     return " ".join(shlex.quote(a) for a in [*editor, *args])
 
 
+def after_zoom(command):
+    """Start `command` only once the pane has its zoomed size. An editor reads the size once at startup; resize-pane -Z
+    flips tmux's zoom flag before the pty is resized, so an editor started right away draws for the old, smaller pane
+    and garbles when scrolling (:!reset repairs it). Waits for the flag and for the tty to agree (2s at most)."""
+    ask = 'tmux display-message -p -t "$TMUX_PANE" "#{window_zoomed_flag} #{pane_height}"'
+    return (f'n=0; until [ "$({ask})" = "1 $(stty size | cut -d" " -f1)" ] || [ $((n+=1)) -gt 100 ]; do sleep 0.02; done; '
+            f"exec {command}")
+
+
 def open_in_split(pane, path, line):
     """Same placement as the other C-M-* splits: above the pane, or across the window edge when out of room."""
     cwd = os.getcwd()
     fits = run(os.path.join(os.environ["OPTMUX_DIR"], "bin", "optmux-split-fits"), pane).returncode == 0
     new = tmux("split-window", "-P", "-F", "#{pane_id}", *([] if fits else ["-f"]), "-v", "-b", "-c", cwd,
-               "-t", pane, editor_command(path, line), capture_output=True, text=True).stdout.strip()
+               "-t", pane, after_zoom(editor_command(path, line)), capture_output=True, text=True).stdout.strip()
     tmux("resize-pane", "-Z", "-t", new)
 
 
