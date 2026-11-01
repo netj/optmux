@@ -19,6 +19,7 @@ LSP `workspace/symbol` to all running servers and merges the answers. It exits a
 The configuration is $OPTMUX_DIR/find.json, which optmux writes at launch from its merged `find:` section.
 """
 
+import fcntl
 import hashlib
 import itertools
 import json
@@ -46,6 +47,13 @@ QUERY_TIMEOUT = 4      # seconds a server may take to answer one query
 MAX_ROWS = 200
 RESCAN_MISSING = float(os.environ.get("OPTMUX_LSP_RESCAN", "3"))  # seconds between looking for servers installed since
 RESCAN_FILES = 60      # seconds between looking for languages the project grew into
+RESTART_AFTER = float(os.environ.get("OPTMUX_LSP_RESTART", "30"))  # seconds before a crashed server is started again
+# LSP languageId by file extension, for the one file opened on start (else the language's own name)
+LANGUAGE_IDS = {"c": "c", "h": "c", "cc": "cpp", "cpp": "cpp", "cxx": "cpp", "hpp": "cpp", "hh": "cpp", "m": "objective-c",
+                "mm": "objective-cpp", "ts": "typescript", "mts": "typescript", "cts": "typescript",
+                "tsx": "typescriptreact", "js": "javascript", "mjs": "javascript", "cjs": "javascript",
+                "jsx": "javascriptreact", "py": "python", "pyi": "python", "go": "go", "rs": "rust", "lua": "lua",
+                "sh": "shellscript", "bash": "shellscript"}
 
 
 # ---- configuration -------------------------------------------------------------------------------------
@@ -127,7 +135,8 @@ class LanguageServer:
         self.lang, self.cfg, self.root, self.files = lang, cfg, root, files
         self.ids, self.pending, self.ready, self.failed = itertools.count(1), {}, False, None
         self.lock = threading.Lock()
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=root)
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=root,
+                                     env={**os.environ, "PATH": search_path()})  # the server's own `env node` needs it too
         threading.Thread(target=self.read_loop, daemon=True).start()
         threading.Thread(target=self.boot, daemon=True).start()
 
@@ -194,14 +203,28 @@ class LanguageServer:
                 },
             }, BOOT_TIMEOUT)
             self.send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
-            if self.cfg.get("open_first_file") and self.files:  # some servers pick their project from an open file
-                path = Path(self.root, self.files[0])
-                self.send({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {
-                    "uri": path.as_uri(), "languageId": self.cfg.get("language_id", self.lang), "version": 1,
-                    "text": path.read_text(errors="replace")}}})
+            if self.cfg.get("open_first_file"):  # some servers pick their project from an open file
+                self.open_a_file()
             self.ready = True
         except (OSError, TimeoutError, ValueError) as e:
             self.failed = f"did not start ({e})"
+
+    def open_a_file(self):
+        """Tell the server about one file (the first tracked one that is there): a failure here is not a failed boot."""
+        for name in self.files:
+            path = Path(self.root, name)
+            try:
+                text = path.read_text(errors="replace")
+            except OSError:
+                continue
+            ext = name.rsplit(".", 1)[-1].lower()
+            self.send({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {
+                "uri": path.as_uri(), "languageId": LANGUAGE_IDS.get(ext) or self.cfg.get("language_id", self.lang),
+                "version": 1, "text": text}}})
+            return
+
+    def alive(self):
+        return self.failed is None and self.proc.poll() is None
 
     def symbols(self, query):
         return self.request("workspace/symbol", {"query": query}, QUERY_TIMEOUT) or []
@@ -241,6 +264,8 @@ def rows_of(symbols, root):
 class Hub:
     def __init__(self, root):
         self.root, self.last_used, self.servers, self.missing = root, time.time(), {}, {}
+        self.crashed = {}  # language -> (when, why) of a server that died; tried again after RESTART_AFTER
+        self.lock = threading.RLock()  # queries come in on several threads
         self.stopping = False
         self.config = load_config()
         self.log = open(state_dir() / "lsp.log", "ab")
@@ -257,29 +282,45 @@ class Hub:
             return
         argv, server = found
         try:
-            self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files[lang], self.log)
+            self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files.get(lang, []), self.log)
             self.missing.pop(lang, None)
         except OSError as e:
             self.missing[lang] = {"install": server.get("install", ""), "why": str(e)}
 
     def rescan(self):
         """Which languages the project has, and servers for them: at start, then again as things change, so a
-        server installed (or a language added) while the hub runs is picked up without restarting it."""
-        now = time.time()
-        if now - self.scanned_files >= RESCAN_FILES or not self.scanned_files:
-            self.scanned_files = self.scanned_missing = now
-            self.lang_files = detect_languages(tracked_files(self.root), self.config)
-            for lang in self.lang_files:
-                if lang not in self.servers:
+        server installed (or a language added) while the hub runs is picked up without restarting it, and one
+        that died is started again after a while."""
+        with self.lock:
+            now = time.time()
+            for lang, server in list(self.servers.items()):  # the dead: out, then back after RESTART_AFTER
+                if not server.alive():
+                    self.crashed[lang] = (now, server.failed or "exited")
+                    del self.servers[lang]
+                    server.stop()
+            for lang, (when, _) in list(self.crashed.items()):
+                if now - when >= RESTART_AFTER and lang in self.lang_files:
+                    del self.crashed[lang]
                     self.start(lang)
-        elif self.missing and now - self.scanned_missing >= RESCAN_MISSING:
-            self.scanned_missing = now
-            for lang in list(self.missing):
-                self.start(lang)
+            if now - self.scanned_files >= RESCAN_FILES or not self.scanned_files:
+                self.scanned_files = self.scanned_missing = now
+                self.lang_files = detect_languages(tracked_files(self.root), self.config)
+                for lang in list(self.missing):  # no longer a language of this project
+                    if lang not in self.lang_files:
+                        del self.missing[lang]
+                for lang in self.lang_files:
+                    if lang not in self.servers and lang not in self.crashed:
+                        self.start(lang)
+            elif self.missing and now - self.scanned_missing >= RESCAN_MISSING:
+                self.scanned_missing = now
+                for lang in list(self.missing):
+                    self.start(lang)
 
     def status(self):
-        out = {lang: {"state": "ready" if s.ready else s.failed or "starting"} for lang, s in self.servers.items()}
-        out.update({lang: {"state": "missing", **info} for lang, info in self.missing.items()})
+        with self.lock:
+            out = {lang: {"state": "ready" if s.ready else s.failed or "starting"} for lang, s in self.servers.items()}
+            out.update({lang: {"state": why} for lang, (_, why) in self.crashed.items()})
+            out.update({lang: {"state": "missing", **info} for lang, info in self.missing.items()})
         return out
 
     def query(self, query):
@@ -291,12 +332,14 @@ class Hub:
                 answers[lang] = list(rows_of(server.symbols(query), self.root))
             except (OSError, TimeoutError):
                 answers[lang] = []
-        threads = [threading.Thread(target=ask, args=(l, s)) for l, s in self.servers.items() if s.ready]
+        with self.lock:
+            servers = list(self.servers.items())
+        threads = [threading.Thread(target=ask, args=(l, s)) for l, s in servers if s.ready]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        for lang in self.servers:  # in the order of how much of the project each language is
+        for lang, _ in servers:  # in the order of how much of the project each language is
             rows.extend(answers.get(lang, []))
         return rows[:MAX_ROWS]
 
@@ -309,20 +352,20 @@ class Hub:
         return {"status": self.status()}
 
     def shutdown(self):
-        for server in self.servers.values():
+        with self.lock:
+            servers, self.servers = list(self.servers.values()), {}
+        for server in servers:
             server.stop()
 
 
 def serve(root):
     path = socket_path(root)
-    probe = socket.socket(socket.AF_UNIX)
+    lock = open(path + ".lock", "w")  # held while this hub lives: one hub per project, however many start at once
     try:
-        probe.connect(path)
-        return 0  # a hub is already running for this project
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        Path(path).unlink(missing_ok=True)
-    finally:
-        probe.close()
+        return 0
+    Path(path).unlink(missing_ok=True)  # a dead hub's leftover; we hold the lock, so nobody else's
     listener = socket.socket(socket.AF_UNIX)
     listener.bind(path)
     os.chmod(path, 0o600)
@@ -342,12 +385,17 @@ def serve(root):
                 conn.sendall(json.dumps(hub.handle(json.loads(data))).encode() + b"\n")
             except (OSError, ValueError):
                 pass
+        if hub.stopping:  # go at once: the next query must find no hub, and start a fresh one
+            Path(path).unlink(missing_ok=True)
+            listener.close()
     try:
         while not hub.stopping and time.time() - hub.last_used < IDLE_SECONDS:
             try:
                 conn, _ = listener.accept()
             except socket.timeout:
                 continue
+            except OSError:
+                break
             threading.Thread(target=client, args=(conn,), daemon=True).start()
     finally:
         listener.close()
@@ -358,31 +406,36 @@ def serve(root):
 
 # ---- the client ----------------------------------------------------------------------------------------
 
+def exchange(path, request, timeout):
+    with socket.socket(socket.AF_UNIX) as conn:
+        conn.settimeout(timeout)
+        conn.connect(path)
+        conn.sendall(json.dumps(request).encode() + b"\n")
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        return json.loads(data)
+
+
 def ask_hub(root, request, start=True, timeout=12):
     """The hub's answer, starting the hub first if there is none. None if it cannot be reached."""
     path = socket_path(root)
-    for attempt in range(2 if start else 1):
+    try:
+        return exchange(path, request, timeout)
+    except (OSError, ValueError):
+        if not start:
+            return None
+    subprocess.Popen([os.path.abspath(sys.argv[0]), "serve", root], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(state_dir() / "lsp.log", "ab"))
+    deadline = time.time() + 5
+    while time.time() < deadline:  # it is up when it accepts, not when its socket file exists (a dead hub leaves one)
         try:
-            with socket.socket(socket.AF_UNIX) as conn:
-                conn.settimeout(timeout)
-                conn.connect(path)
-                conn.sendall(json.dumps(request).encode() + b"\n")
-                data = b""
-                while not data.endswith(b"\n"):
-                    chunk = conn.recv(65536)
-                    if not chunk:
-                        break
-                    data += chunk
-                return json.loads(data)
+            return exchange(path, request, timeout)
         except (OSError, ValueError):
-            if attempt or not start:
-                return None
-            subprocess.Popen([os.path.abspath(sys.argv[0]), "serve", root], start_new_session=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=open(state_dir() / "lsp.log", "ab"))
-            deadline = time.time() + 5
-            while time.time() < deadline and not Path(path).exists():
-                time.sleep(0.05)
+            time.sleep(0.05)
     return None
 
 

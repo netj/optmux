@@ -373,9 +373,14 @@ def list_lsp(query):
     if not query.strip():
         return
     exe = Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")
+    proc = subprocess.Popen([sys.executable, str(exe), "query", query], stdout=subprocess.PIPE, text=True,
+                            stderr=subprocess.DEVNULL)
+    # fzf kills us on the next keystroke: take the query with us, or stale ones pile up in front of the servers
+    signal.signal(signal.SIGTERM, lambda *_: (proc.kill(), sys.exit(1)))
     try:
-        out = subprocess.run([sys.executable, str(exe), "query", query], capture_output=True, text=True, timeout=20).stdout
-    except (OSError, subprocess.TimeoutExpired):
+        out, _ = proc.communicate(timeout=8)
+    except subprocess.TimeoutExpired:
+        proc.kill()
         return
     yield from (line for line in out.splitlines() if line.count("\t") >= 2)
 
@@ -463,7 +468,17 @@ def cursor_position(entries, query, entry, filtered=True):
     return entries.index(entry) + 1 if entry in entries else None
 
 
+def enter_project_root():
+    """Paths of every source (git ls-files, grep, tags, language servers) are relative to the project root; the
+    editor is started there too. (Tags and language servers cannot be asked for paths relative to a subdirectory.)"""
+    root = repo_root()
+    if root:
+        os.chdir(root)
+    return root
+
+
 def pick(pane):
+    enter_project_root()
     mode = tmux_option(MODE_OPTION)
     mode = mode if mode in MODES else MODES[0]
     me = os.path.abspath(sys.argv[0])

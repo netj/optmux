@@ -3,8 +3,10 @@
 import importlib.util
 import json
 import os
+import socket
 import subprocess
 import sys
+import threading
 import time
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -201,3 +203,144 @@ def test_a_missing_configuration_is_explained_not_silent(project):
     (Path(os.environ["OPTMUX_DIR"]) / "find.json").unlink()
     rows = query(project, "hello")
     assert len(rows) == 1 and rows[0][0] == "" and "restart optmux" in rows[0][2]
+
+
+# ---- what an independent review found ---------------------------------------------------------------------
+
+def write_config(servers_by_lang):
+    (Path(os.environ["OPTMUX_DIR"]) / "find.json").write_text(json.dumps({"lsp": servers_by_lang}))
+
+
+@pytest.fixture
+def hubs():
+    made = []
+    yield made
+    for hub in made:
+        hub.shutdown()
+
+
+def test_concurrent_queries_start_one_server_per_language(project, monkeypatch, tmp_path, hubs):
+    log = tmp_path / "init.log"
+    monkeypatch.setenv("FAKE_LSP_LOG", str(log))
+    monkeypatch.setattr(lsp, "RESCAN_MISSING", 0)
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    write_config({"python": {"extensions": ["py"], "servers": [{"command": "late-lsp-xyz", "install": "x"}]}})
+    monkeypatch.setenv("PATH", f"{shim_dir}:{os.environ['PATH']}")
+    hub = lsp.Hub(str(project.resolve()))
+    hubs.append(hub)
+    assert "python" in hub.missing
+    shim = shim_dir / "late-lsp-xyz"
+    shim.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE_SERVER}\n")
+    shim.chmod(0o755)
+    threads = [threading.Thread(target=hub.rescan) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    time.sleep(1)
+    assert log.read_text().count("initialize\n") == 1 and list(hub.servers) == ["python"]
+
+
+def test_a_language_that_left_the_project_does_not_break_the_rescan(project, monkeypatch, hubs):
+    monkeypatch.setattr(lsp, "RESCAN_MISSING", 0)
+    hub = lsp.Hub(str(project.resolve()))
+    hubs.append(hub)
+    hub.missing["ruby"] = {"install": "gem install x", "why": "no server installed"}  # not in lang_files
+    hub.config["ruby"] = {"extensions": ["rb"], "servers": [{"command": "ruby-lsp"}]}
+    hub.scanned_files = 0  # a file rescan: the stale entry is pruned ...
+    hub.rescan()
+    assert "ruby" not in hub.missing
+    hub.missing["ruby"] = {"install": "", "why": ""}
+    hub.scanned_missing = 0
+    hub.rescan()  # ... and a stale one met by the missing-server pass is no KeyError either
+    assert hub.query("hello") is not None
+
+
+def test_a_dead_server_is_started_again_after_a_while(project, monkeypatch, tmp_path, hubs):
+    attempts = tmp_path / "attempts"
+    write_config({"python": {"extensions": ["py"], "servers": [{"command": f"sh -c 'echo x >> {attempts}; exit 3'"}]}})
+    monkeypatch.setattr(lsp, "RESTART_AFTER", 0.3)
+    hub = lsp.Hub(str(project.resolve()))
+    hubs.append(hub)
+    count = lambda: len(attempts.read_text().split()) if attempts.exists() else 0
+    deadline = time.time() + 10
+    while count() < 2 and time.time() < deadline:
+        time.sleep(0.2)
+        hub.rescan()
+    assert count() >= 2  # it died, and was tried again
+
+
+def test_servers_run_with_the_path_they_were_found_on(project, monkeypatch, tmp_path, hubs):
+    seen = tmp_path / "seen-path"
+    write_config({"python": {"extensions": ["py"], "servers": [
+        {"command": f"sh -c 'echo \"$PATH\" > {seen}; exec {sys.executable} {FAKE_SERVER}'"}]}})
+    monkeypatch.setattr(lsp, "search_path", lambda: "/marker/bin:" + os.environ["PATH"])
+    hubs.append(lsp.Hub(str(project.resolve())))
+    for _ in range(50):
+        if seen.exists() and seen.read_text().strip():
+            break
+        time.sleep(0.1)
+    assert seen.read_text().startswith("/marker/bin:")
+
+
+def test_a_tracked_file_that_is_gone_does_not_fail_the_server(project, monkeypatch, tmp_path, hubs):
+    log = tmp_path / "methods.log"
+    monkeypatch.setenv("FAKE_LSP_LOG", str(log))
+    (project / "0gone.py").write_text("x")
+    subprocess.run(["git", "add", "0gone.py"], cwd=project, check=True)
+    (project / "0gone.py").unlink()  # tracked, but not in the working tree
+    write_config({"python": {"extensions": ["py"], "open_first_file": True,
+                             "servers": [{"command": f"{sys.executable} {FAKE_SERVER}"}]}})
+    hub = lsp.Hub(str(project.resolve()))
+    hubs.append(hub)
+    for _ in range(50):
+        if hub.status().get("python", {}).get("state") == "ready":
+            break
+        time.sleep(0.1)
+    assert hub.status()["python"]["state"] == "ready"
+    time.sleep(0.3)
+    assert "textDocument/didOpen python" in log.read_text()  # the next file, with its own languageId
+
+
+def test_language_ids_follow_the_file_not_the_language_name():
+    assert lsp.LANGUAGE_IDS["hpp"] == "cpp" and lsp.LANGUAGE_IDS["c"] == "c" and lsp.LANGUAGE_IDS["tsx"] == "typescriptreact"
+
+
+def test_two_hubs_starting_at_once_leave_one(project):
+    root = os.path.realpath(project)
+    first = subprocess.Popen([sys.executable, str(SCRIPT), "serve", root], env=os.environ)
+    path = lsp.socket_path(root)
+    for _ in range(100):
+        try:
+            lsp.exchange(path, {"op": "status"}, 2)
+            break
+        except OSError:
+            time.sleep(0.1)
+    second = subprocess.Popen([sys.executable, str(SCRIPT), "serve", root], env=os.environ)
+    assert second.wait(10) == 0  # found the lock taken: no second hub, and the first one's socket is intact
+    assert "status" in lsp.exchange(path, {"op": "status"}, 2)
+    subprocess.run([sys.executable, str(SCRIPT), "stop"], cwd=project, env=os.environ, timeout=20)
+    assert first.wait(10) == 0
+
+
+def test_a_dead_hubs_leftover_socket_is_no_obstacle(project):
+    path = lsp.socket_path(os.path.realpath(project))
+    leftover = socket.socket(socket.AF_UNIX)
+    leftover.bind(path)
+    leftover.close()  # the file stays, nobody listens
+    rows = wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")
+    assert rows[0][0] == "a.py"
+
+
+def test_stop_takes_the_hub_down_at_once(project):
+    query(project, "hello")
+    path = lsp.socket_path(os.path.realpath(project))
+    assert os.path.exists(path)
+    subprocess.run([sys.executable, str(SCRIPT), "stop"], cwd=project, env=os.environ, timeout=20)
+    for _ in range(20):
+        if not os.path.exists(path):
+            break
+        time.sleep(0.05)
+    assert not os.path.exists(path)  # not 5 seconds later, when the next accept would have noticed
+    assert wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")[0][0] == "a.py"  # and a fresh one starts

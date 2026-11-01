@@ -317,3 +317,14 @@ def test_files_to_index_are_the_tracked_ones_without_optmuxs_own_state(repo, mon
     monkeypatch.setenv("OPTMUX_DIR", str(repo / ".optmux.d"))
     monkeypatch.chdir(repo)
     assert fd.project_files(str(repo)) == ["app.py", "sub/notes.md"]
+
+
+def test_the_picker_works_from_the_project_root(repo, monkeypatch, tmp_path_factory):
+    import os
+    (repo / "sub").mkdir(exist_ok=True)
+    monkeypatch.chdir(repo / "sub")
+    assert fd.enter_project_root()
+    assert os.path.samefile(os.getcwd(), repo)
+    monkeypatch.chdir(tmp_path_factory.mktemp("plain"))  # not a project: stays where it is
+    here = os.getcwd()
+    assert fd.enter_project_root() is None and os.getcwd() == here

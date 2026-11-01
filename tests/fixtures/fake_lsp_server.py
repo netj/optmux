@@ -37,7 +37,8 @@ while (msg := read()) is not None:
     method = msg.get("method")
     if log and method:
         with open(log, "a") as f:
-            f.write(method + "\n")
+            doc = (msg.get("params") or {}).get("textDocument") or {}
+            f.write(method + (f" {doc.get('languageId')}" if method == "textDocument/didOpen" else "") + "\n")
     if method == "initialize":
         time.sleep(float(os.environ.get("FAKE_LSP_SLOW", "0")))
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {"workspaceSymbolProvider": True}}})
