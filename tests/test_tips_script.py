@@ -76,9 +76,12 @@ def stub_tools(tmp_path, **versions):
     """A bin dir with fake tools; `less` prints the given version for --version."""
     bin_dir = tmp_path / "stubs"
     bin_dir.mkdir(exist_ok=True)
-    for name in ("wtcode", "lazygit", "delta", "fzf", "universal-ctags", "gh"):
+    for name in ("wtcode", "lazygit", "delta", "fzf", "gh"):
         (bin_dir / name).write_text("#!/bin/sh\n")
         (bin_dir / name).chmod(0o755)
+    ctags = bin_dir / "ctags"
+    ctags.write_text(f'#!/bin/sh\necho "{versions.get("ctags", "Universal Ctags 6.2.1")}"\n')
+    ctags.chmod(0o755)
     less = bin_dir / "less"
     less.write_text(f'#!/bin/sh\necho "less {versions.get("less", 710)} (PCRE2 regular expressions)"\n')
     less.chmod(0o755)
@@ -108,7 +111,7 @@ def test_bundled_tools_flag_missing_with_brew_hint(tmp_path):
 def test_bundled_tools_detected_when_installed(tmp_path):
     bin_dir = stub_tools(tmp_path)
     out = run_tips(tmp_path, TERM="xterm-256color", PATH=f"{bin_dir}:/usr/bin:/bin")
-    for name in ("wtcode", "lazygit", "delta", "less", "fzf", "universal-ctags", "gh"):
+    for name in ("wtcode", "lazygit", "delta", "less", "fzf", "ctags", "gh"):
         assert f"✓ {name}" in out, name
     assert "missing" not in out
 
@@ -262,3 +265,9 @@ def test_quick_start_linked_right_under_the_tagline(tmp_path):
     lines = out.splitlines()
     tagline = next(i for i, l in enumerate(lines) if l.startswith("Optimal, opinionated"))
     assert lines[tagline + 1] == link
+
+
+def test_macos_own_ctags_is_flagged(tmp_path):
+    bin_dir = stub_tools(tmp_path, ctags="/usr/bin/ctags: illegal option -- -")
+    out = run_tips(tmp_path, TERM="xterm-256color", PATH=f"{bin_dir}:/usr/bin:/bin")
+    assert "✗ ctags" in out and "brew install universal-ctags" in out

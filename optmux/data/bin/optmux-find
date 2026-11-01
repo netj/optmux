@@ -7,7 +7,7 @@ One picker with four sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
-  tags   (^t)  a ctags `tags` file; without one, universal-ctags builds it on first use and keeps it fresh
+  tags   (^t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
 afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
@@ -20,6 +20,7 @@ those files and tags up the lists (to the top with no query; in omni, up to 20 p
 Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
 """
 
+import functools
 import hashlib
 import json
 import os
@@ -123,13 +124,12 @@ def list_grep(query):
         yield f"{f}\t{n}\t{f}:{n}: {text}"
 
 
-def universal_ctags():
-    """The universal-ctags executable, if there is one (macOS's own ctags is a different, older program)."""
-    for c in ("universal-ctags", "uctags", "ctags"):
-        # probe from a scratch dir: some ctags treat --version as a file list and write ./tags
-        if shutil.which(c) and "Universal" in run(c, "--version", cwd=state_dir()).stdout:
-            return c
-    return None
+def find_ctags():
+    """The ctags to use, universal-ctags if it is around. Homebrew's dirs come first on the search path, as in
+    a git hook (a tmux popup's PATH may lack them, and /usr/bin/ctags is macOS's BSD one, which reads no file
+    list and knows only C and a few others)."""
+    path = os.pathsep.join(d for d in ("/opt/homebrew/bin", "/usr/local/bin", os.environ.get("PATH", "")) if d)
+    return next((p for c in ("universal-ctags", "uctags", "ctags") if (p := shutil.which(c, path=path))), None)
 
 
 def tags_stamp(root):
@@ -137,8 +137,8 @@ def tags_stamp(root):
     something worth re-indexing happened."""
     if not repo_root():
         return str(int(time.time() // 3600))  # no git to ask: refresh hourly
-    dirty = []
-    for line in run("git", "status", "--porcelain=v1", "-uall", cwd=root).stdout.splitlines():
+    dirty = []  # tracked files only, the ones that get indexed
+    for line in run("git", "status", "--porcelain=v1", "-uno", cwd=root).stdout.splitlines():
         path = line[3:].split(" -> ")[-1]
         try:
             dirty.append(f"{path}:{os.stat(Path(root, path)).st_mtime_ns}")
@@ -148,20 +148,36 @@ def tags_stamp(root):
     return hashlib.sha1("\n".join([head, *dirty]).encode()).hexdigest()
 
 
+def project_files(root):
+    """What to index: the files git tracks (like a ctags hook would, `git ls-files`), else all files; minus
+    optmux's own state, in case the project does not ignore it."""
+    if repo_root():
+        files = run("git", "ls-files", cwd=root).stdout.splitlines()
+    else:
+        files = [str(p.relative_to(root)) for p in Path(root).rglob("*") if p.is_file() and ".git" not in p.parts]
+    mine = os.path.relpath(state_dir(), root)
+    return [f for f in files if f and not f.startswith(mine + os.sep) and os.path.isfile(Path(root, f))]
+
+
 def build_tags(root, out):
-    """Index the project (the files git knows, else everything) into `out`, replacing it only once complete."""
-    ctags = universal_ctags()
+    """Index the project into `out` (replacing it only once complete): a file list on stdin, paths relative to the
+    project root (not to `out`). Universal and exuberant ctags both read a list; line numbers are asked for first
+    and dropped if refused (we then find the line from the pattern)."""
+    ctags = find_ctags()
     if not ctags:
         return False
-    files = run("git", "ls-files", "-co", "--exclude-standard", cwd=root).stdout if repo_root() else None
+    stdin = "\n".join(project_files(root)) + "\n"
     tmp = out.with_suffix(".tmp")
-    done = subprocess.run([ctags, "--fields=+nK", "-f", str(tmp), *(["-L", "-"] if files is not None else ["-R"])],
-                          input=files, text=True, cwd=root, stderr=subprocess.DEVNULL)
-    if done.returncode != 0 or not tmp.is_file():
-        return False
-    tmp.replace(out)
-    out.with_suffix(".stamp").write_text(tags_stamp(root))
-    return True
+    for flags in (["--fields=+n", "--tag-relative=no"], ["--tag-relative=no"], []):
+        tmp.unlink(missing_ok=True)
+        done = subprocess.run([ctags, *flags, "-L", "-", "-f", str(tmp)], input=stdin, text=True, cwd=root,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if done.returncode == 0 and tmp.is_file():
+            tmp.replace(out)
+            out.with_suffix(".stamp").write_text(tags_stamp(root))
+            return True
+    tmp.unlink(missing_ok=True)
+    return False
 
 
 def refresh_tags(root):
@@ -172,13 +188,13 @@ def refresh_tags(root):
 
 def tags_file():
     """Your `tags` file at the project root, if there is one (yours to keep fresh). Otherwise our own, built by
-    universal-ctags the first time and refreshed in the background when the project changed since."""
+    ctags the first time and refreshed in the background when the project changed since."""
     root = repo_root() or os.getcwd()
     existing = Path(root, "tags")
     if existing.is_file():
         return existing
     out = state_dir() / f"optmux-{hashlib.sha1(root.encode()).hexdigest()[:10]}.tags"
-    if not universal_ctags():
+    if not find_ctags():
         return out if out.is_file() else None
     if not out.is_file():
         print("optmux-find: indexing tags...", file=sys.stderr, flush=True)
@@ -194,17 +210,22 @@ def tags_file():
     return out
 
 
+@functools.lru_cache(maxsize=256)
+def file_lines(root, path):
+    try:
+        return tuple(Path(root, path).read_text(errors="replace").splitlines())
+    except OSError:
+        return ()
+
+
 def tag_line(root, path, excmd):
-    """Line number of a tag whose ex command is a /pattern/ rather than a number."""
+    """Line number of a tag whose ex command is a /pattern/ rather than a number (older ctags give no line)."""
     if excmd.isdigit():
         return excmd
-    pattern = re.sub(r"^/\^?|\$?/$", "", excmd).replace("\\/", "/").replace("\\\\", "\\")
-    try:
-        for n, line in enumerate(Path(root, path).read_text(errors="replace").splitlines(), 1):
-            if line.rstrip("\n") == pattern or (pattern and pattern in line):
-                return str(n)
-    except OSError:
-        pass
+    pattern = re.sub(r"^[/?]\^?|\$?[/?]$", "", excmd).replace("\\/", "/").replace("\\\\", "\\")
+    for n, line in enumerate(file_lines(str(root), path), 1):
+        if line == pattern or (pattern and pattern in line):
+            return str(n)
     return "1"
 
 
@@ -212,7 +233,7 @@ def list_tags(_query, warn=True):
     tags = tags_file()
     if not tags:
         if warn:
-            print("no tags file; install universal-ctags (brew install universal-ctags) or run ctags -R", file=sys.stderr)
+            print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
         return
     root = tags.parent if tags.name == "tags" else (repo_root() or os.getcwd())
     for raw in tags.read_text(errors="replace").splitlines():
