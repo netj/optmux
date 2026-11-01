@@ -306,13 +306,12 @@ def load_recent():
 
 
 def record_opened(mode, entry):
-    """Remember an opened entry: its file, and its tag too if it was one."""
+    """Remember an opened entry: its file, and its tag or symbol too if it was one."""
     f, _, display = (entry.split("\t", 2) + ["", ""])[:3]
+    kind, rest = split_icon(display)
     keys = [f]
-    if mode == "tags":
-        keys.insert(0, tag_key(display.split("  ", 1)[0], f))
-    elif mode == "omni" and display.startswith("tag "):
-        keys.insert(0, tag_key(display[5:].split("  ", 1)[0], f))
+    if mode == "tags" or kind in ("tag", "sym"):
+        keys.insert(0, tag_key((rest if kind else display).split("  ", 1)[0], f))
     (state_dir() / "recent.json").write_text(json.dumps((keys + [k for k in load_recent() if k not in keys])[:RECENT_KEEP]))
 
 
@@ -330,6 +329,38 @@ def boost(keys, recent):
     return sorted(range(len(keys)), key=lambda p: (p - max(0, RECENT_BOOST - where.get(keys[p], RECENT_BOOST)), p))
 
 
+ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
+    "emoji": {"file": "📄", "tag": "🔖", "sym": "🧩", "install": "📥", "wait": "⏳", "note": "💬"},
+    "nerd": {"file": "\uf016", "tag": "\uf02b", "sym": "\uf1b2", "install": "\uf019", "wait": "\uf252", "note": "\uf05a"},
+    "text": {"file": "file", "tag": "tag ", "sym": "lsp ", "install": "get ", "wait": "wait", "note": "note"},
+}
+DEFAULT_ICONS = "emoji"
+
+
+@functools.lru_cache(maxsize=1)
+def icon_style():
+    """find.icons from the optmux config ($OPTMUX_DIR/find.json), or OPTMUX_FIND_ICONS."""
+    try:
+        configured = json.loads(Path(os.environ.get("OPTMUX_DIR", ""), "find.json").read_text()).get("icons")
+    except (OSError, ValueError, AttributeError):
+        configured = None
+    style = os.environ.get("OPTMUX_FIND_ICONS") or configured
+    return style if style in ICON_STYLES else DEFAULT_ICONS
+
+
+def with_icon(kind, display):
+    return f"{ICON_STYLES[icon_style()][kind]} {display}"
+
+
+def split_icon(display):
+    """(kind, rest) of a row displayed by with_icon, whatever style it was drawn in; kind None if it has no icon."""
+    for icons in ICON_STYLES.values():
+        for kind, icon in icons.items():
+            if display.startswith(icon + " "):
+                return kind, display[len(icon) + 1:]
+    return None, display
+
+
 OMNI_LIMIT = 100  # rows; the best matches of tags and files together
 
 
@@ -344,15 +375,38 @@ def rank(matchables, query):
     return [int(line.split("\t", 1)[0]) for line in out.splitlines()]
 
 
+def lsp_query(args, timeout):
+    """Run `optmux-lsp query ...`; its rows, [] if it takes too long."""
+    exe = Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")
+    proc = subprocess.Popen([sys.executable, str(exe), "query", *args], stdout=subprocess.PIPE, text=True,
+                            stderr=subprocess.DEVNULL)
+    # fzf kills us on the next keystroke: take the query with us, or stale ones pile up in front of the servers
+    signal.signal(signal.SIGTERM, lambda *_: (proc.kill(), sys.exit(1)))
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return []
+    return [line for line in out.splitlines() if line.count("\t") >= 2]
+
+
 def list_omni(query):
-    """Tags and file paths in one list, the stronger matches higher whichever source they come from. A tag is
-    matched on its name (its path is the file's row), a file on its path; the label says which is which.
-    What you opened lately is pulled up (see boost); with no query, it comes first."""
-    rows = []  # (what is matched, label, recency key, entry)
-    for e in list_tags("", warn=False):
+    """Tags, language-server symbols and file paths in one list, the stronger matches higher whichever source they
+    come from. A tag or symbol is matched on its name (its path is the file's row), a file on its path; the icon
+    says which is which. A symbol the servers know replaces the tag for the same line. What you opened lately is
+    pulled up (see boost); with no query, it comes first."""
+    symbols = lsp_query(["--fast", query], 3) if query.strip() else []  # only servers that are up and quick
+    defined = {tuple(r.split("\t", 2)[:2]) for r in symbols}
+    rows = []  # (what is matched, kind, recency key, entry)
+    for e in symbols:
         f, n, display = e.split("\t", 2)
         name = display.split("  ", 1)[0]
-        rows.append((name, "tag", tag_key(name, f), e))
+        rows.append((name, "sym", tag_key(name, f), e))
+    for e in list_tags("", warn=False):
+        f, n, display = e.split("\t", 2)
+        if (f, n) not in defined:
+            name = display.split("  ", 1)[0]
+            rows.append((name, "tag", tag_key(name, f), e))
     for e in list_files(""):
         rows.append((e.split("\t", 1)[0], "file", e.split("\t", 1)[0], e))
     recent = load_recent()
@@ -365,24 +419,21 @@ def list_omni(query):
     for i in order[:OMNI_LIMIT]:
         _, kind, _, e = rows[i]
         f, n, display = e.split("\t", 2)
-        yield f"{f}\t{n}\t{kind:<4} {display}"
+        yield f"{f}\t{n}\t{with_icon(kind, display)}"
+
+
+MARKER_KINDS = {"!install": "install", "!wait": "wait", "!note": "note"}
 
 
 def list_lsp(query):
-    """Symbols from the project's language servers (see optmux-lsp), as the user types."""
+    """Symbols from the project's language servers (see optmux-lsp), as the user types. When there are none, rows
+    that say why, each with an icon of its own: one to install a missing server (Enter), others to wait or read."""
     if not query.strip():
         return
-    exe = Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")
-    proc = subprocess.Popen([sys.executable, str(exe), "query", query], stdout=subprocess.PIPE, text=True,
-                            stderr=subprocess.DEVNULL)
-    # fzf kills us on the next keystroke: take the query with us, or stale ones pile up in front of the servers
-    signal.signal(signal.SIGTERM, lambda *_: (proc.kill(), sys.exit(1)))
-    try:
-        out, _ = proc.communicate(timeout=8)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        return
-    yield from (line for line in out.splitlines() if line.count("\t") >= 2)
+    for row in lsp_query([query], 8):
+        f, n, display = row.split("\t", 2)
+        kind = MARKER_KINDS.get(f.split(":", 1)[0])
+        yield f"{f}\t{n}\t{with_icon(kind or 'sym', display)}"
 
 
 LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags, "lsp": list_lsp}
@@ -405,13 +456,25 @@ def after_zoom(command):
             f"exec {command}")
 
 
-def open_in_split(pane, path, line):
-    """Same placement as the other C-M-* splits: above the pane, or across the window edge when out of room."""
-    cwd = os.getcwd()
+def split_pane(pane, command):
+    """Run `command` in a new zoomed pane above `pane`, as the other C-M-* splits do: above, or across the window
+    edge when out of room."""
     fits = run(os.path.join(os.environ["OPTMUX_DIR"], "bin", "optmux-split-fits"), pane).returncode == 0
-    new = tmux("split-window", "-P", "-F", "#{pane_id}", *([] if fits else ["-f"]), "-v", "-b", "-c", cwd,
-               "-t", pane, after_zoom(editor_command(path, line)), capture_output=True, text=True).stdout.strip()
+    new = tmux("split-window", "-P", "-F", "#{pane_id}", *([] if fits else ["-f"]), "-v", "-b", "-c", os.getcwd(),
+               "-t", pane, command, capture_output=True, text=True).stdout.strip()
     tmux("resize-pane", "-Z", "-t", new)
+
+
+def open_in_split(pane, path, line):
+    split_pane(pane, after_zoom(editor_command(path, line)))
+
+
+def install_in_split(pane, lang):
+    """Install a language server in a pane of its own, so its output (and any password prompt) can be seen."""
+    exe = Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")
+    split_pane(pane, f"OPTMUX_DIR={shlex.quote(os.environ.get('OPTMUX_DIR', ''))} "
+                     f"{shlex.quote(sys.executable)} {shlex.quote(str(exe))} install --yes {shlex.quote(lang)}; "
+                     "printf '\\nPress Enter to close '; read _")
 
 
 def dedupe_history(path):
@@ -504,7 +567,7 @@ def pick(pane):
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
-        if mode == "lsp":  # start the hub (and so the servers) now; they boot while the user types
+        if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             subprocess.Popen([sys.executable, str(Path(os.path.abspath(sys.argv[0])).with_name("optmux-lsp")), "status"],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         candidates = list(LISTERS[mode](query))
@@ -540,9 +603,17 @@ def pick(pane):
             mode = next(m for m, k in MODE_KEYS.items() if k == key)
         else:
             set_tmux_option(MODE_OPTION, mode)
-            if key not in ("ctrl-c", "esc") and entry and target(entry)[0]:  # hint rows have no file
-                record_opened(mode, entry)
-                open_in_split(pane, *target(entry))
+            f, n = target(entry) if entry else ("", "")
+            if key in ("ctrl-c", "esc") or not f:
+                return 0
+            if f.startswith("!install:"):  # a row that offers to install a language server
+                install_in_split(pane, f.split(":", 1)[1])
+                return 0
+            if f.startswith("!"):  # waiting or a note: nothing to open, stay
+                carried = query
+                continue
+            record_opened(mode, entry)
+            open_in_split(pane, f, n)
             return 0
         set_tmux_option(MODE_OPTION, mode)
 

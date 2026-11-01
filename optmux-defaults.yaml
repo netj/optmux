@@ -66,14 +66,19 @@ optmux:
   # to try in order (the first one installed is used). A language is used when it has a few tracked files.
   # Override in your optmux.yaml: `servers` (replaces the list), `extensions`, `enabled: false`, or a one-server
   # shorthand `command:` (+ `install:`). `open_first_file: true` opens one file after start, for servers that
-  # find their project from it. `install` is only shown, or run by `optmux-lsp install` after asking.
+  # find their project from it. `install` (one command or a list of alternatives, the first whose installer is present is used) is offered in the list: Enter runs it.
   find:
+    # How a row says what it is: emoji (works everywhere), nerd (Nerd Font glyphs), or text.
+    icons: emoji
     lsp:
       python:
         extensions: [py, pyi]
         servers:
         - command: basedpyright-langserver --stdio
-          install: brew install basedpyright
+          install:
+          - brew install basedpyright
+          - uv tool install basedpyright
+          - pipx install basedpyright
         - command: pyright-langserver --stdio
           install: npm install -g pyright
         - command: pylsp
@@ -83,19 +88,25 @@ optmux:
         open_first_file: true
         servers:
         - command: typescript-language-server --stdio
-          install: npm install -g typescript-language-server typescript
+          install:
+          - brew install typescript-language-server
+          - npm install -g typescript-language-server typescript
         - command: vtsls --stdio
           install: npm install -g @vtsls/language-server
       go:
         extensions: [go]
         servers:
         - command: gopls
-          install: brew install gopls
+          install:
+          - brew install gopls
+          - go install golang.org/x/tools/gopls@latest
       rust:
         extensions: [rs]
         servers:
         - command: rust-analyzer
-          install: rustup component add rust-analyzer
+          install:
+          - brew install rust-analyzer
+          - rustup component add rust-analyzer
       c:
         extensions: [c, h, cc, cpp, cxx, hpp, hh, m, mm]
         open_first_file: true  # clangd only finds compile_commands.json from a file it has been told about
@@ -111,7 +122,9 @@ optmux:
         extensions: [sh, bash]
         servers:
         - command: bash-language-server start
-          install: npm install -g bash-language-server
+          install:
+          - brew install bash-language-server
+          - npm install -g bash-language-server
 
   shortcuts:
     # Workflow

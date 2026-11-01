@@ -136,15 +136,14 @@ def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
         'Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
     (repo / "hello.txt").write_text("x")
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
-    top = [r.split("\t")[2].split()[:2] for r in fd.list_omni("hello")]
+    top = [(fd.split_icon(r.split("\t")[2])[0], fd.split_icon(r.split("\t")[2])[1].split()[0]) for r in fd.list_omni("hello")]
     # equal matches: the shorter first (the tag name, 5 letters, over hello.txt), the weak fuzzy tag hit last
-    assert top == [["tag", "Hello"], ["file", "hello.txt"], ["tag", "hel_per_function_with_a_long_name"]]
-    assert not any(r.split("\t")[2].startswith("grep") for r in fd.list_omni("hello"))  # grep is its own source
+    assert top == [("tag", "Hello"), ("file", "hello.txt"), ("tag", "hel_per_function_with_a_long_name")]
 
 
 @skip_no_fzf
 def test_omni_without_tags_still_lists_files(repo):
-    assert [r.split("\t")[2] for r in fd.list_omni("notes")] == ["file sub/notes.md"]
+    assert [fd.split_icon(r.split("\t")[2]) for r in fd.list_omni("notes")] == [("file", "sub/notes.md")]
 
 
 def test_boost_pulls_recent_ahead_but_only_so_far():
@@ -328,3 +327,75 @@ def test_the_picker_works_from_the_project_root(repo, monkeypatch, tmp_path_fact
     monkeypatch.chdir(tmp_path_factory.mktemp("plain"))  # not a project: stays where it is
     here = os.getcwd()
     assert fd.enter_project_root() is None and os.getcwd() == here
+
+
+# ---- icons, language-server symbols in omni, install rows ---------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def fresh_icon_style(monkeypatch):
+    monkeypatch.delenv("OPTMUX_FIND_ICONS", raising=False)
+    fd.icon_style.cache_clear()
+    yield
+    fd.icon_style.cache_clear()
+
+
+def test_icons_by_style_and_back(monkeypatch):
+    assert fd.with_icon("tag", "x  f  a.py:1").startswith("🔖 ")  # emoji is the default
+    for style in fd.ICON_STYLES:
+        monkeypatch.setenv("OPTMUX_FIND_ICONS", style)
+        fd.icon_style.cache_clear()
+        for kind in fd.ICON_STYLES[style]:
+            assert fd.split_icon(fd.with_icon(kind, "rest of  the row")) == (kind, "rest of  the row"), (style, kind)
+    assert fd.split_icon("plain row") == (None, "plain row")
+    monkeypatch.setenv("OPTMUX_FIND_ICONS", "bogus")
+    fd.icon_style.cache_clear()
+    assert fd.icon_style() == "emoji"  # an unknown style is the default
+
+
+def test_icon_style_comes_from_the_find_config(monkeypatch, tmp_path):
+    (tmp_path / "find.json").write_text('{"icons": "nerd"}')
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    assert fd.icon_style() == "nerd" and fd.with_icon("file", "a.py") == "\uf016 a.py"
+
+
+@skip_no_fzf
+def test_omni_blends_language_server_symbols_replacing_the_tag_for_the_same_line(repo, monkeypatch):
+    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
+    symbols = ["app.py\t3\tHello  function  mod  app.py:3", "sub/notes.md\t1\tHelloNotes  class  sub/notes.md:1"]
+    asked = []
+    monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: asked.append(args) or symbols)
+    rows = [(fd.split_icon(r.split("\t")[2]), r.split("\t")[:2]) for r in fd.list_omni("hello")]
+    kinds = [k for (k, _), _ in rows]
+    assert kinds.count("tag") == 0 and kinds.count("sym") == 2  # the symbol took the tag's place (same file and line)
+    assert rows[0][0][0] == "sym" and rows[0][1] == ["app.py", "3"]  # best match, and the server's richer row
+    assert asked == [["--fast", "hello"]]
+
+
+@skip_no_fzf
+def test_omni_asks_no_servers_without_a_query(repo, monkeypatch):
+    monkeypatch.setattr(fd, "lsp_query", lambda *a: pytest.fail("no query, nothing to ask"))
+    assert list(fd.list_omni(""))
+
+
+def test_lsp_source_rows_get_icons_and_hint_rows_their_own(monkeypatch):
+    rows = ["a.py\t3\trun  function  a.py:3", "!install:go\t0\tgo: no language server installed.  Enter runs: brew install gopls",
+            "!wait\t0\tpython: language server starting, try again in a moment", "!note\t0\tpython: language server exited"]
+    monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: rows)
+    got = [(r.split("\t")[0], fd.split_icon(r.split("\t")[2])[0]) for r in fd.list_lsp("x")]
+    assert got == [("a.py", "sym"), ("!install:go", "install"), ("!wait", "wait"), ("!note", "note")]
+    assert list(fd.list_lsp("  ")) == []
+
+
+def test_opening_a_symbol_remembers_it_like_a_tag(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    fd.record_opened("omni", "a.py\t3\t" + fd.with_icon("sym", "run  function  a.py:3"))
+    fd.record_opened("lsp", "b.py\t9\t" + fd.with_icon("sym", "walk  function  b.py:9"))
+    assert fd.load_recent()[:4] == ["walk\tb.py", "b.py", "run\ta.py", "a.py"]
+
+
+def test_enter_on_an_install_row_runs_the_installer_in_a_pane(monkeypatch):
+    ran = []
+    monkeypatch.setattr(fd, "split_pane", lambda pane, command: ran.append((pane, command)))
+    monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
+    fd.install_in_split("%3", "go")
+    assert "OPTMUX_DIR=/p/.optmux.d " in ran[0][1] and ran[0][0] == "%3" and "optmux-lsp" in ran[0][1] and "install --yes go" in ran[0][1] and "read _" in ran[0][1]

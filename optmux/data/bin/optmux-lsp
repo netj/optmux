@@ -2,9 +2,11 @@
 """optmux-lsp — language servers as a symbol source for optmux Find (`^l`).
 
 Usage:
-  optmux-lsp query QUERY          symbols matching QUERY, one per line, in optmux Find's `FILE LINE DISPLAY` format
+  optmux-lsp query [--fast] QUERY symbols matching QUERY, one per line, in optmux Find's `FILE LINE DISPLAY` format.
+                                  With nothing to show, rows with a FILE of `!install:LANG` (Enter installs it), `!wait`
+                                  or `!note` say why. --fast: only what the running servers answer within a second
   optmux-lsp status               which languages were found, and which servers run, wait or are missing
-  optmux-lsp install [LANG...]    run the install command of each language that has files but no server
+  optmux-lsp install [--yes] [LANG...]  run the install command of each language that has files but no server (asks first)
   optmux-lsp stop                 shut the project's servers down
   optmux-lsp serve ROOT           the hub itself (started by `query` when needed)
 (The project is the git repository of the current directory.)
@@ -93,6 +95,24 @@ def installed_server(cfg):
         if exe:
             return [exe, *argv[1:]], server
     return None
+
+
+def install_options(server):
+    """A server's install commands: `install` is one command, or a list of alternatives (brew, uv, npm, ...)."""
+    install = server.get("install") or []
+    return [install] if isinstance(install, str) else [c for c in install if isinstance(c, str)]
+
+
+def best_install(cfg):
+    """The install command to offer for a language: the first one, of its servers in order of preference, whose
+    installer (brew, uv, npm, ...) is on the PATH; else simply the first one there is."""
+    first = ""
+    for server in servers_of(cfg):
+        for cmd in install_options(server):
+            first = first or cmd
+            if shlex.split(cmd) and shutil.which(shlex.split(cmd)[0], path=search_path()):
+                return cmd
+    return first
 
 
 def tracked_files(root):
@@ -226,8 +246,8 @@ class LanguageServer:
     def alive(self):
         return self.failed is None and self.proc.poll() is None
 
-    def symbols(self, query):
-        return self.request("workspace/symbol", {"query": query}, QUERY_TIMEOUT) or []
+    def symbols(self, query, timeout=QUERY_TIMEOUT):
+        return self.request("workspace/symbol", {"query": query}, timeout) or []
 
     def stop(self):
         try:
@@ -278,14 +298,14 @@ class Hub:
         cfg = self.config[lang]
         found = installed_server(cfg)
         if not found:
-            self.missing[lang] = {"install": (servers_of(cfg) or [{}])[0].get("install", ""), "why": "no server installed"}
+            self.missing[lang] = {"install": best_install(cfg), "why": "no server installed"}
             return
         argv, server = found
         try:
             self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files.get(lang, []), self.log)
             self.missing.pop(lang, None)
         except OSError as e:
-            self.missing[lang] = {"install": server.get("install", ""), "why": str(e)}
+            self.missing[lang] = {"install": best_install(cfg), "why": str(e)}
 
     def rescan(self):
         """Which languages the project has, and servers for them: at start, then again as things change, so a
@@ -323,13 +343,13 @@ class Hub:
             out.update({lang: {"state": "missing", **info} for lang, info in self.missing.items()})
         return out
 
-    def query(self, query):
+    def query(self, query, timeout=QUERY_TIMEOUT):
         self.rescan()
         rows, answers = [], {}
 
         def ask(lang, server):
             try:
-                answers[lang] = list(rows_of(server.symbols(query), self.root))
+                answers[lang] = list(rows_of(server.symbols(query, timeout), self.root))
             except (OSError, TimeoutError):
                 answers[lang] = []
         with self.lock:
@@ -346,7 +366,8 @@ class Hub:
     def handle(self, request):
         self.last_used = time.time()
         if request.get("op") == "query":
-            return {"rows": self.query(request.get("q", "")), "status": self.status()}
+            return {"rows": self.query(request.get("q", ""), float(request.get("timeout") or QUERY_TIMEOUT)),
+                    "status": self.status()}
         if request.get("op") == "stop":
             self.stopping = True
         return {"status": self.status()}
@@ -440,14 +461,17 @@ def ask_hub(root, request, start=True, timeout=12):
 
 
 def hint_rows(status):
-    """Rows (no file: not openable) that say why there may be nothing: servers starting, or not installed."""
+    """Rows that say why there may be nothing. Their FILE is a marker, not a path: `!install:LANG` (Enter runs the
+    install command), `!wait` (servers still starting), `!note`. optmux Find shows them with an icon of their own."""
     for lang, info in status.items():
         if info["state"] == "missing":
-            yield f"\t0\t{lang}: no language server installed.  {info.get('install') or 'see find.lsp in optmux config'}"
+            how = info.get("install")
+            yield (f"!install:{lang}\t0\t{lang}: no language server installed.  Enter runs: {how}" if how
+                   else f"!note\t0\t{lang}: no language server installed (see find.lsp in your optmux config)")
         elif info["state"] == "starting":
-            yield f"\t0\t{lang}: language server starting, try again in a moment"
-        elif info["state"] not in ("ready",):
-            yield f"\t0\t{lang}: language server {info['state']}"
+            yield f"!wait\t0\t{lang}: language server starting, try again in a moment"
+        elif info["state"] != "ready":
+            yield f"!note\t0\t{lang}: language server {info['state']}"
 
 
 def project_root():
@@ -460,15 +484,21 @@ def main(argv):
     if cmd == "serve" and rest:
         return serve(os.path.realpath(rest[0]))
     if cmd == "query":
-        query = " ".join(rest)
+        fast = rest[:1] == ["--fast"]
+        query = " ".join(rest[1:] if fast else rest)
         if not query.strip():
             return 0
         if not load_config():
-            print(f"\t0\tno language server configuration ({config_path()}): restart optmux, which writes it")
+            print(f"!note\t0\tno language server configuration ({config_path()}): restart optmux, which writes it")
+            return 0
+        if fast:  # for omni: only a hub that is already up, and answers within a second; never wait, never start one
+            answer = ask_hub(project_root(), {"op": "query", "q": query, "timeout": 0.8}, start=False, timeout=2)
+            for row in (answer or {}).get("rows", []):
+                print(row)
             return 0
         answer = ask_hub(project_root(), {"op": "query", "q": query})
         if answer is None:
-            print("\t0\tlanguage server hub did not start (see lsp.log in the project's optmux find directory)")
+            print("!note\t0\tlanguage server hub did not start (see lsp.log in the project's optmux find directory)")
             return 0
         for row in answer["rows"]:
             print(row)
@@ -484,15 +514,20 @@ def main(argv):
         ask_hub(project_root(), {"op": "stop"}, start=False)
         return 0
     if cmd == "install":
+        yes = "--yes" in rest
+        langs = [a for a in rest if a != "--yes"]
         root, config = project_root(), load_config()
-        for lang in rest or list(detect_languages(tracked_files(root), config)):
+        for lang in langs or list(detect_languages(tracked_files(root), config)):
             cfg = config.get(lang)
             if not cfg or installed_server(cfg):
                 continue
-            install = (servers_of(cfg) or [{}])[0].get("install")
-            if install and input(f"{lang}: run `{install}`? [y/N] ").strip().lower() == "y":
-                subprocess.run(install, shell=True)
-        ask_hub(root, {"op": "stop"}, start=False)  # so the next query starts what is now installed
+            how = best_install(cfg)
+            if not how:
+                print(f"{lang}: no install command known (set `install:` for its servers in find.lsp)")
+            elif yes or input(f"{lang}: run `{how}`? [y/N] ").strip().lower() == "y":
+                print(f"$ {how}", flush=True)
+                status = subprocess.run(how, shell=True, env={**os.environ, "PATH": search_path()}).returncode
+                print(f"{lang}: {'installed; optmux notices within a few seconds' if status == 0 else f'failed (exit {status})'}")
         return 0
     print(__doc__)
     return 2
