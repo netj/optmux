@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -57,7 +58,10 @@ def parse_project_name(yaml_path_str):
     return name
 
 
-KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit"}
+KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit", "find"}
+KNOWN_FIND_KEYS = {"lsp"}
+KNOWN_LSP_LANGUAGE_KEYS = {"extensions", "servers", "command", "install", "enabled", "open_first_file", "language_id"}
+KNOWN_LSP_SERVER_KEYS = {"command", "install"}
 KNOWN_SHORTCUT_KEYS = {
     "tmux", "send_keys", "command", "new_window", "float_window",
     "zoom", "detached", "remain", "tip",
@@ -85,6 +89,15 @@ def _validate_optmux_section(optmux, source):
     for key, value in (optmux.get("shortcuts") or {}).items():
         if isinstance(value, dict):
             _warn_unknown_keys(value.keys(), KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
+    find = optmux.get("find")
+    if isinstance(find, dict):
+        _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
+        for lang, cfg in (find.get("lsp") or {}).items():
+            if isinstance(cfg, dict):
+                _warn_unknown_keys(cfg.keys(), KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
+                for server in cfg.get("servers") or []:
+                    if isinstance(server, dict):
+                        _warn_unknown_keys(server.keys(), KNOWN_LSP_SERVER_KEYS, f"{source}: find.lsp.{lang}.servers")
     for context, entries in (optmux.get("menu") or {}).items():
         if context not in menu_compiler.CONTEXTS:
             print(
@@ -140,6 +153,11 @@ def merge_optmux(*layers):
         lazygit_combined = _deep_merge(lazygit_combined, layer.get("lazygit") or {})
     if lazygit_combined:
         merged["lazygit"] = lazygit_combined
+    find_combined = {}
+    for layer in layers:
+        find_combined = _deep_merge(find_combined, layer.get("find") or {})
+    if find_combined:
+        merged["find"] = find_combined
     menu_combined = {}
     for layer in layers:
         for context, entries in (layer.get("menu") or {}).items():
@@ -403,6 +421,7 @@ def resolve_paths(yaml_file):
 
 
 ENV_SH = "env.sh"
+FIND_JSON = "find.json"
 # git config keys whose value is a command to run; skipped when that command isn't installed
 GIT_CONFIG_COMMAND_KEYS = {"core.pager", "interactive.difffilter"}
 
@@ -578,6 +597,8 @@ def setup_tools_env(optmux_dir, data_dir, optmux):
     env.update(generate_git_config_env(optmux.get("git_config") or {}))
     env.update(generate_lazygit_env(optmux_dir, optmux.get("lazygit") or {}))
     (optmux_dir / ENV_SH).write_text(generate_env_sh(bin_dir, env))
+    # optmux Find reads its settings (language servers, ...) from here
+    (optmux_dir / FIND_JSON).write_text(json.dumps(optmux.get("find") or {}, indent=2))
 
 
 def setup_optmux_env(resolved):
