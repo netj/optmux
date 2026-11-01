@@ -158,10 +158,25 @@ def test_spans_wrapped_by_the_program_are_joined_when_they_fill_the_line():
 
 
 def test_find_query_joins_the_picks_on_one_line_or_falls_back_to_what_was_typed():
-    assert pt.find_query(["optmux/pick.py:119", "def  pickable"], "typed") == "optmux/pick.py:119 def pickable"
+    assert pt.find_query(["optmux/pick.py", "def  pickable"], "typed") == "optmux/pick.py def pickable"
     assert pt.find_query(["  multi\n  line  "], "") == "multi line"
     assert pt.find_query([], " typed ") == "typed" and pt.find_query([], "  ") == ""
     assert len(pt.find_query(["x" * 1000], "")) == pt.MAX_QUERY
+
+
+def test_find_query_drops_the_line_and_column_after_a_path_but_not_other_colons():
+    q = pt.find_query
+    assert q(["optmux/pick.py:119"], "") == "optmux/pick.py" and q(["tests/a.py:12:5"], "") == "tests/a.py"
+    assert q(["pick.py:119", "error"], "") == "pick.py error"
+    assert q(["10:30"], "") == "10:30" and q(["key:value"], "") == "key:value"  # not paths
+    assert q(["http://example.com:8080/x"], "") == "http://example.com:8080/x"
+    assert q(["see foo/bar.py:3"], "") == "see foo/bar.py:3"  # only a pick that is just path:line
+
+
+def test_find_query_defuses_control_bytes_and_fzf_search_syntax():
+    assert pt.find_query(["a\x1b[31mred\rb"], "") == "a [31mred b"
+    assert pt.find_query([], "'exact ^prefix !neg suffix$ plain") == "exact prefix neg suffix plain"
+    assert pt.find_query(["'quoted' ^caret"], "") == "'quoted' ^caret"  # the picks are text, not a filter
 
 
 def test_lookup_keys_start_find_in_the_right_source_and_leave_cycling_to_the_opener_key():
@@ -178,4 +193,35 @@ def test_open_find_continues_as_find_in_the_panes_directory(monkeypatch, tmp_pat
     pt.open_find("%7", "grep", "needle text")
     exe, argv = ran[0]
     assert os.path.samefile(os.getcwd(), tmp_path)  # the pane's project, not wherever the popup started
-    assert argv[1].endswith("optmux-find") and argv[2:] == ["%7", "--mode", "grep", "--query", "needle text"]
+    assert exe.endswith("optmux-find") and argv[0] == exe  # run by its own shebang
+    assert argv[1:] == ["%7", "--mode=grep", "--query=needle text"]
+    pt.open_find("%7", "files", "--version")
+    assert ran[1][1][-1] == "--query=--version"  # a text that looks like an option stays a value
+
+
+def test_open_find_that_cannot_start_keeps_the_text_in_the_tmux_buffer(monkeypatch):
+    calls = []
+    def fake_tmux(*args, **kw):
+        calls.append(args)
+        if args[0] == "display-message" and "-p" in args:
+            raise pt.subprocess.CalledProcessError(1, "tmux")  # the pane is gone
+        return type("R", (), {"stdout": ""})()
+    monkeypatch.setattr(pt, "tmux", fake_tmux)
+    loaded = []
+    monkeypatch.setattr(pt, "load_buffer", lambda text, clipboard=False: loaded.append(text))
+    assert pt.open_find("%9", "grep", "needle") == 1
+    assert loaded == ["needle"] and any(c[0] == "display-message" and "buffer" in c[-1] for c in calls)
+
+
+def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
+    from importlib.machinery import SourceFileLoader
+    loader = SourceFileLoader("optmux_find_for_extract", str(Path(__file__).parent.parent / "optmux/data/bin/optmux-find"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    find = importlib.util.module_from_spec(spec)
+    loader.exec_module(find)
+    for key, source in pt.FIND_KEYS.items():
+        assert find.MODE_KEYS.get(source, find.CYCLE_KEY if source == "omni" else None) in (key, find.CYCLE_KEY) or key == "ctrl-alt-f"
+    assert pt.FIND_KEYS["ctrl-f"] == "files" and find.MODE_KEYS["files"] == "ctrl-f"
+    assert pt.FIND_KEYS["ctrl-g"] == "grep" and find.MODE_KEYS["grep"] == "ctrl-g"
+    assert pt.FIND_KEYS["ctrl-alt-f"] == "omni" and find.CYCLE_KEY == "ctrl-alt-f"
+    assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x"}  # extract's own keys

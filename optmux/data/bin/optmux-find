@@ -23,6 +23,7 @@ those files and tags up the lists (to the top with no query; in omni, up to 20 p
 Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
 """
 
+import argparse
 import functools
 import hashlib
 import json
@@ -660,15 +661,13 @@ def enter_project_root():
 
 
 def parse_args(argv):
-    """([positional], {mode, query}) of optmux-find's command line."""
-    args, options = [], {}
-    rest = iter(argv)
-    for arg in rest:
-        if arg in ("--mode", "--query"):
-            options[arg[2:]] = next(rest, "")
-        else:
-            args.append(arg)
-    return args, options
+    """([pane id], {mode, query}) of optmux-find's command line."""
+    parser = argparse.ArgumentParser(prog="optmux-find", description="optmux Find: a file, a line or a symbol, opened in your editor.")
+    parser.add_argument("pane", nargs="?", help="the tmux pane to work on (the active one by default)")
+    parser.add_argument("--mode", choices=MODES, help="start in this source")
+    parser.add_argument("--query", help="start with this query")
+    ns = parser.parse_args(argv)
+    return ([ns.pane] if ns.pane else []), {k: v for k, v in (("mode", ns.mode), ("query", ns.query)) if v is not None}
 
 
 def pick(pane, start_mode=None, start_query=None):
@@ -757,7 +756,5 @@ if __name__ == "__main__":
         sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))
         sys.exit(0)
     args, options = parse_args(sys.argv[1:])
-    if len(args) > 1:
-        sys.exit(__doc__)
     pane = args[0] if args else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
     sys.exit(pick(pane, options.get("mode"), options.get("query")))

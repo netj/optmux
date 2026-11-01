@@ -266,19 +266,33 @@ def labels(filter_name, copier):
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
 
 
+PATH_POSITION = re.compile(r"^([^\s:]*[/.][^\s:]*):\d+(?::\d+)?$")  # path:line or path:line:col, as a program prints it
+FZF_SYNTAX = re.compile(r"(^|\s)[\'^!]+|\$(?=\s|$)")  # fzf's 'exact ^prefix !negated suffix$: not part of the text
+
+
 def find_query(chosen, typed):
-    """The text to look up: the picks on one line (whitespace squeezed), else what was typed in the filter."""
-    text = " ".join(" ".join(pick.split()) for pick in chosen).strip() or typed.strip()
+    """The text to look up: the picks on one line (control bytes and extra whitespace gone, a `:line:col` after a
+    path dropped, since a path has none), else what was typed in the filter (minus fzf's search syntax)."""
+    words = [CONTROL_CHARS.sub(" ", pick).split() for pick in chosen]
+    picks = [PATH_POSITION.sub(r"\1", " ".join(w)) for w in words if w]
+    text = " ".join(picks).strip() or FZF_SYNTAX.sub(r"\1", CONTROL_CHARS.sub(" ", typed)).strip()
     return text[:MAX_QUERY]
 
 
 def open_find(pane, source, query):
-    """Continue as optmux Find in this popup, started in `source` with `query`, working on `pane`'s project."""
-    path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
-    if path and os.path.isdir(path):
-        os.chdir(path)
+    """Continue as optmux Find in this popup, started in `source` with `query`, working on `pane`'s project. Does
+    not return, unless it cannot: then the text is kept in the tmux buffer, so the lookup is not lost."""
     find = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-find")
-    os.execv(sys.executable, [sys.executable, find, pane, "--mode", source, "--query", query])
+    try:
+        path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
+        if path and os.path.isdir(path):
+            os.chdir(path)
+        argv = [find, pane, f"--mode={source}", f"--query={query}"]  # `--query=` in one piece: the text may start with a dash
+        os.execv(*((find, argv) if os.access(find, os.X_OK) else (sys.executable, [sys.executable, *argv])))
+    except (subprocess.CalledProcessError, OSError) as e:
+        load_buffer(query)
+        tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
+        return 1
 
 
 def parse_fzf_output(stdout):
@@ -329,7 +343,7 @@ def pick(pane):
             text = find_query(chosen, query)
             if not text:
                 return 0
-            open_find(pane, FIND_KEYS[key], text)  # does not return
+            return open_find(pane, FIND_KEYS[key], text)  # does not return, unless it cannot
         elif key == "ctrl-alt-x":
             mode = cycle(FILTERS, shown)
             tmux("set-option", "-g", FILTER_OPTION, mode)
