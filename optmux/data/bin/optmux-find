@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """optmux-find — optmux Find: a file, a line or a symbol, opened in your editor.
 
-Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
+Usage: optmux-find [PANE_ID] [--mode SOURCE] [--query TEXT]
+(meant to run in a tmux popup; the active pane by default; --mode and --query start in that source with that
+query, as optmux-extract does for a selection)
 
 One picker with five sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
@@ -657,12 +659,24 @@ def enter_project_root():
     return root
 
 
-def pick(pane):
+def parse_args(argv):
+    """([positional], {mode, query}) of optmux-find's command line."""
+    args, options = [], {}
+    rest = iter(argv)
+    for arg in rest:
+        if arg in ("--mode", "--query"):
+            options[arg[2:]] = next(rest, "")
+        else:
+            args.append(arg)
+    return args, options
+
+
+def pick(pane, start_mode=None, start_query=None):
     enter_project_root()
-    mode = tmux_option(MODE_OPTION)
+    mode = start_mode if start_mode in MODES else tmux_option(MODE_OPTION)
     mode = mode if mode in MODES else MODES[0]
     me = os.path.abspath(sys.argv[0])
-    carried = None  # what was typed in the source we just switched away from
+    carried = start_query  # what was typed in the source we just switched away from (or handed to us)
     while True:
         # A fresh start resumes the source's own query and the cursor on the entry it was on. After a switch
         # the text just typed comes along (the cursor is only restored if it is the same query as the saved one).
@@ -742,7 +756,8 @@ if __name__ == "__main__":
         mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
         sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))
         sys.exit(0)
-    if len(sys.argv) > 2:
+    args, options = parse_args(sys.argv[1:])
+    if len(args) > 1:
         sys.exit(__doc__)
-    pane = sys.argv[1] if len(sys.argv) == 2 else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
-    sys.exit(pick(pane))
+    pane = args[0] if args else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
+    sys.exit(pick(pane, options.get("mode"), options.get("query")))

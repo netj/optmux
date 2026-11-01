@@ -541,3 +541,9 @@ def test_header_marks_the_current_source_and_keeps_the_keys_on_a_line_of_their_o
     tabs, keys = fd.header("grep").split("\n")
     assert "[grep ^g]" in tabs and "omni ^o" in tabs and "[omni" not in tabs
     assert "C-M-f: next" in keys and "^/: preview" in keys
+
+
+def test_find_starts_in_a_given_source_with_a_given_query():
+    assert fd.parse_args([]) == ([], {})
+    assert fd.parse_args(["%3", "--mode", "grep", "--query", "needle text"]) == (["%3"], {"mode": "grep", "query": "needle text"})
+    assert fd.parse_args(["--query"]) == ([], {"query": ""})  # a dangling option does not crash

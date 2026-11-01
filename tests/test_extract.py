@@ -76,10 +76,13 @@ def test_cycle_wraps_around():
 def test_labels_shrink_in_narrow_terminals(monkeypatch):
     import os
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
-    assert pt.labels("words", "osc52")[1] == "--prompt=words filtered (C-M-x to switch) > "
+    wide = pt.labels("words", "osc52")
+    assert wide[1] == "--prompt=words filtered (C-M-x to switch) > "
+    assert "C-f in files" in wide[0] and "C-g by grep" in wide[0] and "C-M-f everywhere" in wide[0]
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
-    assert pt.labels("words", "osc52")[1] == "--prompt=words (C-M-x) > "
-    assert len(pt.labels("words", "osc52")[0]) < 80
+    narrow = pt.labels("words", "osc52")
+    assert narrow[1] == "--prompt=words (C-M-x) > "
+    assert all(len(line) < 80 for line in narrow[0].split("\n")) and "C-f: files" in narrow[0]
 
 
 def test_control_characters_never_survive_into_the_text_to_type():
@@ -152,3 +155,27 @@ def test_spans_wrapped_by_the_program_are_joined_when_they_fill_the_line():
     # a different style never joins
     cap2 = "so \x1b[34mgit\x1b[0m\n  \x1b[31mcommit\x1b[0m\n"
     assert [t for t, _ in pt.choices(cap2, "spans", 8)] == ["git", "commit"]
+
+
+def test_find_query_joins_the_picks_on_one_line_or_falls_back_to_what_was_typed():
+    assert pt.find_query(["optmux/pick.py:119", "def  pickable"], "typed") == "optmux/pick.py:119 def pickable"
+    assert pt.find_query(["  multi\n  line  "], "") == "multi line"
+    assert pt.find_query([], " typed ") == "typed" and pt.find_query([], "  ") == ""
+    assert len(pt.find_query(["x" * 1000], "")) == pt.MAX_QUERY
+
+
+def test_lookup_keys_start_find_in_the_right_source_and_leave_cycling_to_the_opener_key():
+    assert pt.FIND_KEYS == {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
+    assert "ctrl-alt-x" not in pt.FIND_KEYS and "ctrl-t" not in pt.FIND_KEYS and "ctrl-y" not in pt.FIND_KEYS
+
+
+def test_open_find_continues_as_find_in_the_panes_directory(monkeypatch, tmp_path):
+    import os
+    ran = []
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: type("R", (), {"stdout": f"{tmp_path}\n"})())
+    monkeypatch.setattr(pt.os, "execv", lambda exe, argv: ran.append((exe, argv)))
+    monkeypatch.chdir(tmp_path.parent)
+    pt.open_find("%7", "grep", "needle text")
+    exe, argv = ran[0]
+    assert os.path.samefile(os.getcwd(), tmp_path)  # the pane's project, not wherever the popup started
+    assert argv[1].endswith("optmux-find") and argv[2:] == ["%7", "--mode", "grep", "--query", "needle text"]
