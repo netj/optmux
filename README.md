@@ -515,7 +515,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 `C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
-- **`^o` omni** (the default): tags and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag is matched on its name, a file on its path). Rows are labeled `tag` or `file`; the best 100 are shown. Grep stays on its own key, `^g`.
+- **`^o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows carry an icon for what they are (📄 file, 🔖 tag, 🧩 symbol); the best 100 are shown. Grep stays on its own key, `^g`.
 - **`^f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
 - **`^g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`^t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own, the way such a hook would (`git ls-files | ctags -L -`), the first time, and refreshes it in the background whenever the commit or the tracked files that changed differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It needs [universal-ctags](https://ctags.io) (`brew install universal-ctags`, a dependency of the Homebrew formula; exuberant ctags should do too, minus line numbers it can find from patterns). macOS's own `/usr/bin/ctags` does not: it takes no file list and only knows C-like languages. It is stored per project in `.optmux.d/find/`.
@@ -530,7 +530,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 `^l` asks your language servers for `workspace/symbol`, so it sees what the compiler sees: methods and classes in the right scope, not just what a regex or ctags could pick out. Nothing to set up if the server is installed:
 
 - optmux looks at the files git tracks and picks the languages that have a few of them (python, typescript/javascript, go, rust, c/c++, lua, bash out of the box), then starts the first installed server of each. One hub process per project keeps them running between keystrokes (it exits after 30 idle minutes, `OPTMUX_LSP_IDLE` seconds to change), and logs to `.optmux.d/find/lsp.log`.
-- A language with files but no server installed shows its install command in the list, e.g. `go: no language server installed.  brew install gopls`. `optmux-lsp install` runs those, asking first; `optmux-lsp status` shows what runs; `optmux-lsp stop` stops the project's servers.
+- A language with files but no server installed shows a 📥 row with its install command, e.g. `go: no language server installed.  Enter runs: brew install gopls`. **Enter on that row runs the install** in a pane of its own (so you can watch it, answer a prompt), and the servers start within seconds of it finishing. The command offered is the first one whose installer is on the machine: `install` may be a list of alternatives (`brew`, `uv tool`, `npm`, ...). `optmux-lsp install` does the same from a shell (asking first); `optmux-lsp status` shows what runs; `optmux-lsp stop` stops the project's servers. ⏳ rows say a server is still starting, 💬 rows say what went wrong; Enter on those does nothing.
 - The first search after a server starts may say it is starting (rust-analyzer and the like take a while to index). Some servers need a project description: clangd needs a `compile_commands.json`, and finds nothing without one.
 
 Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language. `servers` replaces the preference list, the first installed one is used; `command` alone is a one-server shorthand; `enabled: false` turns a language off. `open_first_file: true` opens one file after the server starts, for servers that find their project from it (typescript and c do that by default):
@@ -553,7 +553,15 @@ optmux:
         enabled: false
 ```
 
-The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni does not include language servers yet.
+The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
+
+Rows are marked with emoji by default, which render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses short words (`file`, `tag`, `lsp`):
+
+```yaml
+optmux:
+  find:
+    icons: nerd
+```
 
 ### optmux eXtract: text from the screen
 

@@ -59,7 +59,7 @@ def parse_project_name(yaml_path_str):
 
 
 KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit", "find"}
-KNOWN_FIND_KEYS = {"lsp"}
+KNOWN_FIND_KEYS = {"lsp", "icons"}
 KNOWN_LSP_LANGUAGE_KEYS = {"extensions", "servers", "command", "install", "enabled", "open_first_file", "language_id"}
 KNOWN_LSP_SERVER_KEYS = {"command", "install"}
 KNOWN_SHORTCUT_KEYS = {
@@ -92,6 +92,8 @@ def _validate_optmux_section(optmux, source):
     find = optmux.get("find")
     if isinstance(find, dict):
         _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
+        if find.get("icons") not in (None, "emoji", "nerd", "text"):
+            print(f"optmux: {source}: find.icons: {find['icons']!r} is not one of emoji, nerd, text", file=sys.stderr)
         for lang, cfg in (find.get("lsp") or {}).items():
             if isinstance(cfg, dict):
                 _warn_unknown_keys(cfg.keys(), KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
