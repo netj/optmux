@@ -488,11 +488,10 @@ def test_the_preview_opens_with_what_the_row_is_and_where(tmp_path, monkeypatch,
     fd.preview("lsp", "pkg/a.go", "30", "x", fd.FIELD_SEP.join(what), 20)
     out = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in capsys.readouterr().out.splitlines()]
     assert len(out) == 20  # the header is part of the window's height
-    assert out[0] == "Gui.Layout  method · symbol (language server)"
-    assert out[1] == "pkg/a.go:30  in Gui"
-    assert out[2].startswith("──") and any(l.endswith("line 30") for l in out[3:])
+    assert out[:3] == ["Gui.Layout", "method · symbol (language server)", "pkg/a.go:30  in Gui"]
+    assert out[3].startswith("──") and any(l.endswith("line 30") for l in out[4:])
     fd.preview("files", "pkg/a.go", "1", "x", fd.FIELD_SEP.join(fd.what_of(fd.row("files", "file", "a.go", "pkg/a.go", 1))), 10)
-    assert re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out).splitlines()[:2] == ["a.go  file", "pkg/a.go"]
+    assert re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out).splitlines()[:3] == ["a.go", "file", "pkg/a.go"]
 
 
 def test_preview_shows_the_file_around_the_line_with_the_line_marked(tmp_path, monkeypatch, capsys):
@@ -615,3 +614,9 @@ def test_the_preview_is_counted_on_screen_only_with_room_for_it(monkeypatch):
     assert fd.preview_showing()
     monkeypatch.setattr(fd.os, "get_terminal_size", lambda fd_: type("S", (), {"columns": 80})())
     assert not fd.preview_showing()
+
+
+def test_tags_built_before_kind_names_were_asked_for_count_as_stale(repo, monkeypatch):
+    before = fd.tags_stamp(str(repo))
+    monkeypatch.setattr(fd, "TAGS_FORMAT", "something-else")
+    assert fd.tags_stamp(str(repo)) != before

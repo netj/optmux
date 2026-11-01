@@ -146,6 +146,9 @@ def tags_cache(root):
     return state_dir() / f"optmux-{hashlib.sha1(root.encode()).hexdigest()[:10]}.tags"
 
 
+TAGS_FORMAT = "kind-names"  # changes when what we ask ctags for does: tags built the old way are stale
+
+
 def tags_stamp(root):
     """What the tags are built from: the commit, and which tracked files are changed since and when. Differs once
     something worth re-indexing happened."""
@@ -158,7 +161,7 @@ def tags_stamp(root):
         except OSError:
             dirty.append(path)
     head = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
-    return hashlib.sha1("\n".join([head, *dirty]).encode()).hexdigest()
+    return hashlib.sha1("\n".join([TAGS_FORMAT, head, *dirty]).encode()).hexdigest()
 
 
 def project_files(root):
@@ -501,19 +504,23 @@ BAT = ("bat", "batcat")  # Debian and Ubuntu install it as batcat
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # all but tab and newline: they would recolor or garble the pane
 
 
-PREVIEW_HEADER_LINES = 3
+PREVIEW_HEADER_LINES = 4
 
 
 def preview_header(what, path, line):
-    """The preview's first lines: what the row is (the list is terse), and where. Returns how many lines it took."""
+    """The preview's first lines, the same few every time (what changes is on the right of each line, and what
+    is always there, the kind and the source, stands on a line of its own): the name; what it is and where it is
+    from; where it is. The list is terse and this says it all. Returns how many lines it took."""
     source, kind, name, container = (what.split(FIELD_SEP) + [""] * 4)[:4]
     if source not in SOURCE_NAMES:
         return 0
+    room = int(os.environ.get("FZF_PREVIEW_COLUMNS") or 80) - 8  # (fzf draws its position, 1/43, at the top right)
     directory, base = os.path.split(path)
     kind_text = {"file": "", "hit": ""}.get(kind, kind)
-    print(f"\x1b[1m{name}\x1b[0m  {DIM}{' · '.join(x for x in (kind_text, SOURCE_NAMES[source]) if x)}{UNDIM}")
-    print(f"{DIM}{directory + '/' if directory else ''}{UNDIM}{base}" + (f":{line}" if source != "files" else "")
-          + (f"  {DIM}in {container}{UNDIM}" if container else ""))
+    print(f"\x1b[1m{name[:room]}\x1b[0m")
+    print(f"{DIM}{' · '.join(x for x in (kind_text, SOURCE_NAMES[source]) if x)}{UNDIM}")
+    place = f"{directory + '/' if directory else ''}{base}" + (f":{line}" if source != "files" else "")
+    print(f"{DIM}{place[:room - len(container) - 5 if container else room]}{UNDIM}" + (f"  {DIM}in {container}{UNDIM}" if container else ""))
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES

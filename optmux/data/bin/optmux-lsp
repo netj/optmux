@@ -155,6 +155,9 @@ def state_dir():
     return d
 
 
+PROTOCOL = 2  # what rows look like; a hub left running by an older optmux is replaced, not spoken to
+
+
 def socket_path(root):
     """Short, because unix socket paths are limited to about 100 bytes; per user and project."""
     return str(Path(tempfile.gettempdir(), f"optmux-lsp-{os.getuid()}-{hashlib.sha1(root.encode()).hexdigest()[:10]}.sock"))
@@ -386,10 +389,10 @@ class Hub:
         self.last_used = time.time()
         if request.get("op") == "query":
             return {"rows": self.query(request.get("q", ""), float(request.get("timeout") or QUERY_TIMEOUT)),
-                    "status": self.status()}
+                    "status": self.status(), "protocol": PROTOCOL}
         if request.get("op") == "stop":
             self.stopping = True
-        return {"status": self.status()}
+        return {"status": self.status(), "protocol": PROTOCOL}
 
     def shutdown(self):
         with self.lock:
@@ -460,11 +463,31 @@ def exchange(path, request, timeout):
         return json.loads(data)
 
 
+def retire_hub(path):
+    """Stop the hub at `path` (one from an older optmux) and wait until it is gone."""
+    try:
+        exchange(path, {"op": "stop"}, 3)
+    except (OSError, ValueError):
+        pass
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        try:
+            exchange(path, {"op": "status"}, 1)
+        except (OSError, ValueError):
+            return
+        time.sleep(0.1)
+
+
 def ask_hub(root, request, start=True, timeout=12):
     """The hub's answer, starting the hub first if there is none. None if it cannot be reached."""
     path = socket_path(root)
     try:
-        return exchange(path, request, timeout)
+        answer = exchange(path, request, timeout)
+        if answer.get("protocol") == PROTOCOL:
+            return answer
+        if not start:
+            return None  # an old hub's rows are not ours to read; the next start replaces it
+        retire_hub(path)
     except (OSError, ValueError):
         if not start:
             return None

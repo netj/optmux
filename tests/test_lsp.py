@@ -447,3 +447,21 @@ def test_the_places_installers_put_binaries_are_searched(monkeypatch):
     path = lsp.search_path().split(os.pathsep)
     assert path[0] == "/opt/homebrew/bin" and "/somewhere/gobin" in path
     assert str(Path.home() / ".local/bin") in path and str(Path.home() / ".cargo/bin") in path
+
+
+def test_a_hub_left_running_by_an_older_optmux_is_replaced_not_read(monkeypatch):
+    calls = []
+    def fake_exchange(path, request, timeout):
+        calls.append(request["op"])
+        if "stopped" in calls:
+            raise OSError("gone")
+        if request["op"] == "stop":
+            calls.append("stopped")
+        return {"rows": ["old\t1\told  function  x  old:1"], "status": {}}  # no protocol: an old hub's answer
+    monkeypatch.setattr(lsp, "exchange", fake_exchange)
+    started = []
+    monkeypatch.setattr(lsp.subprocess, "Popen", lambda *a, **k: started.append(a))
+    assert lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=False) is None  # the fast path leaves it be
+    assert calls == ["query"] and not started
+    lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=True)
+    assert "stop" in calls and started  # asked to stop, then started its own
