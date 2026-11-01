@@ -3,7 +3,8 @@
 
 Usage: optmux-find [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
-One picker with three modes, like ctrl-p in vim but remembering where you were:
+One picker with four sources, like ctrl-p in vim but remembering where you were:
+  all    (^a)  the three below blended: tags, then file names, then grep lines, each row labeled
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
@@ -27,8 +28,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-MODES = ["files", "grep", "tags"]
-MODE_KEYS = {"files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
+MODES = ["all", "files", "grep", "tags"]
+MODE_KEYS = {"all": "ctrl-a", "files": "ctrl-f", "grep": "ctrl-g", "tags": "ctrl-t"}
+LIVE = {"grep", "all"}  # sources that search as you type (fzf only displays their list)
 MODE_OPTION = "@optmux-find-mode"
 CYCLE_KEY = "ctrl-alt-f"
 MAX_RESULTS = 3000
@@ -148,10 +150,11 @@ def tag_line(root, path, excmd):
     return "1"
 
 
-def list_tags(_query):
+def list_tags(_query, warn=True):
     tags = tags_file()
     if not tags:
-        print("no tags file; install universal-ctags (brew install universal-ctags) or run ctags -R", file=sys.stderr)
+        if warn:
+            print("no tags file; install universal-ctags (brew install universal-ctags) or run ctags -R", file=sys.stderr)
         return
     root = tags.parent if tags.name == "tags" else (repo_root() or os.getcwd())
     for raw in tags.read_text(errors="replace").splitlines():
@@ -165,7 +168,32 @@ def list_tags(_query):
         yield f"{path}\t{line}\t{name}  {kind}  {path}:{line}"
 
 
-LISTERS = {"files": list_files, "grep": list_grep, "tags": list_tags}
+ALL_LIMITS = {"tag": 40, "file": 40, "grep": 200}  # rows per section in the blended list
+
+
+def fuzzy(entries, query):
+    """Entries matching `query` the way fzf would show them, best first."""
+    if not query:
+        return entries
+    return run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
+               input="\n".join(entries) + "\n").stdout.splitlines()
+
+
+def label(kind, entries, limit):
+    for e in entries[:limit]:
+        f, n, display = e.split("\t", 2)
+        yield f"{f}\t{n}\t{kind:<5} {display}"
+
+
+def list_all(query):
+    """Every source at once: tag definitions, then file names (both fuzzy), then lines of text (grep). A
+    section per source, best match nearest the prompt; the label says where a row came from."""
+    yield from label("tag", fuzzy(list(list_tags("", warn=False)), query), ALL_LIMITS["tag"])
+    yield from label("file", fuzzy(list(list_files("")), query), ALL_LIMITS["file"])
+    yield from label("grep", list(list_grep(query)), ALL_LIMITS["grep"])
+
+
+LISTERS = {"all": list_all, "files": list_files, "grep": list_grep, "tags": list_tags}
 
 
 # ---- opening -------------------------------------------------------------------------------------------
@@ -209,7 +237,7 @@ def remember_query(path, query):
 def header(mode):
     tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', '^')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', '^')}"
                      for m in MODES)
-    return f"{tabs}   C-M-f: next;  ^u: clear;  ^p/^n: past queries;  Enter: open"
+    return f"{tabs}   C-M-f: next;  ^u: clear;  ^p/^n: history;  Enter: open"
 
 
 def parse_output(stdout):
@@ -257,22 +285,22 @@ def pick(pane):
         query, entry = load_state(mode)
         history = state_dir() / f"{mode}.history"
         dedupe_history(history)
-        fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode == "grep" else "--tiebreak=index",
+        fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode in LIVE else "--tiebreak=index",
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
         candidates = list(LISTERS[mode](query))
-        pos = cursor_position(candidates, query, entry, filtered=mode != "grep")
+        pos = cursor_position(candidates, query, entry, filtered=mode not in LIVE)
         # The list goes in on stdin for every source. Once loaded, move the cursor and stop watching `load`
-        # (later changes, from typing, are not ours to steer). Grep is live: fzf matches nothing itself and each
+        # (later changes, from typing, are not ours to steer). The live sources (grep, all): fzf matches nothing itself and each
         # keystroke re-runs the search, debounced by the sleep (fzf kills a pending reload on the next key).
         # `change` must wait for that first load, because the initial --query counts as a change, and the
         # reload it triggers would put the cursor back on top. (The reload is parenthesized, or it swallows the
         # next binding.)
         first_load = (f"pos({pos})+" if pos else "") + "unbind(load)"
-        if mode == "grep":
+        if mode in LIVE:
             fzf += ["--disabled", "--bind=start:unbind(change)", f"--bind=load:{first_load}+rebind(change)",
-                    f"--bind=change:reload(sleep 0.1; {shlex.quote(me)} --list grep {{q}})"]
+                    f"--bind=change:reload(sleep 0.1; {shlex.quote(me)} --list {mode} {{q}})"]
         else:
             fzf += [f"--bind=load:{first_load}"]
         stdin = "\n".join(candidates) + "\n"

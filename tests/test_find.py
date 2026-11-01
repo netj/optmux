@@ -124,3 +124,16 @@ def test_grep_is_sorted_by_file_then_numeric_line(repo):
 def test_cursor_position_in_grep_is_plain_list_index():
     es = ["a.py\t1\ta.py:1: foo", "b.py\t2\tb.py:2: bar"]
     assert fd.cursor_position(es, "zzz", es[1], filtered=False) == 2  # fzf would filter both out
+
+
+def test_all_blends_tags_files_and_grep_in_labeled_sections(repo):
+    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
+    kinds = lambda q: [(r.split("\t")[0], r.split("\t")[2].split()[0]) for r in fd.list_all(q)]
+    assert kinds("hello") == [("app.py", "tag"), ("app.py", "grep"), ("sub/notes.md", "grep")]
+    assert kinds("notes") == [("sub/notes.md", "file")]  # a file name; the word is not in any text
+    assert kinds("app") == [("app.py", "tag"), ("app.py", "file")]  # a tag row's text includes its path
+
+
+def test_all_without_tags_still_lists_files_and_text(repo):
+    kinds = {r.split("\t")[2].split()[0] for r in fd.list_all("sub")}
+    assert kinds == {"file"}  # no tags file, and "sub" is not in any text
