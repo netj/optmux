@@ -181,3 +181,139 @@ def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo):
         assert [r.split("\t")[0] for r in fd.list_omni("s")][0] == "sub/notes.md"
     finally:
         del os.environ["OPTMUX_DIR"]
+
+
+@pytest.fixture
+def fake_ctags(tmp_path_factory, monkeypatch):
+    """A stand-in universal-ctags: says what it is, and writes one tag per file it is told to index."""
+    outside = tmp_path_factory.mktemp("outside")  # not in the test repo, or ctags would index it
+    bin_dir = outside / "bin"
+    bin_dir.mkdir()
+    exe = bin_dir / "universal-ctags"
+    exe.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = --version ]; then echo "Universal Ctags 6.1.0"; exit 0; fi\n'
+        'while [ $# -gt 0 ]; do [ "$1" = -f ] && out=$2; shift; done\n'
+        'echo run >> "$FAKE_CTAGS_LOG"\n'
+        'while read f; do printf "sym_%s\\t%s\\t1;\\"\\tf\\tline:1\\n" "$(basename $f .py)" "$f"; done > "$out"\n')
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+    monkeypatch.setenv("FAKE_CTAGS_LOG", str(outside / "ctags.log"))
+    monkeypatch.setenv("OPTMUX_DIR", str(outside / "od"))
+    return outside / "ctags.log"
+
+
+def test_tags_are_built_on_first_use_and_reused_while_the_project_is_unchanged(repo, fake_ctags):
+    assert [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")] == ["sym_app", "sym_notes.md"]  # the files git lists
+    assert fake_ctags.read_text().count("run") == 1
+    list(fd.list_tags(""))
+    assert fake_ctags.read_text().count("run") == 1  # unchanged: no rebuild, no refresh
+
+
+def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
+    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
+    assert [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")] == ["mine"]
+    assert not fake_ctags.exists()
+
+
+def test_stale_tags_are_served_while_a_refresh_is_started(repo, fake_ctags, monkeypatch):
+    list(fd.list_tags(""))
+    stamp = fd.tags_stamp(str(repo))
+    (repo / "new.py").write_text("x")
+    subprocess.run(["git", "add", "new.py"], cwd=repo, check=True)  # a tracked change; untracked files are not indexed
+    assert fd.tags_stamp(str(repo)) != stamp
+    started = []
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: started.append(root))
+    names = [l.split("\t")[2].split("  ")[0] for l in fd.list_tags("")]
+    assert names == ["sym_app", "sym_notes.md"] and started == [str(repo)]
+    list(fd.list_tags(""))  # a refresh is under way (lock): do not start another
+    assert len(started) == 1
+
+
+FAKE_CTAGS = (
+    "#!/bin/sh\n"
+    '%s'
+    'while [ $# -gt 0 ]; do [ "$1" = -f ] && out=$2; shift; done\n'
+    'while read f; do printf "sym_%%s\\t%%s\\t1;\\"\\tf\\n" "$(basename $f .py)" "$f"; done > "$out"\n')
+
+
+def test_ctags_falls_back_to_plainer_invocations_and_gives_up_cleanly(repo, fake_ctags, monkeypatch, tmp_path_factory):
+    exe = fake_ctags.parent / "bin" / "universal-ctags"
+    # exuberant-like: refuses --fields, so the line numbers come from the patterns
+    exe.write_text(FAKE_CTAGS % 'for a in "$@"; do case $a in --fields*) exit 2;; esac; done\n')
+    assert [l.split("\t")[:2] for l in fd.list_tags("")] == [["app.py", "1"], ["sub/notes.md", "1"]]
+    # BSD-like: reads no file list at all
+    exe.write_text("#!/bin/sh\nexit 1\n")
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od2")))
+    assert fd.tags_file(check=True) is None
+
+
+def test_refresh_launch_failure_releases_the_lock(repo, fake_ctags, monkeypatch):
+    list(fd.list_tags(""))
+    (repo / "x.py").write_text("x")
+    subprocess.run(["git", "add", "x.py"], cwd=repo, check=True)
+
+    def boom(root):
+        raise OSError("cannot run")
+    monkeypatch.setattr(fd, "refresh_tags", boom)
+    assert list(fd.list_tags(""))  # still serves the old tags
+    assert not list(fd.tags_cache(str(repo)).parent.glob("*.lock"))
+
+
+def test_per_keystroke_reloads_never_build_or_check(repo, fake_ctags, monkeypatch):
+    monkeypatch.setattr(fd, "CHECK_TAGS", False)
+    assert list(fd.list_tags("")) == [] and not fake_ctags.exists()  # nothing cached, nothing built
+    monkeypatch.setattr(fd, "CHECK_TAGS", True)
+    assert list(fd.list_tags(""))
+    monkeypatch.setattr(fd, "CHECK_TAGS", False)
+    (repo / "x.py").write_text("x")
+    subprocess.run(["git", "add", "x.py"], cwd=repo, check=True)
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: pytest.fail("a reload must not start a refresh"))
+    assert list(fd.list_tags(""))
+
+
+def test_a_failing_ctags_is_not_retried_for_a_while(repo, fake_ctags):
+    (fake_ctags.parent / "bin" / "universal-ctags").write_text('#!/bin/sh\necho run >> "$FAKE_CTAGS_LOG"\nexit 1\n')
+    assert list(fd.list_tags("", warn=False)) == []
+    assert list(fd.list_tags("", warn=False)) == []
+    assert fake_ctags.read_text().count("run") == 3  # the three invocations of one attempt; none on the second open
+
+
+def test_a_held_lock_means_someone_else_is_building(repo, fake_ctags):
+    lock = fd.tags_cache(str(repo)).with_suffix(".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.touch()
+    assert list(fd.list_tags("", warn=False)) == [] and not fake_ctags.exists()
+    old = fd.time.time() - fd.LOCK_TTL - 1
+    __import__("os").utime(lock, (old, old))  # presumed dead: take over
+    assert list(fd.list_tags("", warn=False))
+
+
+def test_managed_tags_only_in_git_projects(tmp_path_factory, monkeypatch, fake_ctags):
+    monkeypatch.chdir(tmp_path_factory.mktemp("plain"))
+    assert fd.tags_file() is None and not fake_ctags.exists()
+
+
+def test_files_to_index_include_oddly_named_ones(repo, monkeypatch):
+    (repo / "dir with space").mkdir()
+    (repo / "dir with space" / "é.py").write_text("x")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    monkeypatch.setenv("OPTMUX_DIR", str(repo.parent / "elsewhere"))
+    monkeypatch.chdir(repo)
+    assert "dir with space/é.py" in fd.project_files(str(repo))
+
+
+def test_no_ctags_means_no_tags(repo, monkeypatch, tmp_path_factory):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od")))
+    monkeypatch.setattr(fd, "find_ctags", lambda: None)
+    assert fd.tags_file() is None
+
+
+def test_files_to_index_are_the_tracked_ones_without_optmuxs_own_state(repo, monkeypatch):
+    (repo / "untracked.py").write_text("x")
+    (repo / ".optmux.d/find").mkdir(parents=True)
+    (repo / ".optmux.d/find/x.tags").write_text("x")
+    subprocess.run(["git", "add", "-f", ".optmux.d"], cwd=repo, check=True)  # even if the project tracks it
+    monkeypatch.setenv("OPTMUX_DIR", str(repo / ".optmux.d"))
+    monkeypatch.chdir(repo)
+    assert fd.project_files(str(repo)) == ["app.py", "sub/notes.md"]

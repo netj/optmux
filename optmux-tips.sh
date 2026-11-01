@@ -84,6 +84,11 @@ bundled_tool() {
     if ! command -v "$name" >/dev/null 2>&1; then
         mark="✗"
         note="   (missing: brew install $formula)"
+    elif [[ "$name" == ctags ]] && ! (cd "${TMPDIR:-/tmp}" && ctags --version 2>/dev/null) | grep -q Ctags; then
+        # macOS's own /usr/bin/ctags rejects --version (and a file list); universal and exuberant say "... Ctags".
+        # Run from a scratch dir, in case some ctags takes --version for a file name and writes ./tags.
+        mark="✗"
+        note="   (macOS's own ctags can't index: brew install universal-ctags)"
     elif [[ "$name" == less ]]; then
         # --mouse needs less 551+, clickable OSC 8 links 661+ (macOS ships 668; 702+ has the newer link protocol)
         local less_version
@@ -139,6 +144,7 @@ MOUSE
     bundled_tool delta "syntax-highlighted, clickable diffs" https://github.com/dandavison/delta git-delta
     bundled_tool less "mouse and clickable links in pagers" https://greenwoodsoftware.com/less
     bundled_tool fzf "fuzzy finder (C-M-f)" https://github.com/junegunn/fzf
+    bundled_tool ctags "tags for optmux Find (C-M-f)" https://ctags.io universal-ctags
     bundled_tool gh "GitHub CLI (C-M-w)" https://cli.github.com
 
     local plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"

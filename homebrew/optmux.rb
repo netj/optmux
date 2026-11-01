@@ -14,6 +14,7 @@ class Optmux < Formula
   depends_on "git-delta"
   depends_on "less" # recent less for --mouse and clickable OSC 8 links
   depends_on "fzf"
+  depends_on "universal-ctags" # tags for optmux Find (C-M-f)
   depends_on "gh"
 
   def install
