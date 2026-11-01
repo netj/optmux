@@ -8,12 +8,13 @@ One picker with four sources, like ctrl-p in vim but remembering where you were:
   files  (^f)  git ls-files (or find outside a repo)
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file (universal-ctags builds one on first use)
-`C-M-f` (the key that opened the picker) cycles them. Each source resumes on its own: the last mode, that
-source's last query, and the cursor on the entry it was on. `^u` clears the query for a new search; `^p`
-(then older ones; `^n` goes forward) recalls that source's earlier queries (fzf's own history, which also
-records queries you left with Esc or a mode switch). Enter opens the pick in an editor split next to the
-agent, at the matching line. The mode is a tmux option on the server (`@optmux-find-mode`); the rest is in
-$OPTMUX_DIR/find/MODE.{last,history} (per project).
+`C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
+the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
+afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
+query, and `^p` (then older ones; `^n` goes forward) recalls that source's earlier queries (fzf's own history,
+which also records queries you left with Esc or a switch). Enter opens the pick in an editor split next to the
+agent, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
+$OPTMUX_DIR/find/SOURCE.{last,history} (per project).
 
 Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reloads for grep).
 """
@@ -284,9 +285,13 @@ def pick(pane):
     mode = tmux_option(MODE_OPTION)
     mode = mode if mode in MODES else MODES[0]
     me = os.path.abspath(sys.argv[0])
+    carried = None  # what was typed in the source we just switched away from
     while True:
-        # each source resumes on its own: its query, and the cursor on the entry it was on
+        # A fresh start resumes the source's own query and the cursor on the entry it was on. After a switch
+        # the text just typed comes along (the cursor is only restored if it is the same query as the saved one).
         query, entry = load_state(mode)
+        if carried is not None:
+            query, entry = carried, (entry if carried == query else None)
         history = state_dir() / f"{mode}.history"
         dedupe_history(history)
         fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode in LIVE else "--tiebreak=index",
@@ -315,6 +320,7 @@ def pick(pane):
         query, key, entry = parse_output(proc.stdout)
         remember_query(history, query)
         save_state(mode, query, entry)
+        carried = query
         if key == CYCLE_KEY:
             mode = MODES[(MODES.index(mode) + 1) % len(MODES)]
         elif key in MODE_KEYS.values():
