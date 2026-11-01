@@ -75,7 +75,7 @@ def test_shortcuts_with_various_types(tmp_path, sample_optmux_config):
     generate_tmux_conf_files(tmp_path, sample_optmux_config)
     content = (tmp_path / "tmux.optmux-shortcuts.conf").read_text()
     # C-M-s: empty split with zoom
-    assert "bind -n C-M-s split-window" in content
+    assert "bind -n C-M-s if-shell" in content and "split-window -v -b" in content
     assert content.count("resize-pane -Z") == 2  # C-M-s and C-M-g
     # C-M-g: command string with zoom
     assert "'lazygit'" in content

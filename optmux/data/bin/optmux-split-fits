@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# optmux-split-fits — would a plain vertical split of PANE still leave room? Exit 0 if so, 1 if not.
+#   optmux-split-fits [PANE]          (the pane the binding was pressed in; $TMUX_PANE by default)
+# A split halves the pane it is made in, so a stack of helper panes shrinks the one you work in
+# until tmux says "no space for a new pane". optmux's split bindings ask this first and fall back
+# to `split-window -f` (a pane across the whole window edge) when the answer is no.
+# A zoomed pane reports the whole window's height, so unzoom first; a split would anyway.
+# OPTMUX_SPLIT_MIN_HEIGHT (default 5) is the fewest rows the pane must have to be split.
+set -euo pipefail
+pane=${1:-${TMUX_PANE:-}}
+min=${OPTMUX_SPLIT_MIN_HEIGHT:-5}
+[[ -n "$pane" ]] || { echo >&2 "usage: optmux-split-fits [PANE]"; exit 2; }
+if [[ $(tmux display-message -p -t "$pane" '#{window_zoomed_flag}') == 1 ]]; then
+    tmux resize-pane -Z -t "$pane"
+fi
+(( $(tmux display-message -p -t "$pane" '#{pane_height}') >= min ))
