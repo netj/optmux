@@ -44,6 +44,8 @@ MIN_SHARE = 0.05       # ... and this share of all the files whose language we k
 BOOT_TIMEOUT = 90      # seconds a server may take to answer `initialize`
 QUERY_TIMEOUT = 4      # seconds a server may take to answer one query
 MAX_ROWS = 200
+RESCAN_MISSING = float(os.environ.get("OPTMUX_LSP_RESCAN", "3"))  # seconds between looking for servers installed since
+RESCAN_FILES = 60      # seconds between looking for languages the project grew into
 
 
 # ---- configuration -------------------------------------------------------------------------------------
@@ -240,19 +242,40 @@ class Hub:
     def __init__(self, root):
         self.root, self.last_used, self.servers, self.missing = root, time.time(), {}, {}
         self.stopping = False
-        config = load_config()
-        log = open(state_dir() / "lsp.log", "ab")
-        for lang, files in detect_languages(tracked_files(root), config).items():
-            found = installed_server(config[lang])
-            if found:
-                argv, server = found
-                try:
-                    self.servers[lang] = LanguageServer(lang, config[lang], argv, root, files, log)
-                except OSError as e:
-                    self.missing[lang] = {"install": server.get("install", ""), "why": str(e)}
-            else:
-                self.missing[lang] = {"install": (servers_of(config[lang]) or [{}])[0].get("install", ""),
-                                      "why": "no server installed"}
+        self.config = load_config()
+        self.log = open(state_dir() / "lsp.log", "ab")
+        self.lang_files = {}
+        self.scanned_files = self.scanned_missing = 0.0
+        self.rescan()
+
+    def start(self, lang):
+        """Start the first installed server of `lang`, or note that there is none (to look again later)."""
+        cfg = self.config[lang]
+        found = installed_server(cfg)
+        if not found:
+            self.missing[lang] = {"install": (servers_of(cfg) or [{}])[0].get("install", ""), "why": "no server installed"}
+            return
+        argv, server = found
+        try:
+            self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files[lang], self.log)
+            self.missing.pop(lang, None)
+        except OSError as e:
+            self.missing[lang] = {"install": server.get("install", ""), "why": str(e)}
+
+    def rescan(self):
+        """Which languages the project has, and servers for them: at start, then again as things change, so a
+        server installed (or a language added) while the hub runs is picked up without restarting it."""
+        now = time.time()
+        if now - self.scanned_files >= RESCAN_FILES or not self.scanned_files:
+            self.scanned_files = self.scanned_missing = now
+            self.lang_files = detect_languages(tracked_files(self.root), self.config)
+            for lang in self.lang_files:
+                if lang not in self.servers:
+                    self.start(lang)
+        elif self.missing and now - self.scanned_missing >= RESCAN_MISSING:
+            self.scanned_missing = now
+            for lang in list(self.missing):
+                self.start(lang)
 
     def status(self):
         out = {lang: {"state": "ready" if s.ready else s.failed or "starting"} for lang, s in self.servers.items()}
@@ -260,6 +283,7 @@ class Hub:
         return out
 
     def query(self, query):
+        self.rescan()
         rows, answers = [], {}
 
         def ask(lang, server):
@@ -385,6 +409,9 @@ def main(argv):
     if cmd == "query":
         query = " ".join(rest)
         if not query.strip():
+            return 0
+        if not load_config():
+            print(f"\t0\tno language server configuration ({config_path()}): restart optmux, which writes it")
             return 0
         answer = ask_hub(project_root(), {"op": "query", "q": query})
         if answer is None:

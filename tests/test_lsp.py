@@ -180,3 +180,24 @@ def test_disabled_languages_are_dropped_by_the_loader(tmp_path, monkeypatch):
     (tmp_path / "find.json").write_text(json.dumps({"lsp": {"python": {"enabled": False}, "go": {"extensions": ["go"]}}}))
     monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
     assert list(lsp.load_config()) == ["go"]
+
+
+def test_a_server_installed_while_the_hub_runs_is_picked_up(project, monkeypatch, tmp_path):
+    monkeypatch.setenv("OPTMUX_LSP_RESCAN", "0.2")
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    cfg = {"python": {"extensions": ["py"], "servers": [{"command": "late-lsp-xyz", "install": "brew install late"}]}}
+    (Path(os.environ["OPTMUX_DIR"]) / "find.json").write_text(json.dumps({"lsp": cfg}))
+    monkeypatch.setenv("PATH", f"{shim_dir}:{os.environ['PATH']}")
+    assert "no language server installed" in query(project, "hello")[0][2]
+    shim = shim_dir / "late-lsp-xyz"  # `brew install` finishes
+    shim.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE_SERVER}\n")
+    shim.chmod(0o755)
+    rows = wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")
+    assert [r[:2] for r in rows] == [["a.py", "1"], ["b.py", "4"]]
+
+
+def test_a_missing_configuration_is_explained_not_silent(project):
+    (Path(os.environ["OPTMUX_DIR"]) / "find.json").unlink()
+    rows = query(project, "hello")
+    assert len(rows) == 1 and rows[0][0] == "" and "restart optmux" in rows[0][2]
