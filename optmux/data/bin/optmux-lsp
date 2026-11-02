@@ -299,7 +299,7 @@ def rows_of(symbols, root, source=""):
             pass  # outside the project (a library): keep the absolute path
         line = ((loc.get("range") or {}).get("start") or {}).get("line", 0) + 1
         kind = SYMBOL_KINDS[sym["kind"] - 1] if isinstance(sym.get("kind"), int) and 0 < sym["kind"] <= 26 else ""
-        yield f"{path}\t{line}\t{short_name(sym.get('name', ''))}\x1f{kind}\x1f{sym.get('containerName') or ''}\x1f{source}"
+        yield f"{path}\t{line}\t{short_name(sym.get('name', '')) if source.startswith('go:') else sym.get('name', '')}\x1f{kind}\x1f{sym.get('containerName') or ''}\x1f{source}"
 
 
 # ---- the hub: one per project --------------------------------------------------------------------------
@@ -484,7 +484,7 @@ def ask_hub(root, request, start=True, timeout=12):
     path = socket_path(root)
     try:
         answer = exchange(path, request, timeout)
-        if answer.get("protocol") == PROTOCOL:
+        if answer.get("protocol") == PROTOCOL or request.get("op") == "stop":  # (an old hub is told to stop, too)
             return answer
         if not start:
             return None  # an old hub's rows are not ours to read; the next start replaces it

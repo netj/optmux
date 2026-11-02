@@ -20,6 +20,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from dataclasses import dataclass
 
@@ -282,21 +283,27 @@ def find_query(chosen, typed):
 
 def open_find(pane, source, query):
     """Hand the lookup to optmux Find: this popup closes and Find opens in a popup of its own (a popup's title cannot
-    change, and this one says eXtract), started in `source` with `query`, working on `pane`'s project. If that cannot
-    be set up, the text is kept in the tmux buffer, so the lookup is not lost."""
+    change, and this one says eXtract), started in `source` with `query`, working on `pane`'s project. The text
+    goes in a file Find reads (and deletes), not in the command: tmux expands `#{...}` and `#(...)` in what
+    `run-shell` is given. It is also kept in the tmux buffer, so a lookup that cannot start is not lost."""
     find = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-find")
     try:
+        load_buffer(query)
         path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
-        argv = [find, pane, f"--mode={source}", f"--query={query}"]  # `--query=` in one piece: the text may start with a dash
+        with tempfile.NamedTemporaryFile("w", prefix="optmux-find-query-", delete=False) as f:  # (private: mode 600)
+            f.write(query)
+        argv = [find, pane, f"--mode={source}", f"--query-file={f.name}"]
         if not os.access(find, os.X_OK):
             argv = [sys.executable, *argv]
-        popup = ["tmux", "display-popup", "-E", "-t", pane, *(["-d", path] if path else []), "-w", "100%", "-h", "60%",
+        # display-popup expands formats in its -d too: `#` doubled once more
+        directory = ["-d", path.replace("#", "##")] if path and os.path.isdir(path) else []
+        popup = ["tmux", "display-popup", "-E", "-t", pane, *directory, "-w", "100%", "-h", "60%",
                  "-b", "rounded", "-T", " optmux Find ", shlex.join(argv)]
+        failed = shlex.join(["tmux", "display-message", "-d", "3000", "optmux-extract: could not open optmux Find; the text is in the tmux buffer"])
         # in the background and a moment later: this popup has to be gone first, or the new one opens over it
-        tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(popup)}")
+        tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(popup)} || {failed}".replace("#", "##"))
         return 0
     except (subprocess.CalledProcessError, OSError) as e:
-        load_buffer(query)
         tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
         return 1
 
@@ -349,7 +356,7 @@ def pick(pane):
             text = find_query(chosen, query)
             if not text:
                 return 0
-            return open_find(pane, FIND_KEYS[key], text)  # does not return, unless it cannot
+            return open_find(pane, FIND_KEYS[key], text)  # (this popup is done)
         elif key == "ctrl-alt-x":
             mode = cycle(FILTERS, shown)
             tmux("set-option", "-g", FILTER_OPTION, mode)

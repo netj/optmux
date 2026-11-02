@@ -655,3 +655,39 @@ def test_the_preview_header_keeps_the_file_name_and_line_bright_and_the_director
     # the icon muted, the directory green, the file name bold blue, the colon muted, the line number bold yellow
     assert place == f"{fd.DIM}📄{fd.UNDIM} {fd.DIR_COLOR}pkg/{fd.UNDIM}" + fd.file_line("a.go", 3)
 
+
+
+def test_a_query_file_is_read_and_deleted(tmp_path):
+    q = tmp_path / "q"
+    q.write_text("needle #{x}\n")
+    assert fd.parse_args(["%1", "--mode", "grep", "--query-file", str(q)]) == (["%1"], {"mode": "grep", "query": "needle #{x}\n"})
+    assert not q.exists()
+    assert fd.parse_args(["--query-file", str(tmp_path / "gone")]) == ([], {})  # missing: no query, no error
+
+
+def test_control_characters_in_a_row_are_defused_so_ansi_cannot_recolor_the_list():
+    r = fd.row("grep", "hit", "a.py:1", "a.py", 1, text="\x1b[31mred\x1b[0m\tx\x07")
+    assert "\x1b[31m" not in r and len(r.split("\t")) == 5
+    assert fd.what_all(r.split("\t")[4])[5] == "[31mred [0m x"
+    n = fd.row("tags", "function", "we\x1b[1mird", "a.py", 1)
+    assert "\x1b[1m" not in n.split("\t")[2].replace(fd.BOLD, "")
+
+
+def test_files_outside_git_have_no_dot_slash_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "top.py").write_text("x")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/in.py").write_text("x")
+    monkeypatch.setattr(fd, "repo_root", lambda: None)
+    rows = list(fd.list_files(""))
+    assert [r.split("\t")[0] for r in rows] == ["sub/in.py", "top.py"] and [plain(r) for r in rows][1] == "F📄 top.py"
+
+
+def test_a_short_preview_window_is_all_code_not_a_header(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fd.shutil, "which", lambda name: None)
+    Path("a.py").write_text("".join(f"line {i}\n" for i in range(1, 30)))
+    what = fd.FIELD_SEP.join(fd.what_all(fd.row("tags", "function", "f", "a.py", 10).split("\t")[4]))
+    fd.preview("tags", "a.py", "10", "x", what, 4)
+    out = capsys.readouterr().out.splitlines()
+    assert len(out) == 4 and all("line" in l for l in out)

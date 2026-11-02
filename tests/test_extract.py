@@ -191,16 +191,31 @@ def test_open_find_closes_this_popup_and_opens_find_in_one_titled_for_it(monkeyp
         calls.append(args)
         return type("R", (), {"stdout": f"{tmp_path}\n"})()
     monkeypatch.setattr(pt, "tmux", fake_tmux)
-    assert pt.open_find("%7", "grep", "needle text") == 0
+    assert pt.open_find("%7", "grep", "needle #{session_name} #(touch /tmp/x) text") == 0
     run_shell = [c for c in calls if c[0] == "run-shell"][0]
     assert run_shell[1] == "-b"  # in the background: this popup must be gone first
-    words = shlex.split(run_shell[2].split("; ", 1)[1])
+    assert "#{" not in run_shell[2].replace("##{", "") and "#(" not in run_shell[2].replace("##(", "")  # what tmux would expand is doubled
+    command = run_shell[2].replace("##", "#")  # (tmux halves them again)
+    first, _, failed = command.split("; ", 1)[1].partition(" || ")
+    words = shlex.split(first)
     assert words[:3] == ["tmux", "display-popup", "-E"] and words[words.index("-T") + 1] == " optmux Find "
     assert words[words.index("-d") + 1] == str(tmp_path) and words[words.index("-t") + 1] == "%7"
     find = shlex.split(words[-1])
-    assert find[0].endswith("optmux-find") and find[1:] == ["%7", "--mode=grep", "--query=needle text"]
-    pt.open_find("%7", "files", "--version")
-    assert shlex.split(shlex.split([c for c in calls if c[0] == "run-shell"][1][2].split("; ", 1)[1])[-1])[-1] == "--query=--version"
+    assert find[0].endswith("optmux-find") and find[1:3] == ["%7", "--mode=grep"]
+    # the text is in a file, not in anything tmux or a shell reads
+    query_file = find[3].removeprefix("--query-file=")
+    assert Path(query_file).read_text() == "needle #{session_name} #(touch /tmp/x) text" and "needle" not in command
+    assert "tmux display-message" in failed and "buffer" in failed  # if the popup cannot open, say where the text is
+    assert any(c[0] == "load-buffer" for c in calls)  # and the text is there
+    Path(query_file).unlink()
+
+
+def test_open_find_leaves_out_a_start_directory_that_is_gone(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: calls.append(a) or type("R", (), {"stdout": f"{tmp_path}/deleted\n"})())
+    pt.open_find("%7", "files", "x")
+    popup = [c for c in calls if c[0] == "run-shell"][0][2].partition(" || ")[0]
+    assert " -d " not in popup
 
 
 def test_open_find_that_cannot_start_keeps_the_text_in_the_tmux_buffer(monkeypatch):

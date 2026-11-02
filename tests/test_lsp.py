@@ -100,6 +100,13 @@ def test_rows_use_relative_paths_one_based_lines_and_kind_names(tmp_path):
                     "b.py\t1\tNoRange\x1fvariable\x1f\x1f"]
 
 
+def test_only_go_names_lose_a_qualifier_other_names_with_slash_and_dot_are_left_alone(tmp_path):
+    sym = lambda name: {"name": name, "kind": 13, "location": {"uri": (tmp_path / "a.go").as_uri()}}
+    names = lambda source: [r.split("\t")[2].split("\x1f")[0] for r in lsp.rows_of([sym("github.com/o/r/pkg/gui.Gui.Layout"), sym("Read docs/README.md")], str(tmp_path), source)]
+    assert names("go: gopls")[0] == "Gui.Layout"  # (Go's qualified names are where the qualifier comes from)
+    assert names("typescript: tsserver") == ["github.com/o/r/pkg/gui.Gui.Layout", "Read docs/README.md"]
+
+
 def test_a_package_qualifier_is_dropped_from_a_symbols_name():
     assert lsp.short_name("github.com/org/repo/pkg/gui/controllers/helpers.MergeAndRebaseHelper.Run") == "MergeAndRebaseHelper.Run"
     assert lsp.short_name("github.com/org/repo/pkg/gui.Gui") == "Gui"
@@ -465,3 +472,9 @@ def test_a_hub_left_running_by_an_older_optmux_is_replaced_not_read(monkeypatch)
     assert calls == ["query"] and not started
     lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=True)
     assert "stop" in calls and started  # asked to stop, then started its own
+
+
+def test_stop_reaches_a_hub_from_an_older_optmux(monkeypatch):
+    monkeypatch.setattr(lsp, "exchange", lambda path, request, timeout: {"status": {}})  # no protocol: an old hub
+    assert lsp.ask_hub("/p", {"op": "stop"}, start=False) == {"status": {}}  # (asked: it stopped)
+    assert lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=False) is None

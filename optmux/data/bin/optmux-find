@@ -88,7 +88,7 @@ def list_files(_query):
         out = run("git", "ls-files", "-co", "--exclude-standard").stdout
     else:
         out = run("find", ".", "-type", "f", "-not", "-path", "*/.git/*").stdout
-    for f in sorted(set(out.splitlines())):
+    for f in sorted({f.removeprefix("./") for f in out.splitlines()}):  # (`find .` says ./a)
         if f and os.path.isfile(f):
             yield row("files", "file", os.path.basename(f), f, 1)
 
@@ -424,7 +424,9 @@ def row(source, kind, name, path, line, container="", text="", detail=""):
     what grep matched (the list shows it only when there is no preview). WHAT (SOURCE, kind word, name,
     container, then which language server, and grep's text, joined by FIELD_SEP) is for the program: recency, the preview's header."""
     group = kind if kind in ("file", "hit") else kind_group(kind)
-    text = re.sub(r"[\t\x1f]", " ", text.strip())  # (source lines have tabs: they would split the row)
+    # (source lines have tabs, which would split the row, and escape sequences, which --ansi would draw)
+    clean = lambda x: re.sub(r"[\x00-\x1f\x7f]", " ", str(x)).strip()
+    name, container, detail, text = clean(name), clean(container), clean(detail), clean(text)
     directory, base = os.path.split(path)
     drawn = name  # (`name` itself goes in WHAT, plain)
     if source == "files":
@@ -603,7 +605,8 @@ def preview(mode, path, line, display, what, height):
         target = max(1, int(line))
     except ValueError:
         target = 1
-    height -= preview_header(what, path, line)
+    if height >= PREVIEW_HEADER_LINES + 3:  # (a short window is all code)
+        height -= preview_header(what, path, line)
     start = max(1, target - height // 3)
     try:
         with open(path, "rb") as f:
@@ -809,7 +812,14 @@ def parse_args(argv):
     parser.add_argument("pane", nargs="?", help="the tmux pane to work on (the active one by default)")
     parser.add_argument("--mode", choices=MODES, help="start in this source")
     parser.add_argument("--query", help="start with this query")
+    parser.add_argument("--query-file", help="start with the query in this file (which is deleted): for text no command line should carry")
     ns = parser.parse_args(argv)
+    if ns.query_file:
+        try:
+            ns.query = Path(ns.query_file).read_text()
+        except OSError:
+            pass
+        Path(ns.query_file).unlink(missing_ok=True)
     return ([ns.pane] if ns.pane else []), {k: v for k, v in (("mode", ns.mode), ("query", ns.query)) if v is not None}
 
 
