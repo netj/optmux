@@ -254,7 +254,7 @@ def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
         assert all(g in shown for g in glyphs), style
     monkeypatch.delenv("OPTMUX_ICONS")
     monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
-    assert pt.icon_style() == "emoji"
+    assert pt.icon_style() == "nerd"
 
 
 def test_the_query_and_item_of_a_filter_are_remembered(monkeypatch):
@@ -292,3 +292,18 @@ def test_the_header_mentions_clearing_the_query(monkeypatch):
     for columns in (60, 120):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
         assert "C-u" in pt.labels("words", "osc52")[0]
+
+
+def test_no_icons_leaves_the_items_bare(monkeypatch):
+    monkeypatch.setenv("OPTMUX_ICONS", "none")
+    for mode in ("lines", "patterns", "words"):
+        assert all(not d.startswith(("\x1b[2m", " ")) for _, d in pt.choices("see ./a/b.py and v1.2.3\n", mode)), mode
+    monkeypatch.delenv("OPTMUX_ICONS")
+    monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
+    assert pt.icon_style() == "nerd"
+
+
+def test_a_long_item_gets_its_cursor_back_too():
+    long = "x" * 500
+    numbered = [(0, (long, long)), (1, ("short", "short"))]
+    assert pt.cursor_position(numbered, "", "words", long[:pt.MAX_ITEM]) == ("", 1)

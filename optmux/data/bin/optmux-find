@@ -358,7 +358,7 @@ def boost(keys, recent):
     return sorted(range(len(keys)), key=lambda p: (p - max(0, RECENT_BOOST - where.get(keys[p], RECENT_BOOST)), p))
 
 
-ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
+ICON_STYLES = {  # the row's kind, drawn: nerd needs a Nerd Font, emoji work in any terminal, text always does, none draws nothing
     "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "🔖", "call": "⚡️", "type": "🧩", "mod": "📖", "pkg": "📦",
               "val": "🏷️", "install": "⚠️", "wait": "⏳", "note": "💬"},
     "nerd": {"file": "\uf016", "dir": "\uf07b", "hit": "\uf002", "sym": "\ueb63", "call": "\uf0e7", "type": "\uf12e",
@@ -366,7 +366,8 @@ ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs
     "text": {"file": "-", "dir": "d", "hit": "/", "sym": "o", "call": "f", "type": "t", "mod": "m", "pkg": "p", "val": "v",
              "install": "!", "wait": "~", "note": "i"},
 }
-DEFAULT_ICONS = "emoji"
+ICON_STYLES["none"] = {kind: "" for kind in ICON_STYLES["text"]}
+DEFAULT_ICONS = "nerd"
 # What a symbol is (the words ctags and optmux-lsp print), by group, so five icons say it at a glance
 SYMBOL_GROUPS = {
     "call": "function func method methodspec constructor operator event macro procedure subroutine routine".split(),
@@ -412,16 +413,16 @@ def kind_group(word):
 
 def with_icon(kind, text):
     icon = ICON_STYLES[icon_style()][kind]
-    if kind == "install":  # (the emoji is yellow already)
+    if kind == "install" and icon:  # (the emoji is yellow already)
         icon = f"{YELLOW}{icon}{UNDIM}"
-    return f"{icon} {text}"
+    return f"{icon} {text}" if icon else text
 
 
 def split_icon(display):
     """(kind, rest) of a text displayed by with_icon, whatever style it was drawn in; kind None if it has no icon."""
     for icons in ICON_STYLES.values():
         for kind, icon in icons.items():
-            if display.startswith(icon + " "):
+            if icon and display.startswith(icon + " "):
                 return kind, display[len(icon) + 1:]
     return None, display
 
@@ -610,14 +611,14 @@ def preview_header(what, path, line):
         group, what_is, title, module = kind_group(kind), kind or "symbol", name, container
         icon, far, near = icons["file"], directory, (base, line)
     print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
-    print(f"{DIM}{icons[group]} {what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
-    print(f"{DIM}{icons['mod']}{UNDIM} {module[:room]}" if module else "")  # the module, plain: it is the one line that holds still
+    print(f"{DIM}{icons[group] + ' ' if icons[group] else ''}{what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
+    print((f"{DIM}{icons['mod']}{UNDIM} " if icons["mod"] else "") + module[:room] if module else "")  # the module, plain: it is the one line that holds still
     file_name, number = near
     width = len(file_name) + len(str(number)) + 1
     far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
     # the directory green, the file name bold blue, the colon between them muted, the line number bold yellow
     where = file_line(file_name, number) if file_name else ""
-    print(f"{DIM}{icon}{UNDIM} {DIR_COLOR}{far}{UNDIM}{where}")
+    print(f"{DIM}{icon}{UNDIM} {DIR_COLOR}{far}{UNDIM}{where}".replace(f"{DIM}{UNDIM} ", "", 1))
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
