@@ -651,5 +651,6 @@ def test_the_preview_header_keeps_the_file_name_and_line_bright_and_the_director
     what = fd.FIELD_SEP.join(fd.what_all(fd.row("tags", "function", "F", "pkg/a.go", 3).split("\t")[4]))
     fd.preview("tags", "pkg/a.go", "3", "x", what, 10)
     place = capsys.readouterr().out.splitlines()[3]
-    assert place.endswith(f"pkg/{fd.UNDIM}a.go:3") and place.startswith(fd.DIM)  # the directory is inside the dim span, the file after it
+    # the icon dim, the directory plain, the file name bold, the colon muted, the line yellow
+    assert place.endswith(f" pkg/\x1b[1ma.go\x1b[0m{fd.DIM}:{fd.UNDIM}\x1b[33m3\x1b[0m") and place.startswith(fd.DIM)
 

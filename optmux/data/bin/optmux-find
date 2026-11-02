@@ -545,18 +545,22 @@ def preview_header(what, path, line):
     directory = directory + "/" if directory else ""
     if source == "files":
         group, what_is, title, module = "file", "file", name, ""
-        icon, far, near = icons["dir"], directory, ""
+        icon, far, near = icons["dir"], directory, ("", "")
     elif source == "grep":
         group, what_is, title, module = "hit", "match", text or name, ""
-        icon, far, near = icons["file"], directory, f"{base}:{line}"
+        icon, far, near = icons["file"], directory, (base, line)
     else:
         group, what_is, title, module = kind_group(kind), kind or "symbol", name, container
-        icon, far, near = icons["file"], directory, f"{base}:{line}"
+        icon, far, near = icons["file"], directory, (base, line)
     print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
     print(f"{DIM}{icons[group]} {what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
     print(f"{DIM}{icons['mod']} {module[:room]}{UNDIM}" if module else "")
-    far = far[-max(0, room - len(near) - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
-    print(f"{DIM}{icon} {far}{UNDIM}{near}")  # the file name and line stand out, as in the list
+    file_name, number = near
+    width = len(file_name) + len(str(number)) + 1
+    far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
+    # the directory as is, the file name bold, the line number yellow, and the colon between them muted
+    where = (f"\x1b[1m{file_name}\x1b[0m{DIM}:{UNDIM}\x1b[33m{number}\x1b[0m" if file_name else "")
+    print(f"{DIM}{icon}{UNDIM} {far}{where}")
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
