@@ -257,6 +257,29 @@ def tags_file(check=None):
     return out if out.is_file() else None
 
 
+def tags_for_editors():
+    """Path of tags an editor can use from anywhere, or None. Ours name files relative to the project root, but an
+    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths. Your own
+    `tags` at the root is as good as it is."""
+    found = tags_file()
+    root = repo_root()
+    if not found or not root or found == Path(root, "tags"):
+        return found
+    absolute = found.with_suffix(".abs.tags")
+    if not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime:
+        lines = []
+        for line in found.read_text(errors="replace").splitlines(keepends=True):
+            name, tab, rest = line.partition("\t")
+            if tab and not name.startswith("!_"):
+                file, tab2, rest = rest.partition("\t")
+                line = f"{name}\t{os.path.join(root, file)}\t{rest}"
+            lines.append(line)
+        temp = absolute.with_suffix(f".{os.getpid()}")
+        temp.write_text("".join(lines))
+        os.replace(temp, absolute)  # (an editor never reads half of it)
+    return absolute
+
+
 @functools.lru_cache(maxsize=256)
 def file_lines(root, path):
     try:
@@ -914,7 +937,7 @@ if __name__ == "__main__":
         build_locked(sys.argv[2], tags_cache(sys.argv[2]))
         sys.exit(0)
     if sys.argv[1:2] == ["--tags-path"]:  # for an editor: `set tags+=$(optmux-find --tags-path)`; builds them if need be
-        found = tags_file()
+        found = tags_for_editors()
         if found:
             print(found)
         sys.exit(0 if found else 1)

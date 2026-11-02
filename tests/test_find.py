@@ -240,6 +240,21 @@ def test_tags_path_prints_the_tags_an_editor_can_use(repo, tmp_path, tmp_path_fa
     assert run(elsewhere).returncode == 1 and run(elsewhere).stdout == ""  # nothing to point at: an error, not an empty path
 
 
+def test_editors_get_tags_with_absolute_paths(repo, monkeypatch, tmp_path_factory):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od3")))
+    ours = fd.tags_cache(str(repo))
+    ours.write_text('!_TAG_FILE_FORMAT\t2\t/x/\nfoo\tpkg/a.py\t/^def foo$/;"\tfunction\tline:3\nbar\tb.py\t1;"\tf\n')
+    monkeypatch.setattr(fd, "CHECK_TAGS", False)
+    path = fd.tags_for_editors()
+    assert path != ours
+    lines = path.read_text().splitlines()
+    assert lines[0] == '!_TAG_FILE_FORMAT\t2\t/x/'
+    assert lines[1] == f'foo\t{repo}/pkg/a.py\t/^def foo$/;"\tfunction\tline:3'
+    assert lines[2].startswith(f"bar\t{repo}/b.py\t")
+    (repo / "tags").write_text("mine\tapp.py\t1\n")  # yours wins, as it is
+    assert fd.tags_for_editors() == repo / "tags"
+
+
 def test_stale_tags_are_served_while_a_refresh_is_started(repo, fake_ctags, monkeypatch):
     list(fd.list_tags(""))
     stamp = fd.tags_stamp(str(repo))
