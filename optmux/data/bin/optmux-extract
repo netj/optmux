@@ -8,12 +8,15 @@ a multiline script survives the round trip. `C-M-x` cycles what is listed: lines
 program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
 hashes, versions) and words. Enter types the selection into the pane; `C-y` copies it, by the method
 `C-t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
-method are remembered (tmux options on the server) for the next time.
+method are remembered (tmux options on the server) for the next time, and so are each filter's query and the
+item the cursor was on: reopening puts you back where you were, to pick a few more. `find.icons` (emoji, nerd or
+text, as in optmux Find) says how a pattern's kind is drawn.
 
 The selection can also be looked up in the project instead: `C-f` finds it among the files, `C-g` greps for it
 and `C-M-f` searches everything (optmux Find, started in this same popup with the text as its query).
 """
 
+import json
 import os
 import re
 import shlex
@@ -141,6 +144,25 @@ def trim_url(text):
     return text
 
 
+# how a pattern's kind is drawn, by `find.icons` (the same setting as optmux Find, which is why these follow its glyphs)
+PATTERN_ICONS = {
+    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "hash": "🔑", "ver": "🏷️"},
+    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "hash": "\ue729", "ver": "\uf02b"},
+    "text": {"url": "url ", "path": "path", "file": "file", "hash": "hash", "ver": "ver "},
+}
+
+
+def icon_style():
+    """find.icons (from the optmux config, $OPTMUX_DIR/find.json) or OPTMUX_FIND_ICONS; emoji by default."""
+    style = os.environ.get("OPTMUX_FIND_ICONS")
+    if style not in PATTERN_ICONS:
+        try:
+            style = json.loads(open(os.path.join(os.environ["OPTMUX_DIR"], "find.json")).read()).get("icons")
+        except (KeyError, OSError, ValueError, AttributeError):
+            style = None
+    return style if style in PATTERN_ICONS else "emoji"
+
+
 def find_patterns(plain):
     """[(start, label, text)] for the well-known patterns in a line, left to right, without overlaps."""
     taken, found = [], []
@@ -189,6 +211,7 @@ def choices(capture, mode, width=None):
     if mode == "lines":
         return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
     found = {}  # repeats stay once, at their latest position
+    icons = PATTERN_ICONS[icon_style()]
     if mode == "spans":
         for text, style in span_items(parsed, width):
             found.pop(text, None)
@@ -198,7 +221,7 @@ def choices(capture, mode, width=None):
             if mode == "patterns":
                 for _, label, text in find_patterns(plain):
                     found.pop(text, None)
-                    found[text] = f"\x1b[2m{label:<4}\x1b[0m {text}"
+                    found[text] = f"\x1b[2m{icons[label]}\x1b[0m {text}"
             else:
                 for m in WORD.finditer(plain):
                     if len(m.group()) >= MIN_WORD:
@@ -229,8 +252,12 @@ def load_buffer(text, clipboard=False):
     tmux("load-buffer", *(["-w"] if clipboard else []), "-b", BUFFER, "-", input=text, text=True)
 
 
+def show_option(name):
+    return subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
+
+
 def get_option(name, choices, default):
-    value = subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
+    value = show_option(name)
     return value if value in choices else default
 
 
@@ -245,6 +272,49 @@ def copy(text, method):
                 subprocess.run(cmd, input=text, text=True, check=True)
                 return
         raise RuntimeError("no system clipboard command found (pbcopy, wl-copy, xclip, xsel)")
+
+
+STATE_OPTION = "@optmux-extract-at-"  # + the filter: where you left it (JSON: the query, the item under the cursor)
+MAX_ITEM = 300  # characters remembered of an item
+
+
+def load_state(name):
+    """(query, item) last left in the filter `name` (None for an item that is not known)."""
+    try:
+        state = json.loads(show_option(STATE_OPTION + name))
+        query, item = state.get("query"), state.get("item")
+        return (query if isinstance(query, str) else ""), (item if isinstance(item, str) else None)
+    except (ValueError, AttributeError):
+        return "", None
+
+
+def save_state(name, query, item):
+    tmux("set-option", "-g", STATE_OPTION + name,
+         json.dumps({"query": query[:MAX_QUERY], "item": item[:MAX_ITEM] if item else None}, ensure_ascii=False))
+
+
+def fzf_order(numbered, query, shown):
+    """The lines `fzf` would list for `query`, best match first (what `pos(N)` counts), or all of them."""
+    lines = [f"{i}\t{t}\t{d}" for i, (t, d) in numbered]
+    if not query:
+        return lines
+    out = subprocess.run(["fzf", "--ansi", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
+                          *(["--no-sort"] if shown == "lines" else [])],
+                         input="\n".join(lines) + "\n", capture_output=True, text=True).stdout
+    return out.splitlines()
+
+
+def cursor_position(numbered, query, shown, item):
+    """(query, position): where the cursor goes for `item`, 1-based from the best match. A remembered query that
+    matches nothing now is dropped (an empty list is no way to come back), and an item no longer here gives None."""
+    shown_lines = fzf_order(numbered, query, shown)
+    if query and not shown_lines:
+        query, shown_lines = "", fzf_order(numbered, "", shown)
+    if item is not None:
+        for n, line in enumerate(shown_lines, 1):
+            if line.split("\t", 2)[1:2] == [item]:
+                return query, n
+    return query, None
 
 
 def cycle(values, current):
@@ -330,7 +400,7 @@ def pick(pane):
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
     mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
-    query = ""
+    query, remembered = None, None  # (None: not asked yet, so the filter's own is loaded)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
@@ -344,11 +414,20 @@ def pick(pane):
             return 1
         # newest first: fzf's default layout grows upward from the prompt, so the screen reads in its
         # natural order with the most recent choices under the cursor (and ahead among equal matches)
-        numbered = reversed(list(enumerate(items)))
+        numbered = list(reversed(list(enumerate(items))))
+        # back where you left this filter: its query and the cursor on the item it was on (after a switch, the
+        # text just typed comes along, and the cursor only if that is the very query saved)
+        saved_query, saved_item = load_state(shown)
+        if query is None:
+            query, remembered = saved_query, saved_item
+        else:
+            remembered = saved_item if query == saved_query else None
+        query, pos = cursor_position(numbered, query, shown, remembered)
         proc = subprocess.run(
             [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
+                *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
                 f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,esc,{','.join(FIND_KEYS)}",
                 *labels(shown, copier),
             ],
@@ -359,6 +438,7 @@ def pick(pane):
         if proc.returncode not in (0, 1):
             return proc.returncode
         query, key, chosen = parse_fzf_output(proc.stdout)
+        save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
             if not text:
