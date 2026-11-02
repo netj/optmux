@@ -403,7 +403,9 @@ DIM, UNDIM = "\x1b[2m", "\x1b[0m"
 BOLD, YELLOW_BOLD = "\x1b[1m", "\x1b[1;33m"
 
 
-FILE_COLOR, YELLOW = "\x1b[38;5;67m", "\x1b[33m"  # in the list: a dark steel blue, not clashing with the symbol's name; fzf bolds the selection
+# Colors for where a row is, in the list and the preview alike: the file name a dark steel blue (not clashing with
+# a symbol's name), its directory a dark green, the line number yellow. No bold in the list: fzf bolds the selection.
+FILE_COLOR, DIR_COLOR, YELLOW = "\x1b[38;5;67m", "\x1b[38;5;65m", "\x1b[33m"
 
 
 def list_file_line(base, line):
@@ -412,8 +414,8 @@ def list_file_line(base, line):
 
 
 def file_line(base, line):
-    """`file.go:105` as the list and the preview draw it: the file name bold, the colon muted, the line number bold yellow."""
-    return f"{BOLD}{base}{UNDIM}{DIM}:{UNDIM}{YELLOW_BOLD}{line}{UNDIM}"
+    """`file.go:105` as the preview draws it: the file name bold blue, the colon muted, the line number bold yellow."""
+    return f"{BOLD}{FILE_COLOR}{base}{UNDIM}{DIM}:{UNDIM}{YELLOW_BOLD}{line}{UNDIM}"
 
 
 def row(source, kind, name, path, line, container="", text="", detail=""):
@@ -425,12 +427,14 @@ def row(source, kind, name, path, line, container="", text="", detail=""):
     text = re.sub(r"[\t\x1f]", " ", text.strip())  # (source lines have tabs: they would split the row)
     directory, base = os.path.split(path)
     drawn = name  # (`name` itself goes in WHAT, plain)
-    if source == "grep":
+    if source == "files":
+        drawn = f"{FILE_COLOR}{name}{UNDIM}"
+    elif source == "grep":
         drawn = list_file_line(base, line)
     where = "" if source in ("files", "grep") else f"  {list_file_line(base, line)}"
     shown = f"{DIM}{SOURCE_LETTERS[source]}{ICON_STYLES[icon_style()][group]}{UNDIM} {drawn}{where}"
     if directory:
-        shown += f"  {DIM}({directory}){UNDIM}"
+        shown += f"  {DIM}({UNDIM}{DIR_COLOR}{directory}{UNDIM}{DIM}){UNDIM}"
     what = FIELD_SEP.join((source, kind, name, container, detail, text[:300]))
     return f"{path}\t{line}\t{shown}\t{text}\t{what}"
 
@@ -575,9 +579,9 @@ def preview_header(what, path, line):
     file_name, number = near
     width = len(file_name) + len(str(number)) + 1
     far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
-    # the directory muted, the file name bold, the colon between them muted, the line number bold yellow
+    # the directory green, the file name bold blue, the colon between them muted, the line number bold yellow
     where = file_line(file_name, number) if file_name else ""
-    print(f"{DIM}{icon} {far}{UNDIM}{where}")
+    print(f"{DIM}{icon}{UNDIM} {DIR_COLOR}{far}{UNDIM}{where}")
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
