@@ -737,3 +737,13 @@ def test_a_language_servers_symbol_says_which_language_it_is_of():
     assert fd.source_title("lsp", "python: basedpyright-langserver") == "Python symbol (lsp: basedpyright-langserver)"
     assert fd.source_title("lsp", "typescript: tsserver") == "TypeScript symbol (lsp: tsserver)"
     assert fd.source_title("lsp", "") == "Symbol (lsp)"
+
+
+def test_the_preview_header_without_icons_has_no_stray_space(monkeypatch, capsys):
+    monkeypatch.setenv("OPTMUX_ICONS", "none")
+    fd.icon_style.cache_clear()
+    what = fd.FIELD_SEP.join(("lsp", "method", "Layout", "Gui", "go: gopls", ""))
+    fd.preview_header(what, "pkg/a.go", "3")
+    lines = capsys.readouterr().out.split("\n")
+    assert lines[2] == "Gui"  # the module line: no icon, no indent, no empty escape pair
+    assert all("\x1b[2m\x1b[0m" not in l for l in lines)

@@ -295,8 +295,11 @@ def load_state(name):
 
 
 def save_state(name, query, item):
-    tmux("set-option", "-g", STATE_OPTION + name,
-         json.dumps({"query": query[:MAX_QUERY], "item": item[:MAX_ITEM] if item else None}, ensure_ascii=False))
+    try:
+        tmux("set-option", "-g", STATE_OPTION + name,
+             json.dumps({"query": query[:MAX_QUERY], "item": item[:MAX_ITEM] if item else None}, ensure_ascii=False))
+    except (subprocess.CalledProcessError, OSError):
+        pass  # (forgetting where you were is no reason to lose what you picked)
 
 
 def fzf_order(numbered, query, shown):
@@ -318,7 +321,7 @@ def cursor_position(numbered, query, shown, item):
         query, shown_lines = "", fzf_order(numbered, "", shown)
     if item is not None:
         for n, line in enumerate(shown_lines, 1):
-            if line.split("\t", 2)[1:2] == [item]:
+            if line.split("\t", 2)[1:2] and line.split("\t", 2)[1][:MAX_ITEM] == item:  # (an item is remembered cut to MAX_ITEM)
                 return query, n
     return query, None
 

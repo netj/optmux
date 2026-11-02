@@ -301,3 +301,9 @@ def test_no_icons_leaves_the_items_bare(monkeypatch):
     monkeypatch.delenv("OPTMUX_ICONS")
     monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
     assert pt.icon_style() == "nerd"
+
+
+def test_a_long_item_gets_its_cursor_back_too():
+    long = "x" * 500
+    numbered = [(0, (long, long)), (1, ("short", "short"))]
+    assert pt.cursor_position(numbered, "", "words", long[:pt.MAX_ITEM]) == ("", 1)
