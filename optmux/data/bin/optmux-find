@@ -553,9 +553,9 @@ def preview_header(what, path, line):
         group, what_is, title, module = kind_group(kind), kind or "symbol", name, container
         icon, place = icons["file"], f"{directory}{base}:{line}"
     print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
-    print(f"{icons[group]} {DIM}{what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
-    print(f"{icons['mod']} {DIM}{module[:room]}{UNDIM}" if module else "")
-    print(f"{icon} {DIM}{place[-max(0, room - 3):]}{UNDIM}")  # (the near end of a long path is what counts)
+    print(f"{DIM}{icons[group]} {what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
+    print(f"{DIM}{icons['mod']} {module[:room]}{UNDIM}" if module else "")
+    print(f"{DIM}{icon} {place[-max(0, room - 3):]}{UNDIM}")  # (the near end of a long path is what counts)
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
