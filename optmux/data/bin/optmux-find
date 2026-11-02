@@ -14,7 +14,7 @@ One picker with five sources, like ctrl-p in vim but remembering where you were:
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
 afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
-query, and `^p` (then older ones; `^n` goes forward) recalls that source's earlier queries (fzf's own history,
+query, and `M-p` (then older ones; `M-n` goes forward) recalls that source's earlier queries (fzf's own history,
 which also records queries you left with Esc or a switch). Enter opens the pick in an editor split next to the
 agent, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
 $OPTMUX_DIR/find/ (per project): SOURCE.{last,history}, and recent.json, what you opened, which pulls
@@ -787,7 +787,7 @@ def remember_query(path, query):
 def header(mode):
     tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}"
                      for m in MODES)
-    return f"{tabs}  C-M-f: next\nC-u: clear;  C-p/C-n: history;  C-/: preview;  Enter: open"  # two lines: the list may be narrow
+    return f"{tabs}  C-M-f: next\nC-u: clear;  M-p/M-n: history;  C-/: preview;  Enter: open"  # two lines: the list may be narrow
 
 
 def parse_output(stdout):
@@ -877,6 +877,7 @@ def pick(pane, start_mode=None, start_query=None):
                "--with-nth=3" if compact or mode != "grep" else "--with-nth=3..4", "--no-sort" if mode in LIVE else "--tiebreak=index",
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
+               "--bind=ctrl-p:up,ctrl-n:down,alt-p:prev-history,alt-n:next-history",  # (history is on M-p/M-n: C-p/C-n keep moving the cursor)
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
         if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
             fzf += preview_args(me, mode, compact)
