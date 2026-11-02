@@ -246,13 +246,13 @@ def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
     assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x"}  # extract's own keys
 
 
-def test_patterns_are_drawn_with_the_icons_of_find_icons(monkeypatch):
+def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
     cap = "see https://x.org/a and ./b/c.py and abc1234 and v1.2.3\n"
-    for style, glyphs in (("emoji", ["🔗", "📁", "🔑", "🏷️"]), ("nerd", ["\uf0c1", "\uf07b", "\ue729", "\uf02b"]), ("text", ["url", "path", "hash", "ver"])):
-        monkeypatch.setenv("OPTMUX_FIND_ICONS", style)
+    for style, glyphs in (("emoji", ["🔗", "📁", "#️⃣", "🏷️"]), ("nerd", ["\uf0c1", "\uf07b", "\ue729", "\uf02b"]), ("text", ["url", "path", "hash", "ver"])):
+        monkeypatch.setenv("OPTMUX_ICONS", style)
         shown = "\n".join(d for _, d in pt.choices(cap, "patterns"))
         assert all(g in shown for g in glyphs), style
-    monkeypatch.delenv("OPTMUX_FIND_ICONS")
+    monkeypatch.delenv("OPTMUX_ICONS")
     monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
     assert pt.icon_style() == "emoji"
 
@@ -277,3 +277,18 @@ def test_the_cursor_goes_back_to_the_remembered_item():
     assert pt.cursor_position(numbered, "alp", "words", "beta") == ("alp", None)  # not in the list it filters to
     assert pt.cursor_position(numbered, "zzz", "words", "beta") == ("", 2)  # a query that matches nothing now is dropped
     assert pt.cursor_position(numbered, "", "words", None) == ("", None)
+
+
+def test_every_filter_marks_its_items_the_same_way(monkeypatch):
+    for style, marks in (("emoji", {"lines": "📃", "spans": "🎨", "words": "🔤"}), ("text", {"lines": "line", "spans": "span", "words": "word"})):
+        monkeypatch.setenv("OPTMUX_ICONS", style)
+        for mode, mark in marks.items():
+            shown = [d for _, d in pt.choices(CAPTURE, mode)]
+            assert shown and all(mark in d for d in shown), (style, mode)
+    assert [t for t, _ in pt.choices(CAPTURE, "lines")][1] == '  git commit -m "msg"'  # (what is typed has no mark)
+
+
+def test_the_header_mentions_clearing_the_query(monkeypatch):
+    for columns in (60, 120):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
+        assert "C-u" in pt.labels("words", "osc52")[0]

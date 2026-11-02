@@ -189,6 +189,7 @@ def test_setup_tools_env_writes_the_merged_find_section(tmp_path):
     written = json.loads((tmp_path / "find.json").read_text())
     assert written["lsp"]["python"]["enabled"] is False and written["lsp"]["go"]["servers"]
     assert (tmp_path / "bin/optmux-lsp").stat().st_mode & 0o111  # installed, executable
+    assert written["icons"] == "emoji"  # (the top-level setting, passed on to the helpers)
 
 
 def test_disabled_languages_are_dropped_by_the_loader(tmp_path, monkeypatch):
@@ -410,15 +411,15 @@ def test_fast_query_never_starts_a_hub_and_answers_from_a_running_one(project):
 
 
 def test_icons_setting_is_known_and_defaulted():
-    assert load_bundled_defaults()["find"]["icons"] == "emoji"
+    assert load_bundled_defaults()["icons"] == "emoji"
     import io
     from contextlib import redirect_stderr
     err = io.StringIO()
     with redirect_stderr(err):
-        _validate_optmux_section({"find": {"icons": "nerd"}}, "src")
+        _validate_optmux_section({"icons": "nerd"}, "src")
     assert err.getvalue() == ""
     with redirect_stderr(err):
-        _validate_optmux_section({"find": {"icons": "sparkles", "preview": "off"}}, "src")
+        _validate_optmux_section({"icons": "sparkles", "find": {"preview": "off"}}, "src")
     assert "sparkles" in err.getvalue() and "emoji" in err.getvalue() and "find.preview: 'off'" in err.getvalue()
 
 
@@ -540,3 +541,8 @@ def test_open_scripts_tells_the_server_about_each_one(tmp_path):
     doc = sent[0]["params"]["textDocument"]
     assert sent[0]["method"] == "textDocument/didOpen" and doc["languageId"] == "python" and "class Style" in doc["text"]
     assert doc["uri"] == (tmp_path / "tool").as_uri()
+
+
+def test_icons_setting_is_merged_last_wins_and_written_for_the_helpers():
+    assert merge_optmux({"icons": "emoji"}, {"find": {}}, {"icons": "nerd"})["icons"] == "nerd"
+    assert "icons" not in merge_optmux({}, {})

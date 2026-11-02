@@ -9,7 +9,7 @@ program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, f
 hashes, versions) and words. Enter types the selection into the pane; `C-y` copies it, by the method
 `C-t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
 method are remembered (tmux options on the server) for the next time, and so are each filter's query and the
-item the cursor was on: reopening puts you back where you were, to pick a few more. `find.icons` (emoji, nerd or
+item the cursor was on: reopening puts you back where you were, to pick a few more. `icons` (emoji, nerd or
 text, as in optmux Find) says how a pattern's kind is drawn.
 
 The selection can also be looked up in the project instead: `C-f` finds it among the files, `C-g` greps for it
@@ -144,17 +144,19 @@ def trim_url(text):
     return text
 
 
-# how a pattern's kind is drawn, by `find.icons` (the same setting as optmux Find, which is why these follow its glyphs)
+# How each item is drawn, by `icons` (the same setting as optmux Find, whose glyphs these follow): a pattern by
+# its kind, any other by the filter it is listed by (the same icon on every row, so switching filters keeps the columns).
 PATTERN_ICONS = {
-    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "hash": "🔑", "ver": "🏷️"},
-    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "hash": "\ue729", "ver": "\uf02b"},
-    "text": {"url": "url ", "path": "path", "file": "file", "hash": "hash", "ver": "ver "},
+    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "hash": "#️⃣", "ver": "🏷️", "lines": "📃", "spans": "🎨", "words": "🔤"},
+    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "hash": "\ue729", "ver": "\uf02b",
+             "lines": "\uf0c9", "spans": "\uf1fc", "words": "\uf031"},
+    "text": {"url": "url ", "path": "path", "file": "file", "hash": "hash", "ver": "ver ", "lines": "line", "spans": "span", "words": "word"},
 }
 
 
 def icon_style():
-    """find.icons (from the optmux config, $OPTMUX_DIR/find.json) or OPTMUX_FIND_ICONS; emoji by default."""
-    style = os.environ.get("OPTMUX_FIND_ICONS")
+    """`icons` (from the optmux config, $OPTMUX_DIR/find.json) or OPTMUX_ICONS; emoji by default."""
+    style = os.environ.get("OPTMUX_ICONS")
     if style not in PATTERN_ICONS:
         try:
             style = json.loads(open(os.path.join(os.environ["OPTMUX_DIR"], "find.json")).read()).get("icons")
@@ -209,13 +211,15 @@ def choices(capture, mode, width=None):
     while parsed and not parsed[-1][0][0].strip():
         parsed.pop()
     if mode == "lines":
-        return [(plain.rstrip(), OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
+        mark = f"\x1b[2m{PATTERN_ICONS[icon_style()]['lines']}\x1b[0m "
+        return [(plain.rstrip(), mark + OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
     found = {}  # repeats stay once, at their latest position
     icons = PATTERN_ICONS[icon_style()]
+    mark = f"\x1b[2m{icons.get(mode, '')}\x1b[0m "
     if mode == "spans":
         for text, style in span_items(parsed, width):
             found.pop(text, None)
-            found[text] = f"{style.sgr()}{text}\x1b[0m"
+            found[text] = f"{mark}{style.sgr()}{text}\x1b[0m"
     else:
         for (plain, _), _ in parsed:
             if mode == "patterns":
@@ -226,7 +230,7 @@ def choices(capture, mode, width=None):
                 for m in WORD.finditer(plain):
                     if len(m.group()) >= MIN_WORD:
                         found.pop(m.group(), None)
-                        found[m.group()] = m.group()
+                        found[m.group()] = mark + m.group()
     return list(found.items())
 
 def compose(selection, mode):
@@ -331,10 +335,10 @@ def labels(filter_name, copier):
     """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
     do what."""
     if shutil.get_terminal_size().columns < NARROW:
-        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)\nC-f: files;  C-g: grep;  C-M-f: all",
+        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)\nC-u: clear;  C-f: files;  C-g: grep;  C-M-f: all",
                 f"--prompt={filter_name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)\n"
-            "Look it up in the project:  C-f in files;  C-g by grep;  C-M-f everywhere",
+            "C-u to clear the query;  look it up in the project:  C-f in files;  C-g by grep;  C-M-f everywhere",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
 
 

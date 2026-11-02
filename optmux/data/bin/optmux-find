@@ -397,8 +397,8 @@ def find_config():
 
 @functools.lru_cache(maxsize=1)
 def icon_style():
-    """find.icons, or OPTMUX_FIND_ICONS."""
-    style = os.environ.get("OPTMUX_FIND_ICONS") or find_config().get("icons")
+    """The `icons` setting, or OPTMUX_ICONS."""
+    style = os.environ.get("OPTMUX_ICONS") or find_config().get("icons")
     return style if style in ICON_STYLES else DEFAULT_ICONS
 
 

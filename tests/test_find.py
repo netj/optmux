@@ -224,6 +224,13 @@ def test_tags_are_built_on_first_use_and_reused_while_the_project_is_unchanged(r
     assert fake_ctags.read_text().count("run") == 1  # unchanged: no rebuild, no refresh
 
 
+@pytest.fixture(autouse=True)
+def _fresh_find_config():
+    fd.find_config.cache_clear()
+    yield
+    fd.find_config.cache_clear()
+
+
 def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
     (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
     assert [fd.what_of(l)[2] for l in fd.list_tags("")] == ["mine"]
@@ -377,7 +384,7 @@ def test_the_picker_works_from_the_project_root(repo, monkeypatch, tmp_path_fact
 
 @pytest.fixture(autouse=True)
 def fresh_icon_style(monkeypatch):
-    monkeypatch.delenv("OPTMUX_FIND_ICONS", raising=False)
+    monkeypatch.delenv("OPTMUX_ICONS", raising=False)
     monkeypatch.delenv("OPTMUX_FIND_PREVIEW", raising=False)
     fd.icon_style.cache_clear()
     fd.find_config.cache_clear()
@@ -389,13 +396,13 @@ def fresh_icon_style(monkeypatch):
 def test_icons_by_style_and_back(monkeypatch):
     assert fd.with_icon("call", "x").startswith("⚡️ ")  # emoji is the default
     for style in fd.ICON_STYLES:
-        monkeypatch.setenv("OPTMUX_FIND_ICONS", style)
+        monkeypatch.setenv("OPTMUX_ICONS", style)
         fd.icon_style.cache_clear()
         for kind in fd.ICON_STYLES[style]:
             found, rest = fd.split_icon(fd.ANSI.sub("", fd.with_icon(kind, "rest of  the row")))  # (fzf hands over rows without the colors)
             assert rest == "rest of  the row" and fd.ICON_STYLES[style][found] == fd.ICON_STYLES[style][kind], (style, kind)  # (kinds may share an icon)
     assert fd.split_icon("plain row") == (None, "plain row")
-    monkeypatch.setenv("OPTMUX_FIND_ICONS", "bogus")
+    monkeypatch.setenv("OPTMUX_ICONS", "bogus")
     fd.icon_style.cache_clear()
     assert fd.icon_style() == "emoji"  # an unknown style is the default
 
@@ -464,7 +471,7 @@ def test_marker_rows_exist_only_in_the_language_server_source():
 
 def test_a_tag_named_like_an_icon_word_is_still_recorded_as_its_tag(monkeypatch, tmp_path):
     monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
-    monkeypatch.setenv("OPTMUX_FIND_ICONS", "text")
+    monkeypatch.setenv("OPTMUX_ICONS", "text")
     fd.icon_style.cache_clear()
     fd.record_opened("tags", fd.row("tags", "f", "file", "x.py", 1))  # a tag called `file`
     assert fd.load_recent()[:2] == ["file\tx.py", "x.py"]
@@ -496,7 +503,7 @@ def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_
     assert shown("grep", "hit", "layout.go:12", "pkg/gui/layout.go", 12, text="x := 1") == "G🔍 layout.go:12  (pkg/gui)"
     assert shown("tags", "function", "Layout", "pkg/gui/layout.go", 12) == "T⚡️ Layout  layout.go:12  (pkg/gui)"
     assert shown("lsp", "method", "Gui.Layout", "pkg/gui/layout.go", 12, "Gui") == "L⚡️ Gui.Layout  layout.go:12  (pkg/gui)"
-    monkeypatch.setenv("OPTMUX_FIND_ICONS", "text")
+    monkeypatch.setenv("OPTMUX_ICONS", "text")
     fd.icon_style.cache_clear()
     assert shown("tags", "m", "Layout", "a/b.go", 3) == "Tf Layout  b.go:3  (a)"  # source letter, kind letter
     assert shown("lsp", "variable", "x", "b.go", 3) == "Lv x  b.go:3"
@@ -514,7 +521,7 @@ def test_the_source_and_its_dir_are_dimmed_in_the_list():
 def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_and_where_it_is(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(fd.shutil, "which", lambda name: None)
-    monkeypatch.setenv("OPTMUX_FIND_ICONS", "emoji")
+    monkeypatch.setenv("OPTMUX_ICONS", "emoji")
     fd.icon_style.cache_clear()
     Path("pkg").mkdir()
     Path("pkg/a.go").write_text("".join(f"line {i}\n" for i in range(1, 60)))
