@@ -511,6 +511,25 @@ def test_scripts_of_the_projects_languages_are_found_with_a_cap(tmp_path, monkey
     assert len(lsp.find_scripts(str(tmp_path), files, config)["python"]) == 2
 
 
+def test_a_file_that_was_no_script_is_not_opened_again_for_a_day_unless_it_changed(tmp_path, monkeypatch):
+    (tmp_path / "LICENSE").write_text("MIT\n")
+    config, known = {"python": {"extensions": ["py"]}}, {}
+    opened = []
+    real = lsp.script_language
+    monkeypatch.setattr(lsp, "script_language", lambda root, name: opened.append(name) or real(root, name))
+    lsp.find_scripts(str(tmp_path), ["LICENSE"], config, known)
+    lsp.find_scripts(str(tmp_path), ["LICENSE"], config, known)
+    assert opened == ["LICENSE"]  # the second scan only stat'ed it
+    (tmp_path / "LICENSE").write_text("#!/usr/bin/env python3\n")  # it became a script
+    assert lsp.find_scripts(str(tmp_path), ["LICENSE"], config, known) == {"python": [("LICENSE", "python")]}
+    assert "LICENSE" not in known
+    (tmp_path / "NOTES").write_text("n\n")
+    lsp.find_scripts(str(tmp_path), ["NOTES"], config, known)
+    known["NOTES"] = (known["NOTES"][0], known["NOTES"][1] - lsp.RECHECK_NOT_SCRIPT - 1)  # a day later
+    lsp.find_scripts(str(tmp_path), ["NOTES"], config, known)
+    assert opened.count("NOTES") == 2
+
+
 def test_open_scripts_tells_the_server_about_each_one(tmp_path):
     (tmp_path / "tool").write_text("#!/usr/bin/env python3\nclass Style: pass\n")
     sent = []

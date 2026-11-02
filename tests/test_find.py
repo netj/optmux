@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -227,6 +228,35 @@ def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
     (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
     assert [fd.what_of(l)[2] for l in fd.list_tags("")] == ["mine"]
     assert not fake_ctags.exists()
+
+
+def test_tags_path_prints_the_tags_an_editor_can_use(repo, tmp_path, tmp_path_factory):
+    run = lambda where: subprocess.run([sys.executable, "-B", fd.__file__, "--tags-path"], cwd=where, capture_output=True, text=True,
+                                       env={**os.environ, "OPTMUX_DIR": str(tmp_path / "od")})
+    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\n')
+    done = run(repo)
+    assert done.returncode == 0 and done.stdout.strip() == str(repo / "tags")
+    elsewhere = tmp_path_factory.mktemp("not-a-project")  # (tmp_path itself is the repo)
+    assert run(elsewhere).returncode == 1 and run(elsewhere).stdout == ""  # nothing to point at: an error, not an empty path
+
+
+def test_editors_get_tags_with_absolute_paths(repo, monkeypatch, tmp_path_factory):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od3")))
+    ours = fd.tags_cache(str(repo))
+    ours.write_text('!_TAG_FILE_FORMAT\t2\t/x/\nfoo\tpkg/a.py\t/^def foo$/;"\tfunction\tline:3\nbar\tb.py\t1;"\tf\n')
+    monkeypatch.setattr(fd, "CHECK_TAGS", False)
+    path = fd.tags_for_editors()
+    assert path != ours
+    lines = path.read_text().splitlines()
+    assert lines[0] == '!_TAG_FILE_FORMAT\t2\t/x/'
+    assert lines[1] == f'foo\t{repo}/pkg/a.py\t/^def foo$/;"\tfunction\tline:3'
+    assert lines[2].startswith(f"bar\t{repo}/b.py\t")
+    ours.write_bytes(b'ff\tc.py\t/^def ff(x="a\x0cb"):$/;"\tf\n')  # a form feed in a pattern is no line end
+    ours.touch()
+    path = fd.tags_for_editors()
+    assert path.read_bytes() == f'ff\t{repo}/c.py\t/^def ff(x="a\x0cb"):$/;"\tf\n'.encode()
+    (repo / "tags").write_text("mine\tapp.py\t1\n")  # yours wins, as it is
+    assert fd.tags_for_editors() == repo / "tags"
 
 
 def test_stale_tags_are_served_while_a_refresh_is_started(repo, fake_ctags, monkeypatch):
@@ -493,7 +523,7 @@ def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_an
     fd.preview("lsp", "pkg/a.go", "30", "x", what("lsp", "method", "Gui.Layout", "pkg/a.go", 30, "Gui", detail="go: gopls"), 20)
     out = strip(capsys.readouterr().out)
     assert len(out) == 20  # the header is part of the window's height
-    assert out[:4] == ["Symbol (lsp go: gopls)", "⚡️ method · Gui.Layout", "📖 Gui", "📄 pkg/a.go:30"]
+    assert out[:4] == ["Go symbol (lsp: gopls)", "⚡️ method · Gui.Layout", "📖 Gui", "📄 pkg/a.go:30"]
     assert out[4].startswith("──") and any(l.endswith("line 30") for l in out[5:])
     fd.preview("files", "pkg/a.go", "1", "x", what("files", "file", "a.go", "pkg/a.go", 1), 10)
     assert strip(capsys.readouterr().out)[:4] == ["File path (find)", "📄 file · a.go", "", "📁 pkg/"]  # nothing said twice
@@ -594,8 +624,8 @@ def test_preview_is_on_unless_turned_off(monkeypatch, tmp_path):
 
 def test_header_marks_the_current_source_and_keeps_the_keys_on_a_line_of_their_own():
     tabs, keys = fd.header("grep").split("\n")
-    assert "[grep ^g]" in tabs and "omni ^o" in tabs and "[omni" not in tabs
-    assert "C-M-f: next" in keys and "^/: preview" in keys
+    assert "[grep C-g]" in tabs and "omni C-o" in tabs and "[omni" not in tabs
+    assert tabs.endswith("C-M-f: next") and "Enter: open" in keys and "C-/: preview" in keys and "^" not in keys
 
 
 def test_find_starts_in_a_given_source_with_a_given_query(capsys):
@@ -692,3 +722,9 @@ def test_a_short_preview_window_is_all_code_not_a_header(tmp_path, monkeypatch, 
     fd.preview("tags", "a.py", "10", "x", what, 4)
     out = capsys.readouterr().out.splitlines()
     assert len(out) == 4 and all("line" in l for l in out)
+
+
+def test_a_language_servers_symbol_says_which_language_it_is_of():
+    assert fd.source_title("lsp", "python: basedpyright-langserver") == "Python symbol (lsp: basedpyright-langserver)"
+    assert fd.source_title("lsp", "typescript: tsserver") == "TypeScript symbol (lsp: tsserver)"
+    assert fd.source_title("lsp", "") == "Symbol (lsp)"
