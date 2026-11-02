@@ -336,7 +336,7 @@ def boost(keys, recent):
 
 
 ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
-    "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "⚪\ufe0f", "call": "⚡️", "type": "🧩", "mod": "📖", "pkg": "📦",
+    "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "🎫", "call": "⚡️", "type": "🧩", "mod": "📖", "pkg": "📦",
               "val": "🏷️", "install": "⚠️", "wait": "⏳", "note": "💬"},
     "nerd": {"file": "\uf016", "dir": "\uf07b", "hit": "\uf002", "sym": "\ueb63", "call": "\uf0e7", "type": "\uf12e",
              "mod": "\uf1b2", "pkg": "\uf1b3", "val": "\uf02b", "install": "\uf071", "wait": "\uf252", "note": "\uf05a"},
