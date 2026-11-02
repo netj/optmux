@@ -267,15 +267,15 @@ def tags_for_editors():
         return found
     absolute = found.with_suffix(".abs.tags")
     if not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime:
+        prefix = os.path.join(root, "").encode()
         lines = []
-        for line in found.read_text(errors="replace").splitlines(keepends=True):
-            name, tab, rest = line.partition("\t")
-            if tab and not name.startswith("!_"):
-                file, tab2, rest = rest.partition("\t")
-                line = f"{name}\t{os.path.join(root, file)}\t{rest}"
+        for line in found.read_bytes().split(b"\n"):  # (bytes, split on newlines only: patterns may hold form feeds and the like)
+            name, tab, rest = line.partition(b"\t")
+            if tab and not name.startswith(b"!_"):
+                line = name + tab + prefix + rest if not rest.startswith(b"/") else line
             lines.append(line)
         temp = absolute.with_suffix(f".{os.getpid()}")
-        temp.write_text("".join(lines))
+        temp.write_bytes(b"\n".join(lines))
         os.replace(temp, absolute)  # (an editor never reads half of it)
     return absolute
 

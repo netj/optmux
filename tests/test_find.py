@@ -251,6 +251,10 @@ def test_editors_get_tags_with_absolute_paths(repo, monkeypatch, tmp_path_factor
     assert lines[0] == '!_TAG_FILE_FORMAT\t2\t/x/'
     assert lines[1] == f'foo\t{repo}/pkg/a.py\t/^def foo$/;"\tfunction\tline:3'
     assert lines[2].startswith(f"bar\t{repo}/b.py\t")
+    ours.write_bytes(b'ff\tc.py\t/^def ff(x="a\x0cb"):$/;"\tf\n')  # a form feed in a pattern is no line end
+    ours.touch()
+    path = fd.tags_for_editors()
+    assert path.read_bytes() == f'ff\t{repo}/c.py\t/^def ff(x="a\x0cb"):$/;"\tf\n'.encode()
     (repo / "tags").write_text("mine\tapp.py\t1\n")  # yours wins, as it is
     assert fd.tags_for_editors() == repo / "tags"
 
