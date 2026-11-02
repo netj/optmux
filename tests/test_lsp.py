@@ -95,15 +95,28 @@ def test_rows_use_relative_paths_one_based_lines_and_kind_names(tmp_path):
         {"name": "NoRange", "kind": 13, "location": {"uri": (tmp_path / "b.py").as_uri()}},
         {"name": "NoLocation"},
     ], root))
-    assert rows == ["src/a.py\t5\trun  function  App  src/a.py:5",
-                    "/usr/lib/lib.py\t1\tLib  class  /usr/lib/lib.py:1",
-                    "b.py\t1\tNoRange  variable  b.py:1"]
+    assert rows == ["src/a.py\t5\trun\x1ffunction\x1fApp\x1f",
+                    "/usr/lib/lib.py\t1\tLib\x1fclass\x1f\x1f",
+                    "b.py\t1\tNoRange\x1fvariable\x1f\x1f"]
+
+
+def test_only_go_names_lose_a_qualifier_other_names_with_slash_and_dot_are_left_alone(tmp_path):
+    sym = lambda name: {"name": name, "kind": 13, "location": {"uri": (tmp_path / "a.go").as_uri()}}
+    names = lambda source: [r.split("\t")[2].split("\x1f")[0] for r in lsp.rows_of([sym("github.com/o/r/pkg/gui.Gui.Layout"), sym("Read docs/README.md")], str(tmp_path), source)]
+    assert names("go: gopls")[0] == "Gui.Layout"  # (Go's qualified names are where the qualifier comes from)
+    assert names("typescript: tsserver") == ["github.com/o/r/pkg/gui.Gui.Layout", "Read docs/README.md"]
+
+
+def test_a_package_qualifier_is_dropped_from_a_symbols_name():
+    assert lsp.short_name("github.com/org/repo/pkg/gui/controllers/helpers.MergeAndRebaseHelper.Run") == "MergeAndRebaseHelper.Run"
+    assert lsp.short_name("github.com/org/repo/pkg/gui.Gui") == "Gui"
+    assert lsp.short_name("Gui.Layout") == "Gui.Layout" and lsp.short_name("a/b") == "a/b" and lsp.short_name("") == ""
 
 
 def test_hub_asks_the_fake_server_and_answers_with_rows(project):
     rows = wait_for(project, "hello", lambda r: r and r[0][0] == "a.py")
     assert [r[:2] for r in rows] == [["a.py", "1"], ["b.py", "4"]]
-    assert rows[0][2] == "hello_world  function  mod  a.py:1"
+    assert rows[0][2].startswith("hello_world\x1ffunction\x1fmod\x1f") and rows[0][2].endswith("python")  # which server said so (LANG: command)
     # one more query: answered by the same hub, no new server
     assert [r[0] for r in query(project, "other")] == ["b.py"]
 
@@ -441,3 +454,70 @@ def test_the_places_installers_put_binaries_are_searched(monkeypatch):
     path = lsp.search_path().split(os.pathsep)
     assert path[0] == "/opt/homebrew/bin" and "/somewhere/gobin" in path
     assert str(Path.home() / ".local/bin") in path and str(Path.home() / ".cargo/bin") in path
+
+
+def test_a_hub_left_running_by_an_older_optmux_is_replaced_not_read(monkeypatch):
+    calls = []
+    def fake_exchange(path, request, timeout):
+        calls.append(request["op"])
+        if "stopped" in calls:
+            raise OSError("gone")
+        if request["op"] == "stop":
+            calls.append("stopped")
+        return {"rows": ["old\t1\told  function  x  old:1"], "status": {}}  # no protocol: an old hub's answer
+    monkeypatch.setattr(lsp, "exchange", fake_exchange)
+    started = []
+    monkeypatch.setattr(lsp.subprocess, "Popen", lambda *a, **k: started.append(a))
+    assert lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=False) is None  # the fast path leaves it be
+    assert calls == ["query"] and not started
+    lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=True)
+    assert "stop" in calls and started  # asked to stop, then started its own
+
+
+def test_stop_reaches_a_hub_from_an_older_optmux(monkeypatch):
+    monkeypatch.setattr(lsp, "exchange", lambda path, request, timeout: {"status": {}})  # no protocol: an old hub
+    assert lsp.ask_hub("/p", {"op": "stop"}, start=False) == {"status": {}}  # (asked: it stopped)
+    assert lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=False) is None
+
+
+def test_a_script_is_of_the_language_its_shebang_says(tmp_path):
+    def script(name, first):
+        (tmp_path / name).write_text(first + "\nx = 1\n")
+        return lsp.script_language(str(tmp_path), name)
+    assert script("a", "#!/usr/bin/env python3") == ("python", "python")
+    assert script("b", "#!/usr/bin/python") == ("python", "python")
+    assert script("c", "#!/usr/bin/env -S python3 -u") == ("python", "python")
+    assert script("d", "#!/bin/bash") == ("bash", "shellscript")
+    assert script("e", "#!/usr/bin/env node") == ("typescript", "javascript")
+    assert script("f", "#!/usr/bin/env optmux") is None  # not a language we know
+    assert script("g", "no shebang") is None and lsp.script_language(str(tmp_path), "missing") is None
+    assert script("h", "#!/usr/bin/env python3.12") == ("python", "python")  # a versioned interpreter
+
+
+def test_scripts_of_the_projects_languages_are_found_with_a_cap(tmp_path, monkeypatch):
+    for n in range(5):
+        (tmp_path / f"tool{n}").write_text("#!/usr/bin/env python3\n")
+    (tmp_path / "README").write_text("hello\n")
+    (tmp_path / "mod.py").write_text("x\n")
+    (tmp_path / "run.sh").write_text("#!/bin/bash\n")  # has an extension: the server knows it
+    files = [f"tool{n}" for n in range(5)] + ["README", "mod.py", "run.sh", "sub/tool9"]
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/tool9").write_text("#!/usr/bin/env python\n")
+    config = {"python": {"extensions": ["py"]}}
+    found = lsp.find_scripts(str(tmp_path), files, config)
+    assert sorted(f for f, _ in found["python"]) == sorted([f"tool{n}" for n in range(5)] + ["sub/tool9"])
+    assert list(found) == ["python"]  # (bash is not a language of this config)
+    monkeypatch.setattr(lsp, "MAX_SCRIPTS", 2)
+    assert len(lsp.find_scripts(str(tmp_path), files, config)["python"]) == 2
+
+
+def test_open_scripts_tells_the_server_about_each_one(tmp_path):
+    (tmp_path / "tool").write_text("#!/usr/bin/env python3\nclass Style: pass\n")
+    sent = []
+    server = lsp.LanguageServer.__new__(lsp.LanguageServer)
+    server.root, server.scripts, server.send = str(tmp_path), [("tool", "python"), ("gone", "python")], sent.append
+    server.open_scripts()
+    assert len(sent) == 1  # (the missing one is skipped)
+    doc = sent[0]["params"]["textDocument"]
+    assert sent[0]["method"] == "textDocument/didOpen" and doc["languageId"] == "python" and "class Style" in doc["text"]
+    assert doc["uri"] == (tmp_path / "tool").as_uri()

@@ -88,9 +88,9 @@ def list_files(_query):
         out = run("git", "ls-files", "-co", "--exclude-standard").stdout
     else:
         out = run("find", ".", "-type", "f", "-not", "-path", "*/.git/*").stdout
-    for f in sorted(set(out.splitlines())):
+    for f in sorted({f.removeprefix("./") for f in out.splitlines()}):  # (`find .` says ./a)
         if f and os.path.isfile(f):
-            yield f"{f}\t1\t{f}"
+            yield row("files", "file", os.path.basename(f), f, 1)
 
 
 MIN_GREP_QUERY = 2  # characters; one letter matches half the repo and only makes the list churn
@@ -125,7 +125,7 @@ def list_grep(query):
         if status not in (2, 128) or hits:  # 128 (git) / 2 (grep): not a valid regex; retry as plain text
             break
     for f, n, text in sorted(hits):
-        yield f"{f}\t{n}\t{f}:{n}: {text}"
+        yield row("grep", "hit", f"{os.path.basename(f)}:{n}", f, n, text=text)
 
 
 def find_ctags():
@@ -146,6 +146,9 @@ def tags_cache(root):
     return state_dir() / f"optmux-{hashlib.sha1(root.encode()).hexdigest()[:10]}.tags"
 
 
+TAGS_FORMAT = "kind-names"  # changes when what we ask ctags for does: tags built the old way are stale
+
+
 def tags_stamp(root):
     """What the tags are built from: the commit, and which tracked files are changed since and when. Differs once
     something worth re-indexing happened."""
@@ -158,7 +161,7 @@ def tags_stamp(root):
         except OSError:
             dirty.append(path)
     head = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
-    return hashlib.sha1("\n".join([head, *dirty]).encode()).hexdigest()
+    return hashlib.sha1("\n".join([TAGS_FORMAT, head, *dirty]).encode()).hexdigest()
 
 
 def project_files(root):
@@ -171,15 +174,15 @@ def project_files(root):
 
 def build_tags(root, out):
     """Index the project into `out` (replacing it only once complete): a file list on stdin, paths relative to the
-    project root (not to `out`). Universal and exuberant ctags both read a list; line numbers are asked for first
-    and dropped if refused (we then find the line from the pattern)."""
+    project root (not to `out`). Universal and exuberant ctags both read a list; line numbers and kind names (`K`: `function`, not `f`) are asked
+    for first and dropped if refused (we then find the line from the pattern)."""
     ctags = find_ctags()
     if not ctags:
         return False
     stamp = tags_stamp(root)  # before indexing: a change made meanwhile must still count as stale
     stdin = "\n".join(project_files(root)) + "\n"
     tmp = out.with_suffix(".tmp")
-    for flags in (["--fields=+n", "--tag-relative=no"], ["--tag-relative=no"], []):
+    for flags in (["--fields=+nK", "--tag-relative=no"], ["--fields=+n", "--tag-relative=no"], ["--tag-relative=no"], []):
         tmp.unlink(missing_ok=True)
         done = subprocess.run([ctags, *flags, "-L", "-", "-f", str(tmp)], input=stdin, text=True, cwd=root,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -288,7 +291,7 @@ def list_tags(_query, warn=True):
         fields = dict(f.split(":", 1) for f in ext.split("\t") if ":" in f)
         kind = fields.get("kind") or (ext.split("\t")[1] if len(ext.split("\t")) > 1 and ":" not in ext.split("\t")[1] else "")
         line = fields.get("line") or tag_line(root, path, excmd)
-        yield f"{path}\t{line}\t{name}  {kind}  {path}:{line}"
+        yield row("tags", kind, name, path, line)
 
 
 RECENT_KEEP = 300   # entries remembered
@@ -310,14 +313,11 @@ def load_recent():
 
 def record_opened(mode, entry):
     """Remember an opened entry: its file, and its tag or symbol too if it was one."""
-    f, _, display = (entry.split("\t", 2) + ["", ""])[:3]
+    f = entry.split("\t", 1)[0]
+    source, _, name, _ = what_of(entry)
     keys = [f]
-    if mode in ("omni", "lsp"):  # rows drawn with an icon
-        kind, rest = split_icon(display)
-        if kind == "tag" or kind in SYMBOL_ICON_KINDS:
-            keys.insert(0, tag_key(rest.split("  ", 1)[0], f))
-    elif mode == "tags":
-        keys.insert(0, tag_key(display.split("  ", 1)[0], f))
+    if source in ("tags", "lsp"):
+        keys.insert(0, tag_key(name, f))
     (state_dir() / "recent.json").write_text(json.dumps((keys + [k for k in load_recent() if k not in keys])[:RECENT_KEEP]))
 
 
@@ -336,23 +336,30 @@ def boost(keys, recent):
 
 
 ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
-    "emoji": {"file": "📄", "tag": "🔖", "sym": "🧩", "call": "🔧", "type": "🧱", "mod": "📦", "val": "📌",
-              "install": "📥", "wait": "⏳", "note": "💬"},
-    "nerd": {"file": "\uf016", "tag": "\uf02b", "sym": "\uf12e", "call": "\uf0ad", "type": "\uf1b2", "mod": "\uf1b3",
-             "val": "\uf08d", "install": "\uf019", "wait": "\uf252", "note": "\uf05a"},
-    "text": {"file": "file", "tag": "tag ", "sym": "sym ", "call": "fn  ", "type": "type", "mod": "mod ", "val": "val ",
-             "install": "get ", "wait": "wait", "note": "note"},
+    "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "🔖", "call": "⚡️", "type": "🧩", "mod": "📖", "pkg": "📦",
+              "val": "🏷️", "install": "⚠️", "wait": "⏳", "note": "💬"},
+    "nerd": {"file": "\uf016", "dir": "\uf07b", "hit": "\uf002", "sym": "\ueb63", "call": "\uf0e7", "type": "\uf12e",
+             "mod": "\uf1b2", "pkg": "\uf1b3", "val": "\uf02b", "install": "\uf071", "wait": "\uf252", "note": "\uf05a"},
+    "text": {"file": "-", "dir": "d", "hit": "/", "sym": "o", "call": "f", "type": "t", "mod": "m", "pkg": "p", "val": "v",
+             "install": "!", "wait": "~", "note": "i"},
 }
 DEFAULT_ICONS = "emoji"
-# LSP symbol kinds (the words optmux-lsp prints) by what they are, so five icons say it at a glance
+# What a symbol is (the words ctags and optmux-lsp print), by group, so five icons say it at a glance
 SYMBOL_GROUPS = {
-    "call": "function method constructor operator event".split(),
-    "type": "class struct interface enum typeparameter".split(),
-    "mod": "module namespace package file".split(),
-    "val": "variable constant field property enummember key string number boolean array object null".split(),
+    "call": "function func method methodspec constructor operator event macro procedure subroutine routine".split(),
+    "type": "class struct interface enum typeparameter typedef union trait protocol alias typealias record".split(),
+    "mod": "module namespace file library unit".split(),
+    "pkg": ["package"],
+    "val": ("variable var constant const field member property enummember enumerator define local key string number "
+            "boolean array object null").split(),
 }
 SYMBOL_GROUP = {kind: group for group, kinds in SYMBOL_GROUPS.items() for kind in kinds}
-SYMBOL_ICON_KINDS = {"sym", *SYMBOL_GROUPS}  # every icon kind that stands for a language-server symbol
+# ctags' one-letter kinds, if that is all a tags file has (they differ by language: a best guess)
+LETTER_GROUP = {**dict.fromkeys("fm", "call"), **dict.fromkeys("cstiegu", "type"), **dict.fromkeys("vdr", "val"),
+                "p": "pkg", "n": "mod"}
+SOURCE_LETTERS = {"files": "F", "grep": "G", "tags": "T", "lsp": "L"}
+SOURCE_NAMES = {"files": "File path", "grep": "Grep match", "tags": "Symbol", "lsp": "Symbol"}
+FIELD_SEP = "\x1f"  # between the parts of a row's last field (see row)
 
 
 @functools.lru_cache(maxsize=1)
@@ -372,25 +379,81 @@ def icon_style():
     return style if style in ICON_STYLES else DEFAULT_ICONS
 
 
-def symbol_kind(display):
-    """The icon kind of a language-server row (`name  function  container  path:line`): by its kind word."""
-    parts = display.split("  ")  # [name..., kind, container?, path:line]; a name may itself hold a double space
-    return next((SYMBOL_GROUP[p] for p in reversed(parts[1:-1]) if p in SYMBOL_GROUP), "sym")
+def kind_group(word):
+    """The icon kind (call, type, mod, val, or sym for the rest) of a kind word, or of a ctags kind letter."""
+    word = word.strip()
+    if len(word) == 1:
+        return LETTER_GROUP.get(word, "sym")
+    return SYMBOL_GROUP.get(word.lower(), "sym")
 
 
-def with_icon(kind, display):
-    if kind == "sym":
-        kind = symbol_kind(display)
-    return f"{ICON_STYLES[icon_style()][kind]} {display}"
+def with_icon(kind, text):
+    icon = ICON_STYLES[icon_style()][kind]
+    if kind == "install":  # (the emoji is yellow already)
+        icon = f"{YELLOW}{icon}{UNDIM}"
+    return f"{icon} {text}"
 
 
 def split_icon(display):
-    """(kind, rest) of a row displayed by with_icon, whatever style it was drawn in; kind None if it has no icon."""
+    """(kind, rest) of a text displayed by with_icon, whatever style it was drawn in; kind None if it has no icon."""
     for icons in ICON_STYLES.values():
         for kind, icon in icons.items():
             if display.startswith(icon + " "):
                 return kind, display[len(icon) + 1:]
     return None, display
+
+
+DIM, UNDIM = "\x1b[2m", "\x1b[0m"
+BOLD, YELLOW_BOLD = "\x1b[1m", "\x1b[1;33m"
+
+
+# Colors for where a row is, in the list and the preview alike: the file name a dark steel blue (not clashing with
+# a symbol's name), its directory a dark green, the line number yellow. No bold in the list: fzf bolds the selection.
+FILE_COLOR, DIR_COLOR, YELLOW = "\x1b[38;5;67m", "\x1b[38;5;65m", "\x1b[33m"
+
+
+def list_file_line(base, line):
+    """`file.go:105` as the list draws it: the file name blue, the colon muted, the line number yellow."""
+    return f"{FILE_COLOR}{base}{UNDIM}{DIM}:{UNDIM}{YELLOW}{line}{UNDIM}"
+
+
+def file_line(base, line):
+    """`file.go:105` as the preview draws it: the file name bold blue, the colon muted, the line number bold yellow."""
+    return f"{BOLD}{FILE_COLOR}{base}{UNDIM}{DIM}:{UNDIM}{YELLOW_BOLD}{line}{UNDIM}"
+
+
+def row(source, kind, name, path, line, container="", text="", detail=""):
+    """A candidate: `FILE \t LINE \t DISPLAY \t TEXT \t WHAT`. Every source is shown the same way: the source's letter
+    and what it is (an icon), the name, then where: `file:line` and the directory in parens, dim. TEXT is
+    what grep matched (the list shows it only when there is no preview). WHAT (SOURCE, kind word, name,
+    container, then which language server, and grep's text, joined by FIELD_SEP) is for the program: recency, the preview's header."""
+    group = kind if kind in ("file", "hit") else kind_group(kind)
+    # (source lines have tabs, which would split the row, and escape sequences, which --ansi would draw)
+    clean = lambda x: re.sub(r"[\x00-\x1f\x7f]", " ", str(x)).strip()
+    name, container, detail, text = clean(name), clean(container), clean(detail), clean(text)
+    directory, base = os.path.split(path)
+    drawn = name  # (`name` itself goes in WHAT, plain)
+    if source == "files":
+        drawn = f"{FILE_COLOR}{name}{UNDIM}"
+    elif source == "grep":
+        drawn = list_file_line(base, line)
+    where = "" if source in ("files", "grep") else f"  {list_file_line(base, line)}"
+    shown = f"{DIM}{SOURCE_LETTERS[source]}{ICON_STYLES[icon_style()][group]}{UNDIM} {drawn}{where}"
+    if directory:
+        shown += f"  {DIM}({UNDIM}{DIR_COLOR}{directory}{UNDIM}{DIM}){UNDIM}"
+    what = FIELD_SEP.join((source, kind, name, container, detail, text[:300]))
+    return f"{path}\t{line}\t{shown}\t{text}\t{what}"
+
+
+def what_of(entry):
+    """(source, kind word, name, container) of a row made by `row` (empty strings for a row without them)."""
+    parts = (entry.split("\t") + [""] * 5)[4].split(FIELD_SEP)
+    return tuple((parts + [""] * 4)[:4])
+
+
+def what_all(what):
+    """(source, kind word, name, container, detail, text) of a row's WHAT field."""
+    return tuple((what.split(FIELD_SEP) + [""] * 6)[:6])
 
 
 OMNI_LIMIT = 100  # rows; the best matches of tags and files together
@@ -436,37 +499,35 @@ def lsp_query(args, timeout):
 
 def list_omni(query):
     """Tags, language-server symbols and file paths in one list, the stronger matches higher whichever source they
-    come from. A tag or symbol is matched on its name (its path is the file's row), a file on its path; the icon
-    says which is which. A symbol the servers know replaces the tag for the same line. What you opened lately is
-    pulled up (see boost); with no query, it comes first."""
+    come from. A tag or symbol is matched on its name (its path is the file's row), a file on its path; the
+    letter and icon say which is which. A symbol the servers know replaces the tag for the same name in the same
+    file. What you opened lately is pulled up (see boost); with no query, it comes first."""
     asking = lsp_start(["--fast", query]) if query.strip() else None  # servers think while tags and files load
-    tags = [(e, *e.split("\t", 2)) for e in list_tags("", warn=False)]
+    tags = list(list_tags("", warn=False))
     files = list(list_files(""))
-    symbols = [r for r in lsp_finish(asking, 3) if not r.startswith("!")] if asking else []  # (never a marker row)
-    # a symbol replaces a tag of the same name in the same file: ctags and servers often disagree on the line
-    defined = {(r.split("\t", 1)[0], r.split("\t", 2)[2].split("  ", 1)[0]) for r in symbols}
-    rows = []  # (what is matched, kind, recency key, entry)
+    symbols = list(render_lsp(r for r in lsp_finish(asking, 3) if not r.startswith("!"))) if asking else []  # (never a marker row)
+    # ctags and servers often disagree on the line: one of the two for a name in a file
+    defined = {(e.split("\t", 1)[0], what_of(e)[2]) for e in symbols}
+    rows = []  # (what is matched, recency key, entry)
     for e in symbols:
-        f, n, display = e.split("\t", 2)
-        name = display.split("  ", 1)[0]
-        rows.append((name, "sym", tag_key(name, f), e))
-    for e, f, n, display in tags:
-        name = display.split("  ", 1)[0]
+        f, name = e.split("\t", 1)[0], what_of(e)[2]
+        rows.append((name, tag_key(name, f), e))
+    for e in tags:
+        f, name = e.split("\t", 1)[0], what_of(e)[2]
         if (f, name) not in defined:
-            rows.append((name, "tag", tag_key(name, f), e))
+            rows.append((name, tag_key(name, f), e))
     for e in files:
-        rows.append((e.split("\t", 1)[0], "file", e.split("\t", 1)[0], e))
+        f = e.split("\t", 1)[0]
+        rows.append((f, f, e))
     recent = load_recent()
     if query:
-        order = rank([m for m, _, _, _ in rows], query)
-        order = [order[p] for p in boost([rows[i][2] for i in order], recent)]
+        order = rank([m for m, _, _ in rows], query)
+        order = [order[p] for p in boost([rows[i][1] for i in order], recent)]
     else:
         where = {k: i for i, k in enumerate(recent)}
-        order = sorted(range(len(rows)), key=lambda i: where.get(rows[i][2], len(recent)))
+        order = sorted(range(len(rows)), key=lambda i: where.get(rows[i][1], len(recent)))
     for i in order[:OMNI_LIMIT]:
-        _, kind, _, e = rows[i]
-        f, n, display = e.split("\t", 2)
-        yield f"{f}\t{n}\t{with_icon(kind, display)}"
+        yield rows[i][2]
 
 
 MARKER_KINDS = {"!install": "install", "!wait": "wait", "!note": "note"}
@@ -476,7 +537,63 @@ BAT = ("bat", "batcat")  # Debian and Ubuntu install it as batcat
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # all but tab and newline: they would recolor or garble the pane
 
 
-def preview(mode, path, line, display, height):
+PREVIEW_HEADER_LINES = 5
+
+
+def source_title(source, detail):
+    """Where a row came from, in words: `Symbol (ctags: tags)`, `Symbol (lsp go: gopls)`, `File path (git ls-files)`,
+    `Grep match (git grep)`."""
+    if source == "files":
+        how = "git ls-files" if repo_root() else "find"
+    elif source == "grep":
+        how = "git grep" if repo_root() else "grep"
+    elif source == "lsp":
+        how = f"lsp {detail}" if detail else "lsp"
+    else:
+        found = tags_file(check=False)
+        shown = os.path.relpath(found, repo_root() or os.getcwd()) if found else ""
+        if shown.startswith(".."):  # outside the project: where it is, not how to climb to it
+            shown = str(found).replace(str(Path.home()), "~", 1)
+        how = f"ctags: {shown}" if found else "ctags"
+    return f"{SOURCE_NAMES[source]} ({how})"
+
+
+def preview_header(what, path, line):
+    """The preview's first lines, the same five every time, each saying the same kind of thing whatever the row,
+    so that going up and down changes only what is new, and nothing is said twice:
+      where it comes from; what it is, then its name (`🔧 method · Gui.Layout`); the module it is in; where it is.
+    Returns how many lines it took."""
+    source, kind, name, container, detail, text = what_all(what)
+    if source not in SOURCE_NAMES:
+        return 0
+    icons = ICON_STYLES[icon_style()]
+    room = int(os.environ.get("FZF_PREVIEW_COLUMNS") or 80) - 8  # (fzf draws its position, 1/43, at the top right)
+    directory, base = os.path.split(path)
+    directory = directory + "/" if directory else ""
+    if source == "files":
+        group, what_is, title, module = "file", "file", name, ""
+        icon, far, near = icons["dir"], directory, ("", "")
+    elif source == "grep":
+        group, what_is, title, module = "hit", "match", text or name, ""
+        icon, far, near = icons["file"], directory, (base, line)
+    else:
+        group, what_is, title, module = kind_group(kind), kind or "symbol", name, container
+        icon, far, near = icons["file"], directory, (base, line)
+    print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
+    print(f"{DIM}{icons[group]} {what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
+    print(f"{DIM}{icons['mod']}{UNDIM} {module[:room]}" if module else "")  # the module, plain: it is the one line that holds still
+    file_name, number = near
+    width = len(file_name) + len(str(number)) + 1
+    far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
+    # the directory green, the file name bold blue, the colon between them muted, the line number bold yellow
+    where = file_line(file_name, number) if file_name else ""
+    print(f"{DIM}{icon}{UNDIM} {DIR_COLOR}{far}{UNDIM}{where}")
+    print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
+    sys.stdout.flush()  # bat takes over this process
+    return PREVIEW_HEADER_LINES
+
+
+def preview(mode, path, line, display, what, height):
     """What fzf shows beside the selected row: the file around its line, or what a non-file row (install, wait,
     note) means. Uses bat if there is one, else plain numbered lines with the line marked. Long lines are cut,
     not wrapped, so the window holds `height` lines and the marked one stays in view."""
@@ -492,6 +609,8 @@ def preview(mode, path, line, display, height):
         target = max(1, int(line))
     except ValueError:
         target = 1
+    if height >= PREVIEW_HEADER_LINES + 3:  # (a short window is all code)
+        height -= preview_header(what, path, line)
     start = max(1, target - height // 3)
     try:
         with open(path, "rb") as f:
@@ -515,12 +634,27 @@ def preview(mode, path, line, display, height):
     return 0
 
 
-def preview_args(me, mode):
-    """fzf's options for the preview beside the list."""
+PREVIEW_MIN_COLUMNS = 100  # narrower terminals have no room for the preview (see `<55(hidden)` below)
+PREVIEW_KEYS = ("ctrl-/", "ctrl-_", "alt-p")  # Terminal.app and some others send ^_ for ctrl-/ (and for ctrl--)
+
+
+def preview_showing():
+    """Whether the preview is on screen at the start: enabled, and room for it."""
+    try:
+        return preview_enabled() and os.get_terminal_size(2).columns >= PREVIEW_MIN_COLUMNS
+    except OSError:
+        return False
+
+
+def preview_args(me, mode, compact=False):
+    """fzf's options for the preview beside the list. `compact`: grep's rows go without the matching text
+    (the preview shows it) while the preview is on; the toggle swaps the two."""
     # `<55(hidden)`: fzf compares that with the preview's own width (55% of the screen), so it is hidden when the
     # terminal is under about 100 columns
-    return ["--preview", f"{shlex.quote(sys.executable)} {shlex.quote(me)} --preview {shlex.quote(mode)} {{1}} {{2}} {{3}}",
-            "--preview-window=right,55%,border-left,nowrap,<55(hidden)", "--bind=ctrl-/:toggle-preview,alt-p:toggle-preview"]
+    args = ["--preview", f"{shlex.quote(sys.executable)} {shlex.quote(me)} --preview {shlex.quote(mode)} {{1}} {{2}} {{3}} {{5}}",
+            "--preview-window=right,55%,border-left,nowrap,<55(hidden)"]
+    swap = ("+change-with-nth(" + ("3..4|3" if compact else "3|3..4") + ")") if mode == "grep" else ""
+    return args + [f"--bind={key}:toggle-preview{swap}" for key in PREVIEW_KEYS]
 
 
 def preview_enabled():
@@ -536,15 +670,25 @@ def marker_kind(mode, f):
     return MARKER_KINDS.get(f.split(":", 1)[0]) if mode == "lsp" else None
 
 
+def render_lsp(raw_rows):
+    """Candidates from optmux-lsp's rows (`FILE \\t LINE \\t NAME ^_ KIND ^_ CONTAINER`). Rows that are not symbols
+    (install, wait and note rows) get an icon of their own."""
+    for raw in raw_rows:
+        f, n, display = raw.split("\t", 2)
+        marker = MARKER_KINDS.get(f.split(":", 1)[0])
+        if marker:
+            yield f"{f}\t{n}\t{with_icon(marker, display)}"
+            continue
+        name, kind, container, server = (display.split(FIELD_SEP) + ["", "", ""])[:4]
+        yield row("lsp", kind, name, f, n, container, detail=server)
+
+
 def list_lsp(query):
     """Symbols from the project's language servers (see optmux-lsp), as the user types. When there are none, rows
     that say why, each with an icon of its own: one to install a missing server (Enter), others to wait or read."""
     if not query.strip():
         return
-    for row in lsp_query([query], 8):
-        f, n, display = row.split("\t", 2)
-        kind = MARKER_KINDS.get(f.split(":", 1)[0])
-        yield f"{f}\t{n}\t{with_icon(kind or 'sym', display)}"
+    yield from render_lsp(lsp_query([query], 8))
 
 
 LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags, "lsp": list_lsp}
@@ -640,14 +784,20 @@ def save_state(mode, query, entry):
     (state_dir() / f"{mode}.last").write_text(json.dumps({"query": query, "entry": entry}))
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def cursor_position(entries, query, entry, filtered=True):
     """1-based position of `entry` in the list as fzf will show it for `query` (best match first), or None.
-    `filtered`: fzf fuzzy-matches the query against the entries (not so for grep, whose list is already the answer)."""
+    `filtered`: fzf fuzzy-matches the query against the entries (not so for grep, whose list is already the answer).
+    The entry is what fzf printed, which has the dim codes of the display stripped (--ansi): compared without them."""
     if not entry or not entries:
         return None
     if query and filtered:
-        entries = run("fzf", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
+        entries = run("fzf", "--ansi", "--filter", query, "--delimiter=\t", "--with-nth=3", "--tiebreak=index",
                       input="\n".join(entries) + "\n").stdout.splitlines()
+    entries = [ANSI.sub("", e) for e in entries]
+    entry = ANSI.sub("", entry)
     return entries.index(entry) + 1 if entry in entries else None
 
 
@@ -666,7 +816,14 @@ def parse_args(argv):
     parser.add_argument("pane", nargs="?", help="the tmux pane to work on (the active one by default)")
     parser.add_argument("--mode", choices=MODES, help="start in this source")
     parser.add_argument("--query", help="start with this query")
+    parser.add_argument("--query-file", help="start with the query in this file (which is deleted): for text no command line should carry")
     ns = parser.parse_args(argv)
+    if ns.query_file:
+        try:
+            ns.query = Path(ns.query_file).read_text()
+        except OSError:
+            pass
+        Path(ns.query_file).unlink(missing_ok=True)
     return ([ns.pane] if ns.pane else []), {k: v for k, v in (("mode", ns.mode), ("query", ns.query)) if v is not None}
 
 
@@ -684,12 +841,14 @@ def pick(pane, start_mode=None, start_query=None):
             query, entry = carried, (entry if carried == query else None)
         history = state_dir() / f"{mode}.history"
         dedupe_history(history)
-        fzf = ["fzf", "--delimiter=\t", "--with-nth=3", "--no-sort" if mode in LIVE else "--tiebreak=index",
+        compact = mode == "grep" and preview_showing()
+        fzf = ["fzf", "--ansi", "--no-hscroll", "--delimiter=\t",  # (no scrolling the row to show a match: the name stays in view)
+               "--with-nth=3" if compact or mode != "grep" else "--with-nth=3..4", "--no-sort" if mode in LIVE else "--tiebreak=index",
                "--print-query", f"--query={query}", f"--prompt={mode} > ", f"--header={header(mode)}",
                f"--history={history}", "--history-size=200",
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
         if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
-            fzf += preview_args(me, mode)
+            fzf += preview_args(me, mode, compact)
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             subprocess.Popen([sys.executable, lsp_exe(), "status"],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -697,7 +856,7 @@ def pick(pane, start_mode=None, start_query=None):
         if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
             candidates = by_recency(candidates, lambda e: e.split("\t", 1)[0], load_recent())
         elif mode == "tags":
-            candidates = by_recency(candidates, lambda e: tag_key(e.split("\t", 2)[2].split("  ", 1)[0], e.split("\t", 1)[0]), load_recent())
+            candidates = by_recency(candidates, lambda e: tag_key(what_of(e)[2], e.split("\t", 1)[0]), load_recent())
         pos = cursor_position(candidates, query, entry, filtered=mode not in LIVE)
         # The list goes in on stdin for every source. Once loaded, move the cursor and stop watching `load`
         # (later changes, from typing, are not ours to steer). The live sources (grep, omni): fzf matches nothing itself and each
@@ -747,8 +906,8 @@ if __name__ == "__main__":
         os.chdir(sys.argv[2])
         build_locked(sys.argv[2], tags_cache(sys.argv[2]))
         sys.exit(0)
-    if sys.argv[1:2] == ["--preview"]:  # fzf's preview command: MODE FILE LINE DISPLAY, see preview()
-        args = (sys.argv[2:] + ["", "", "", ""])[:4]
+    if sys.argv[1:2] == ["--preview"]:  # fzf's preview command: MODE FILE LINE DISPLAY WHAT, see preview()
+        args = (sys.argv[2:] + ["", "", "", "", ""])[:5]
         sys.exit(preview(*args, int(os.environ.get("FZF_PREVIEW_LINES") or 30)))
     if sys.argv[1:2] == ["--list"]:
         CHECK_TAGS = False  # a reload per keystroke: read the tags, leave building and checking to the picker
