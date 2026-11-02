@@ -282,7 +282,8 @@ def test_the_cursor_goes_back_to_the_remembered_item():
     assert pt.cursor_position(numbered, "", "words", "beta") == ("", 2)  # best first: the newest is 1
     assert pt.cursor_position(numbered, "alp", "words", "alpha") == ("alp", 2)
     assert pt.cursor_position(numbered, "alp", "words", "beta") == ("alp", None)  # not in the list it filters to
-    assert pt.cursor_position(numbered, "zzz", "words", "beta") == ("", 2)  # a query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "zzz", "words", "beta", recalled=True) == ("", 2)  # a recalled query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "zzz", "words", None) == ("zzz", None)  # one you are typing is not
     assert pt.cursor_position(numbered, "", "words", None) == ("", None)
 
 
@@ -314,3 +315,11 @@ def test_a_long_item_gets_its_cursor_back_too():
     long = "x" * 500
     numbered = [(0, (long, long)), (1, ("short", "short"))]
     assert pt.cursor_position(numbered, "", "words", long[:pt.MAX_ITEM]) == ("", 1)
+
+
+def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
+    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    pt.save_state("lines", "ssh", "ssh host")
+    assert [q for q, _ in pt.load_history("lines")] == ["ssh"]

@@ -666,7 +666,7 @@ def preview(mode, path, line, display, what, height):
 
 
 PREVIEW_MIN_COLUMNS = 100  # narrower terminals have no room for the preview (see `<55(hidden)` below)
-PREVIEW_KEYS = ("ctrl-/", "ctrl-_", "alt-p")  # Terminal.app and some others send ^_ for ctrl-/ (and for ctrl--)
+PREVIEW_KEYS = ("ctrl-/", "ctrl-_")  # Terminal.app and some others send ^_ for ctrl-/ (and for ctrl--)
 
 
 def preview_showing():
@@ -764,7 +764,7 @@ def install_in_split(pane, lang):
 
 
 def dedupe_history(path):
-    """fzf appends every accepted query, repeats included; keep the latest occurrence of each (^p walks back)."""
+    """fzf appends every accepted query, repeats included; keep the latest occurrence of each (M-p walks back)."""
     try:
         lines = path.read_text().splitlines()
     except OSError:

@@ -318,11 +318,11 @@ def fzf_order(numbered, query, shown):
     return out.splitlines()
 
 
-def cursor_position(numbered, query, shown, item):
-    """(query, position): where the cursor goes for `item`, 1-based from the best match. A remembered query that
+def cursor_position(numbered, query, shown, item, recalled=False):
+    """(query, position): where the cursor goes for `item`, 1-based from the best match. A recalled query that
     matches nothing now is dropped (an empty list is no way to come back), and an item no longer here gives None."""
     shown_lines = fzf_order(numbered, query, shown)
-    if query and not shown_lines:
+    if recalled and query and not shown_lines:
         query, shown_lines = "", fzf_order(numbered, "", shown)
     if item is not None:
         for n, line in enumerate(shown_lines, 1):
@@ -414,7 +414,7 @@ def pick(pane):
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
     mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
-    query, remembered, back = "", None, -1  # (a fresh start; M-p steps `back` through the filter's earlier queries)
+    query, remembered, back, recalled = "", None, -1, False  # (a fresh start; M-p steps `back` through the filter's earlier queries)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
@@ -430,7 +430,8 @@ def pick(pane):
         # natural order with the most recent choices under the cursor (and ahead among equal matches)
         numbered = list(reversed(list(enumerate(items))))
         # (after a filter switch the text just typed comes along; the cursor goes back only for M-p)
-        query, pos = cursor_position(numbered, query, shown, remembered)
+        query, pos = cursor_position(numbered, query, shown, remembered, recalled)
+        recalled = False
         proc = subprocess.run(
             [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
@@ -448,11 +449,13 @@ def pick(pane):
         query, key, chosen = parse_fzf_output(proc.stdout)
         if key in ("alt-p", "alt-n"):  # older and newer queries of this filter, each with the item the cursor was on
             earlier = load_history(shown)
+            was = back
             back = max(-1, min(back + (1 if key == "alt-p" else -1), len(earlier) - 1))
-            if earlier or key == "alt-n":  # (nothing earlier: what you typed stays)
+            if back != was:  # (at either end there is nowhere to go: what you typed stays)
                 query, remembered = earlier[back] if back >= 0 else ("", None)
+                recalled = True
             continue
-        if query or key not in ("ctrl-c", "esc"):  # (leaving an untouched fresh start must not wipe what M-p would bring back)
+        if query or (chosen and key not in ("ctrl-c", "esc", "ctrl-alt-x", "ctrl-t")):  # (leaving with nothing typed or picked saves nothing)
             save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
