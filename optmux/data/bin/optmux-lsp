@@ -132,6 +132,43 @@ def tracked_files(root):
     return [f for f in out.split("\0") if f]
 
 
+# Scripts have no extension: the interpreter on the first line says what they are, as (language, languageId)
+SHEBANG_LANGUAGES = {"python": ("python", "python"), "python3": ("python", "python"), "node": ("typescript", "javascript"),
+                     "nodejs": ("typescript", "javascript"), "bash": ("bash", "shellscript"), "sh": ("bash", "shellscript"),
+                     "zsh": ("bash", "shellscript"), "lua": ("lua", "lua")}
+MAX_SCRIPTS = 50  # per language: each one is opened in the server
+
+
+def script_language(root, name):
+    """(language, languageId) of an extensionless file by its `#!` line (`#!/usr/bin/env python3`, `#!/bin/bash`), or None."""
+    try:
+        with open(Path(root, name), "rb") as f:
+            first = f.readline(200)
+    except OSError:
+        return None
+    if not first.startswith(b"#!"):
+        return None
+    words = first[2:].decode(errors="replace").split()
+    if words and os.path.basename(words[0]) == "env":
+        words = [w for w in words[1:] if not w.startswith("-")]
+    interpreter = os.path.basename(words[0]).rstrip("0123456789.") if words else ""
+    return SHEBANG_LANGUAGES.get(os.path.basename(words[0]) if words else "") or SHEBANG_LANGUAGES.get(interpreter)
+
+
+def find_scripts(root, files, config):
+    """{language: [(file, languageId)]} for the tracked files with no extension that a `#!` line says are of a
+    language of the project (up to MAX_SCRIPTS each): servers only look at files that have the language's
+    extension, so these are told about one by one (see LanguageServer.open_scripts)."""
+    found = {}
+    for f in files:
+        if "." in os.path.basename(f):
+            continue
+        kind = script_language(root, f)
+        if kind and kind[0] in config and len(found.setdefault(kind[0], [])) < MAX_SCRIPTS:
+            found[kind[0]].append((f, kind[1]))
+    return found
+
+
 def detect_languages(files, config):
     """{language: [files]} for the languages with enough of the project (see MIN_FILES and MIN_SHARE)."""
     by_ext = {}
@@ -155,7 +192,7 @@ def state_dir():
     return d
 
 
-PROTOCOL = 3  # what rows look like; a hub left running by an older optmux is replaced, not spoken to
+PROTOCOL = 4  # what rows look like; a hub left running by an older optmux is replaced, not spoken to
 
 
 def socket_path(root):
@@ -166,8 +203,8 @@ def socket_path(root):
 # ---- one language server -------------------------------------------------------------------------------
 
 class LanguageServer:
-    def __init__(self, lang, cfg, argv, root, files, log):
-        self.lang, self.cfg, self.root, self.files = lang, cfg, root, files
+    def __init__(self, lang, cfg, argv, root, files, log, scripts=()):
+        self.lang, self.cfg, self.root, self.files, self.scripts = lang, cfg, root, files, list(scripts)
         self.name = f"{lang}: {os.path.basename(argv[0])}"  # what rows say they come from
         self.ids, self.pending, self.ready, self.failed = itertools.count(1), {}, False, None
         self.lock = threading.Lock()
@@ -241,6 +278,7 @@ class LanguageServer:
             self.send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
             if self.cfg.get("open_first_file"):  # some servers pick their project from an open file
                 self.open_a_file()
+            self.open_scripts()
             self.ready = True
         except (OSError, TimeoutError, ValueError) as e:
             self.failed = f"did not start ({e})"
@@ -258,6 +296,17 @@ class LanguageServer:
                 "uri": path.as_uri(), "languageId": LANGUAGE_IDS.get(ext) or self.cfg.get("language_id", self.lang),
                 "version": 1, "text": text}}})
             return
+
+    def open_scripts(self):
+        """Tell the server about the project's scripts (files with a `#!` line and no extension): it would not know
+        they are there. Opened, they are part of what it knows and answers symbol queries from."""
+        for name, language_id in self.scripts:
+            try:
+                text = Path(self.root, name).read_text(errors="replace")
+            except OSError:
+                continue
+            self.send({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {
+                "uri": Path(self.root, name).as_uri(), "languageId": language_id, "version": 1, "text": text}}})
 
     def alive(self):
         return self.failed is None and self.proc.poll() is None
@@ -312,7 +361,7 @@ class Hub:
         self.stopping = False
         self.config = load_config()
         self.log = open(state_dir() / "lsp.log", "ab")
-        self.lang_files = {}
+        self.lang_files, self.scripts = {}, {}
         self.scanned_files = self.scanned_missing = 0.0
         self.rescan()
 
@@ -325,7 +374,8 @@ class Hub:
             return
         argv, server = found
         try:
-            self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files.get(lang, []), self.log)
+            self.servers[lang] = LanguageServer(lang, cfg, argv, self.root, self.lang_files.get(lang, []), self.log,
+                                                self.scripts.get(lang, []))
             self.missing.pop(lang, None)
         except OSError as e:
             self.missing[lang] = {"install": best_install(cfg), "hint": first_install(cfg), "why": str(e)}
@@ -347,7 +397,9 @@ class Hub:
                     self.start(lang)
             if now - self.scanned_files >= RESCAN_FILES or not self.scanned_files:
                 self.scanned_files = self.scanned_missing = now
-                self.lang_files = detect_languages(tracked_files(self.root), self.config)
+                files = tracked_files(self.root)
+                self.lang_files = detect_languages(files, self.config)
+                self.scripts = find_scripts(self.root, files, {l: self.config[l] for l in self.lang_files})
                 for lang in list(self.missing):  # no longer a language of this project
                     if lang not in self.lang_files:
                         del self.missing[lang]

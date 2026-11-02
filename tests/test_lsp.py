@@ -478,3 +478,46 @@ def test_stop_reaches_a_hub_from_an_older_optmux(monkeypatch):
     monkeypatch.setattr(lsp, "exchange", lambda path, request, timeout: {"status": {}})  # no protocol: an old hub
     assert lsp.ask_hub("/p", {"op": "stop"}, start=False) == {"status": {}}  # (asked: it stopped)
     assert lsp.ask_hub("/p", {"op": "query", "q": "x"}, start=False) is None
+
+
+def test_a_script_is_of_the_language_its_shebang_says(tmp_path):
+    def script(name, first):
+        (tmp_path / name).write_text(first + "\nx = 1\n")
+        return lsp.script_language(str(tmp_path), name)
+    assert script("a", "#!/usr/bin/env python3") == ("python", "python")
+    assert script("b", "#!/usr/bin/python") == ("python", "python")
+    assert script("c", "#!/usr/bin/env -S python3 -u") == ("python", "python")
+    assert script("d", "#!/bin/bash") == ("bash", "shellscript")
+    assert script("e", "#!/usr/bin/env node") == ("typescript", "javascript")
+    assert script("f", "#!/usr/bin/env optmux") is None  # not a language we know
+    assert script("g", "no shebang") is None and lsp.script_language(str(tmp_path), "missing") is None
+    assert script("h", "#!/usr/bin/env python3.12") == ("python", "python")  # a versioned interpreter
+
+
+def test_scripts_of_the_projects_languages_are_found_with_a_cap(tmp_path, monkeypatch):
+    for n in range(5):
+        (tmp_path / f"tool{n}").write_text("#!/usr/bin/env python3\n")
+    (tmp_path / "README").write_text("hello\n")
+    (tmp_path / "mod.py").write_text("x\n")
+    (tmp_path / "run.sh").write_text("#!/bin/bash\n")  # has an extension: the server knows it
+    files = [f"tool{n}" for n in range(5)] + ["README", "mod.py", "run.sh", "sub/tool9"]
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/tool9").write_text("#!/usr/bin/env python\n")
+    config = {"python": {"extensions": ["py"]}}
+    found = lsp.find_scripts(str(tmp_path), files, config)
+    assert sorted(f for f, _ in found["python"]) == sorted([f"tool{n}" for n in range(5)] + ["sub/tool9"])
+    assert list(found) == ["python"]  # (bash is not a language of this config)
+    monkeypatch.setattr(lsp, "MAX_SCRIPTS", 2)
+    assert len(lsp.find_scripts(str(tmp_path), files, config)["python"]) == 2
+
+
+def test_open_scripts_tells_the_server_about_each_one(tmp_path):
+    (tmp_path / "tool").write_text("#!/usr/bin/env python3\nclass Style: pass\n")
+    sent = []
+    server = lsp.LanguageServer.__new__(lsp.LanguageServer)
+    server.root, server.scripts, server.send = str(tmp_path), [("tool", "python"), ("gone", "python")], sent.append
+    server.open_scripts()
+    assert len(sent) == 1  # (the missing one is skipped)
+    doc = sent[0]["params"]["textDocument"]
+    assert sent[0]["method"] == "textDocument/didOpen" and doc["languageId"] == "python" and "class Style" in doc["text"]
+    assert doc["uri"] == (tmp_path / "tool").as_uri()
