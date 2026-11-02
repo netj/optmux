@@ -304,7 +304,7 @@ optmux:
       - "*"
 ```
 
-The bundled defaults also add **Find** (`C-M-f`) and **eXtract** (`C-M-x`) to the pane and window menus, so they are one right-click away; redeclare the menu without them to drop them.
+The bundled defaults also add **Find** (`C-M-f`) and **eXtract** (`C-M-x`) to the pane and window menus, so they are one right-click away. Menu layers add up (yours come after the bundled items), so a key of yours that is also `f` or `x` loses its accelerator to them: pick another.
 
 - **`key:` / `title:`** — the accelerator and label for a custom item, plus the [action block](#action-block) fields (`command:`, `tmux:`, `send_keys:`, `new_window:`, `float_window:`, `zoom:`, `detached:`, `remain:`)
 - **`default: <name>`** (or a bare string) — reuses one of tmux's own items by name; add `title:`/`key:` alongside it to retitle or remap that item without changing what it does
