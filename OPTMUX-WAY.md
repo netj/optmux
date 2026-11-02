@@ -7,7 +7,7 @@ The optmux Way is how to stay in the driver's seat when working with agents like
 **Be the master mechanic, not the customer.** The customer hands over the keys and takes the shop's word for what got fixed. The master mechanic knows what's wrong from the sound of the car pulling in. That sense only comes from keeping your hands in the engine, and no agent can hand it to you. So keep yours in, and lead your brilliant AI agents like an insightful mentor: set bold, challenging goals, then guide the work with a sharp eye for detail until it comes out beautiful. Every task gets its own workdir and its own window. The AI agent works in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
 1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, agent running.
-2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the agent.
+2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the agent. A command in its output you want to run? `C-M-x` picks it off the screen and types it in.
 3. **Teach by example.** Fix one spot yourself and tell the agent "do it like this".
 4. **Keep many going.** `C-M-c` again starts the next task in a fresh workdir and window while the others keep working, undisturbed. A bell tells you which agent needs you; `C-t n` takes you there.
 
@@ -43,6 +43,8 @@ Everything you need for a task is one keystroke away, as extra panes in *that sa
 
 Each opens zoomed over the agent; `C-M-z` toggles the zoom, and `C-M-o` jumps back to the agent.
 
+**`C-M-x`** picks a command off the screen (the one the agent tells you to run, or a whole script) and types it into the pane you're in: the `C-M-s` shell, or Claude Code after `!`. More in [Teach by example](#3-teach-by-example).
+
 **Start a task instantly with `C-M-c`** ([wtcode](https://github.com/netj/wtcode)): fzf-pick an existing branch or worktree, or type `:new-branch:` to make one off `origin/HEAD`. wtcode creates the worktree (under `<repo>.worktrees/`) and launches Claude Code in it, in a new window. Describe the task and move on.
 
 ## 2. Look over its shoulder: watch and steer
@@ -76,6 +78,7 @@ So edit the file yourself, then point the agent at your edit:
 
 1. Open the exact spot. From any diff, **click a line number** and your `$EDITOR` opens at that line.
    Or press **`C-M-f`** to fuzzy-find a file to edit.
+   Or, if the spot is named on screen (a path in a stack trace, a function in the agent's reply), pick it with **`C-M-x`** and press **`C-M-f`** to find it.
 2. Make **one** example change. Save, and don't stage it.
 3. Tell the agent:
    > I changed `parse_args` in `cli.py` the way I want. See `git diff`. Do the same to the other subcommands.
