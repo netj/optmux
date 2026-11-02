@@ -287,11 +287,13 @@ def open_find(pane, source, query):
     goes in a file Find reads (and deletes), not in the command: tmux expands `#{...}` and `#(...)` in what
     `run-shell` is given. It is also kept in the tmux buffer, so a lookup that cannot start is not lost."""
     find = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-find")
+    query_file = None
     try:
         load_buffer(query)
         path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
         with tempfile.NamedTemporaryFile("w", prefix="optmux-find-query-", delete=False) as f:  # (private: mode 600)
             f.write(query)
+        query_file = f.name
         argv = [find, pane, f"--mode={source}", f"--query-file={f.name}"]
         if not os.access(find, os.X_OK):
             argv = [sys.executable, *argv]
@@ -304,6 +306,11 @@ def open_find(pane, source, query):
         tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(popup)} || {failed}".replace("#", "##"))
         return 0
     except (subprocess.CalledProcessError, OSError) as e:
+        if query_file:
+            try:
+                os.unlink(query_file)
+            except OSError:
+                pass
         tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
         return 1
 
