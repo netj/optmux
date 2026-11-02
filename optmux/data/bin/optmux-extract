@@ -264,6 +264,10 @@ def show_option(name):
     return subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
 
 
+def show_server_option(name):
+    return subprocess.run(["tmux", "show-options", "-gsv", name], capture_output=True, text=True).stdout.strip()
+
+
 def get_option(name, choices, default):
     value = show_option(name)
     return value if value in choices else default
@@ -274,7 +278,7 @@ def copy(text, method):
         # The escape goes to our own terminal: in a popup that is the client whose popup this is. (`load-buffer -w` leaves
         # the client to tmux, which picks the most recently active one: with several attached it may be another terminal.)
         # tmux passes it on, also over SSH, because set-clipboard is on.
-        if sys.stdout.isatty():
+        if sys.stdout.isatty() and show_server_option("set-clipboard") == "on":  # (tmux relays it from a pane or popup only then)
             load_buffer(text)
             sys.stdout.write(f"\x1b]52;c;{base64.b64encode(text.encode()).decode()}\x07")
             sys.stdout.flush()

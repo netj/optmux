@@ -325,16 +325,32 @@ def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
     assert [q for q, _ in pt.load_history("lines")] == ["ssh"]
 
 
-def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(monkeypatch, capsys):
-    loaded = []
+def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(monkeypatch):
+    import base64
+
+    loaded, written = [], []
+
+    class Terminal:
+        def isatty(self): return True
+        def write(self, x): written.append(x)
+        def flush(self): pass
+
     monkeypatch.setattr(pt, "load_buffer", lambda text, clipboard=False: loaded.append((text, clipboard)))
-    monkeypatch.setattr(pt.sys, "stdout", type("T", (), {"isatty": lambda s: True, "write": lambda s, x: written.append(x), "flush": lambda s: None})())
-    written = []
+    monkeypatch.setattr(pt, "show_server_option", lambda name: "on")
+    monkeypatch.setattr(pt.sys, "stdout", Terminal())
     pt.copy("héllo\nworld", "osc52")
     assert loaded == [("héllo\nworld", False)]  # (the tmux buffer too, but tmux is not asked to pick a client)
-    assert written == ["\x1b]52;c;" + __import__("base64").b64encode("héllo\nworld".encode()).decode() + "\x07"]
-    class NotATerminal:
-        def isatty(self): return False
-    monkeypatch.setattr(pt.sys, "stdout", NotATerminal())
+    assert written == ["\x1b]52;c;" + base64.b64encode("héllo\nworld".encode()).decode() + "\x07"]
+    # set-clipboard external or off: tmux relays nothing from us, so it is asked to (as before)
+    monkeypatch.setattr(pt, "show_server_option", lambda name: "external")
+    written.clear()
     pt.copy("x", "osc52")
-    assert loaded[-1] == ("x", True)
+    assert loaded[-1] == ("x", True) and not written
+
+    class NotATerminal(Terminal):
+        def isatty(self): return False
+
+    monkeypatch.setattr(pt, "show_server_option", lambda name: "on")
+    monkeypatch.setattr(pt.sys, "stdout", NotATerminal())
+    pt.copy("y", "osc52")
+    assert loaded[-1] == ("y", True)
