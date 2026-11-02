@@ -575,7 +575,7 @@ def preview_header(what, path, line):
         icon, far, near = icons["file"], directory, (base, line)
     print(f"{DIM}{source_title(source, detail)[:room]}{UNDIM}")
     print(f"{DIM}{icons[group]} {what_is} ·{UNDIM} \x1b[1m{title[:max(0, room - len(what_is) - 5)]}\x1b[0m")
-    print(f"{DIM}{icons['mod']} {module[:room]}{UNDIM}" if module else "")
+    print(f"{DIM}{icons['mod']}{UNDIM} {module[:room]}" if module else "")  # the module, plain: it is the one line that holds still
     file_name, number = near
     width = len(file_name) + len(str(number)) + 1
     far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
