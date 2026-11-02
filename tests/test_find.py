@@ -224,13 +224,6 @@ def test_tags_are_built_on_first_use_and_reused_while_the_project_is_unchanged(r
     assert fake_ctags.read_text().count("run") == 1  # unchanged: no rebuild, no refresh
 
 
-@pytest.fixture(autouse=True)
-def _fresh_find_config():
-    fd.find_config.cache_clear()
-    yield
-    fd.find_config.cache_clear()
-
-
 def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
     (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
     assert [fd.what_of(l)[2] for l in fd.list_tags("")] == ["mine"]
@@ -384,7 +377,7 @@ def test_the_picker_works_from_the_project_root(repo, monkeypatch, tmp_path_fact
 
 @pytest.fixture(autouse=True)
 def fresh_icon_style(monkeypatch):
-    monkeypatch.delenv("OPTMUX_ICONS", raising=False)
+    monkeypatch.setenv("OPTMUX_ICONS", "emoji")  # (most tests read the rows as emoji; the default is tested on its own)
     monkeypatch.delenv("OPTMUX_FIND_PREVIEW", raising=False)
     fd.icon_style.cache_clear()
     fd.find_config.cache_clear()
@@ -394,23 +387,32 @@ def fresh_icon_style(monkeypatch):
 
 
 def test_icons_by_style_and_back(monkeypatch):
-    assert fd.with_icon("call", "x").startswith("⚡️ ")  # emoji is the default
+    monkeypatch.delenv("OPTMUX_ICONS")
+    fd.icon_style.cache_clear()
+    assert fd.with_icon("call", "x").startswith("\uf0e7 ")  # nerd is the default
     for style in fd.ICON_STYLES:
         monkeypatch.setenv("OPTMUX_ICONS", style)
         fd.icon_style.cache_clear()
         for kind in fd.ICON_STYLES[style]:
             found, rest = fd.split_icon(fd.ANSI.sub("", fd.with_icon(kind, "rest of  the row")))  # (fzf hands over rows without the colors)
+            if style == "none":
+                assert (found, rest) == (None, "rest of  the row")  # nothing drawn, nothing to take off
+                continue
             assert rest == "rest of  the row" and fd.ICON_STYLES[style][found] == fd.ICON_STYLES[style][kind], (style, kind)  # (kinds may share an icon)
     assert fd.split_icon("plain row") == (None, "plain row")
     monkeypatch.setenv("OPTMUX_ICONS", "bogus")
     fd.icon_style.cache_clear()
-    assert fd.icon_style() == "emoji"  # an unknown style is the default
+    assert fd.icon_style() == "nerd"  # an unknown style is the default
 
 
 def test_icon_style_comes_from_the_find_config(monkeypatch, tmp_path):
     (tmp_path / "find.json").write_text('{"icons": "nerd"}')
+    monkeypatch.delenv("OPTMUX_ICONS")
+    (tmp_path / "find.json").write_text('{"icons": "text"}')
     monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
-    assert fd.icon_style() == "nerd" and fd.with_icon("file", "a.py") == "\uf016 a.py"
+    fd.icon_style.cache_clear()
+    fd.find_config.cache_clear()
+    assert fd.icon_style() == "text" and fd.with_icon("file", "a.py") == "- a.py"
 
 
 @skip_no_fzf

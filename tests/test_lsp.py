@@ -189,7 +189,7 @@ def test_setup_tools_env_writes_the_merged_find_section(tmp_path):
     written = json.loads((tmp_path / "find.json").read_text())
     assert written["lsp"]["python"]["enabled"] is False and written["lsp"]["go"]["servers"]
     assert (tmp_path / "bin/optmux-lsp").stat().st_mode & 0o111  # installed, executable
-    assert written["icons"] == "emoji"  # (the top-level setting, passed on to the helpers)
+    assert written["icons"] == "nerd"  # (the top-level setting, passed on to the helpers)
 
 
 def test_disabled_languages_are_dropped_by_the_loader(tmp_path, monkeypatch):
@@ -411,7 +411,7 @@ def test_fast_query_never_starts_a_hub_and_answers_from_a_running_one(project):
 
 
 def test_icons_setting_is_known_and_defaulted():
-    assert load_bundled_defaults()["icons"] == "emoji"
+    assert load_bundled_defaults()["icons"] == "nerd"
     import io
     from contextlib import redirect_stderr
     err = io.StringIO()

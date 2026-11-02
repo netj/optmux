@@ -150,19 +150,20 @@ PATTERN_ICONS = {
     "emoji": {"url": "🔗", "path": "📁", "file": "📄", "hash": "#️⃣", "ver": "🏷️", "lines": "📃", "spans": "🎨", "words": "🔤"},
     "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "hash": "\ue729", "ver": "\uf02b",
              "lines": "\uf0c9", "spans": "\uf1fc", "words": "\uf031"},
+    "none": {kind: "" for kind in ("url", "path", "file", "hash", "ver", "lines", "spans", "words")},
     "text": {"url": "url ", "path": "path", "file": "file", "hash": "hash", "ver": "ver ", "lines": "line", "spans": "span", "words": "word"},
 }
 
 
 def icon_style():
-    """`icons` (from the optmux config, $OPTMUX_DIR/find.json) or OPTMUX_ICONS; emoji by default."""
+    """`icons` (from the optmux config, $OPTMUX_DIR/find.json) or OPTMUX_ICONS; nerd by default."""
     style = os.environ.get("OPTMUX_ICONS")
     if style not in PATTERN_ICONS:
         try:
             style = json.loads(open(os.path.join(os.environ["OPTMUX_DIR"], "find.json")).read()).get("icons")
         except (KeyError, OSError, ValueError, AttributeError):
             style = None
-    return style if style in PATTERN_ICONS else "emoji"
+    return style if style in PATTERN_ICONS else "nerd"
 
 
 def find_patterns(plain):
@@ -211,11 +212,12 @@ def choices(capture, mode, width=None):
     while parsed and not parsed[-1][0][0].strip():
         parsed.pop()
     if mode == "lines":
-        mark = f"\x1b[2m{PATTERN_ICONS[icon_style()]['lines']}\x1b[0m "
+        icon = PATTERN_ICONS[icon_style()]["lines"]
+        mark = f"\x1b[2m{icon}\x1b[0m " if icon else ""
         return [(plain.rstrip(), mark + OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
     found = {}  # repeats stay once, at their latest position
     icons = PATTERN_ICONS[icon_style()]
-    mark = f"\x1b[2m{icons.get(mode, '')}\x1b[0m "
+    mark = f"\x1b[2m{icons.get(mode, '')}\x1b[0m " if icons.get(mode) else ""
     if mode == "spans":
         for text, style in span_items(parsed, width):
             found.pop(text, None)
@@ -225,7 +227,7 @@ def choices(capture, mode, width=None):
             if mode == "patterns":
                 for _, label, text in find_patterns(plain):
                     found.pop(text, None)
-                    found[text] = f"\x1b[2m{icons[label]}\x1b[0m {text}"
+                    found[text] = (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text
             else:
                 for m in WORD.finditer(plain):
                     if len(m.group()) >= MIN_WORD:

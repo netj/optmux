@@ -67,8 +67,9 @@ optmux:
   # Override in your optmux.yaml: `servers` (replaces the list), `extensions`, `enabled: false`, or a one-server
   # shorthand `command:` (+ `install:`). `open_first_file: true` opens one file after start, for servers that
   # find their project from it. `install` (one command or a list of alternatives, the first whose installer is present is used) is offered in the list: Enter runs it.
-  # How a row of optmux Find or eXtract says what it is: emoji (works everywhere), nerd (Nerd Font glyphs), or text.
-  icons: emoji
+  # How a row of optmux Find or eXtract says what it is: nerd (Nerd Font glyphs; boxes without the font), emoji
+  # (works everywhere), text (letters), or none.
+  icons: nerd
   find:
     # The selected row's file around its line, beside the list (^/ toggles it; hidden on narrow screens).
     preview: true

@@ -89,8 +89,8 @@ def _validate_optmux_section(optmux, source):
     for key, value in (optmux.get("shortcuts") or {}).items():
         if isinstance(value, dict):
             _warn_unknown_keys(value.keys(), KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
-    if optmux.get("icons") not in (None, "emoji", "nerd", "text"):
-        print(f"optmux: {source}: icons: {optmux['icons']!r} is not one of emoji, nerd, text", file=sys.stderr)
+    if optmux.get("icons") not in (None, "nerd", "emoji", "text", "none"):
+        print(f"optmux: {source}: icons: {optmux['icons']!r} is not one of nerd, emoji, text, none", file=sys.stderr)
     find = optmux.get("find")
     if isinstance(find, dict):
         _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
