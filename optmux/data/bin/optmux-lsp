@@ -48,6 +48,7 @@ BOOT_TIMEOUT = 90      # seconds a server may take to answer `initialize`
 QUERY_TIMEOUT = 4      # seconds a server may take to answer one query
 MAX_ROWS = 200
 RESCAN_MISSING = float(os.environ.get("OPTMUX_LSP_RESCAN", "3"))  # seconds between looking for servers installed since
+RECHECK_NOT_SCRIPT = 24 * 3600  # seconds a file found not to be a script is left alone (unless it changed)
 RESCAN_FILES = 60      # seconds between looking for languages the project grew into
 RESTART_AFTER = float(os.environ.get("OPTMUX_LSP_RESTART", "30"))  # seconds before a crashed server is started again
 # LSP languageId by file extension, for the one file opened on start (else the language's own name)
@@ -155,15 +156,29 @@ def script_language(root, name):
     return SHEBANG_LANGUAGES.get(os.path.basename(words[0]) if words else "") or SHEBANG_LANGUAGES.get(interpreter)
 
 
-def find_scripts(root, files, config):
+def find_scripts(root, files, config, not_scripts=None):
     """{language: [(file, languageId)]} for the tracked files with no extension that a `#!` line says are of a
     language of the project (up to MAX_SCRIPTS each): servers only look at files that have the language's
-    extension, so these are told about one by one (see LanguageServer.open_scripts)."""
+    extension, so these are told about one by one (see LanguageServer.open_scripts). `not_scripts` ({file: (mtime,
+    when checked)}, kept by the caller) remembers the files that were no script, so a rescan does not open them
+    again for a day, unless the file changed (a stat is all it costs)."""
     found = {}
+    now = time.time()
     for f in files:
         if "." in os.path.basename(f):
             continue
+        try:
+            mtime = os.stat(Path(root, f)).st_mtime_ns
+        except OSError:
+            continue
+        if not_scripts is not None and f in not_scripts and not_scripts[f][0] == mtime and now - not_scripts[f][1] < RECHECK_NOT_SCRIPT:
+            continue
         kind = script_language(root, f)
+        if not_scripts is not None:
+            if kind:
+                not_scripts.pop(f, None)
+            else:
+                not_scripts[f] = (mtime, now)
         if kind and kind[0] in config and len(found.setdefault(kind[0], [])) < MAX_SCRIPTS:
             found[kind[0]].append((f, kind[1]))
     return found
@@ -361,7 +376,7 @@ class Hub:
         self.stopping = False
         self.config = load_config()
         self.log = open(state_dir() / "lsp.log", "ab")
-        self.lang_files, self.scripts = {}, {}
+        self.lang_files, self.scripts, self.not_scripts = {}, {}, {}
         self.scanned_files = self.scanned_missing = 0.0
         self.rescan()
 
@@ -399,7 +414,7 @@ class Hub:
                 self.scanned_files = self.scanned_missing = now
                 files = tracked_files(self.root)
                 self.lang_files = detect_languages(files, self.config)
-                self.scripts = find_scripts(self.root, files, {l: self.config[l] for l in self.lang_files})
+                self.scripts = find_scripts(self.root, files, {l: self.config[l] for l in self.lang_files}, self.not_scripts)
                 for lang in list(self.missing):  # no longer a language of this project
                     if lang not in self.lang_files:
                         del self.missing[lang]

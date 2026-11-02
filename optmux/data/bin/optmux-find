@@ -540,22 +540,29 @@ CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # all but tab and newline: th
 PREVIEW_HEADER_LINES = 5
 
 
+LANGUAGE_NAMES = {"c": "C", "typescript": "TypeScript", "javascript": "JavaScript"}  # (the rest: capitalized)
+
+
 def source_title(source, detail):
-    """Where a row came from, in words: `Symbol (ctags: tags)`, `Symbol (lsp go: gopls)`, `File path (git ls-files)`,
-    `Grep match (git grep)`."""
+    """Where a row came from, in words: `Symbol (ctags: tags)`, `Go symbol (lsp: gopls)`, `File path (git ls-files)`,
+    `Grep match (git grep)`. A language server says which language the symbol is of (`detail` is `go: gopls`)."""
+    name = SOURCE_NAMES[source]
     if source == "files":
         how = "git ls-files" if repo_root() else "find"
     elif source == "grep":
         how = "git grep" if repo_root() else "grep"
     elif source == "lsp":
-        how = f"lsp {detail}" if detail else "lsp"
+        language, _, server = detail.partition(": ")
+        how = f"lsp: {server}" if server else "lsp"
+        if language:
+            name = f"{LANGUAGE_NAMES.get(language, language.capitalize())} symbol"
     else:
         found = tags_file(check=False)
         shown = os.path.relpath(found, repo_root() or os.getcwd()) if found else ""
         if shown.startswith(".."):  # outside the project: where it is, not how to climb to it
             shown = str(found).replace(str(Path.home()), "~", 1)
         how = f"ctags: {shown}" if found else "ctags"
-    return f"{SOURCE_NAMES[source]} ({how})"
+    return f"{name} ({how})"
 
 
 def preview_header(what, path, line):
@@ -754,9 +761,9 @@ def remember_query(path, query):
 # ---- the picker ----------------------------------------------------------------------------------------
 
 def header(mode):
-    tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', '^')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', '^')}"
+    tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}"
                      for m in MODES)
-    return f"{tabs}\nC-M-f: next;  ^u: clear;  ^p/^n: history;  ^/: preview;  Enter: open"  # two lines: the list may be narrow
+    return f"{tabs}\nC-M-f: next;  C-u: clear;  C-p/C-n: history;  C-/: preview;  Enter: open"  # two lines: the list may be narrow
 
 
 def parse_output(stdout):
@@ -906,6 +913,11 @@ if __name__ == "__main__":
         os.chdir(sys.argv[2])
         build_locked(sys.argv[2], tags_cache(sys.argv[2]))
         sys.exit(0)
+    if sys.argv[1:2] == ["--tags-path"]:  # for an editor: `set tags+=$(optmux-find --tags-path)`; builds them if need be
+        found = tags_file()
+        if found:
+            print(found)
+        sys.exit(0 if found else 1)
     if sys.argv[1:2] == ["--preview"]:  # fzf's preview command: MODE FILE LINE DISPLAY WHAT, see preview()
         args = (sys.argv[2:] + ["", "", "", "", ""])[:5]
         sys.exit(preview(*args, int(os.environ.get("FZF_PREVIEW_LINES") or 30)))
