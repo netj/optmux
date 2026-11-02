@@ -244,3 +244,51 @@ def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
     assert pt.FIND_KEYS["ctrl-g"] == "grep" and find.MODE_KEYS["grep"] == "ctrl-g"
     assert pt.FIND_KEYS["ctrl-alt-f"] == "omni" and find.CYCLE_KEY == "ctrl-alt-f"
     assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x"}  # extract's own keys
+
+
+def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
+    cap = "see https://x.org/a and ./b/c.py and abc1234 and v1.2.3\n"
+    for style, glyphs in (("emoji", ["🔗", "📁", "#️⃣", "🏷️"]), ("nerd", ["\uf0c1", "\uf07b", "\ue729", "\uf02b"]), ("text", ["url", "path", "hash", "ver"])):
+        monkeypatch.setenv("OPTMUX_ICONS", style)
+        shown = "\n".join(d for _, d in pt.choices(cap, "patterns"))
+        assert all(g in shown for g in glyphs), style
+    monkeypatch.delenv("OPTMUX_ICONS")
+    monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
+    assert pt.icon_style() == "emoji"
+
+
+def test_the_query_and_item_of_a_filter_are_remembered(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
+    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    assert pt.load_state("words") == ("", None)  # nothing yet
+    pt.save_state("words", "foo bar", '  an "item"\twith odd bits')
+    assert pt.load_state("words") == ("foo bar", '  an "item"\twith odd bits')  # (leading space and all)
+    assert pt.load_state("lines") == ("", None)  # each filter has its own
+    options[pt.STATE_OPTION + "words"] = "garbage"
+    assert pt.load_state("words") == ("", None)
+
+
+@pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")
+def test_the_cursor_goes_back_to_the_remembered_item():
+    numbered = list(reversed(list(enumerate([("alpha", "alpha"), ("beta", "beta"), ("alphabet", "alphabet")]))))
+    assert pt.cursor_position(numbered, "", "words", "beta") == ("", 2)  # best first: the newest is 1
+    assert pt.cursor_position(numbered, "alp", "words", "alpha") == ("alp", 2)
+    assert pt.cursor_position(numbered, "alp", "words", "beta") == ("alp", None)  # not in the list it filters to
+    assert pt.cursor_position(numbered, "zzz", "words", "beta") == ("", 2)  # a query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "", "words", None) == ("", None)
+
+
+def test_every_filter_marks_its_items_the_same_way(monkeypatch):
+    for style, marks in (("emoji", {"lines": "📃", "spans": "🎨", "words": "🔤"}), ("text", {"lines": "line", "spans": "span", "words": "word"})):
+        monkeypatch.setenv("OPTMUX_ICONS", style)
+        for mode, mark in marks.items():
+            shown = [d for _, d in pt.choices(CAPTURE, mode)]
+            assert shown and all(mark in d for d in shown), (style, mode)
+    assert [t for t, _ in pt.choices(CAPTURE, "lines")][1] == '  git commit -m "msg"'  # (what is typed has no mark)
+
+
+def test_the_header_mentions_clearing_the_query(monkeypatch):
+    for columns in (60, 120):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
+        assert "C-u" in pt.labels("words", "osc52")[0]

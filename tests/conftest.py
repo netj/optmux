@@ -7,6 +7,13 @@ skip_no_tmux = pytest.mark.skipif(not HAS_TMUX, reason="tmux not found on PATH")
 skip_no_fzf = pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not found on PATH")
 
 
+@pytest.fixture(autouse=True)
+def _not_the_developers_optmux(monkeypatch):
+    """Tests run inside an optmux session too: its OPTMUX_DIR (with the developer's own find.json, icons...) is not theirs."""
+    monkeypatch.delenv("OPTMUX_DIR", raising=False)
+    monkeypatch.delenv("OPTMUX_ICONS", raising=False)
+
+
 @pytest.fixture
 def bundled_defaults():
     """Mirrors optmux-defaults.yaml content (subset for testing)."""
