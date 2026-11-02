@@ -362,7 +362,8 @@ def test_icons_by_style_and_back(monkeypatch):
         monkeypatch.setenv("OPTMUX_FIND_ICONS", style)
         fd.icon_style.cache_clear()
         for kind in fd.ICON_STYLES[style]:
-            assert fd.split_icon(fd.with_icon(kind, "rest of  the row")) == (kind, "rest of  the row"), (style, kind)
+            found, rest = fd.split_icon(fd.ANSI.sub("", fd.with_icon(kind, "rest of  the row")))  # (fzf hands over rows without the colors)
+            assert rest == "rest of  the row" and fd.ICON_STYLES[style][found] == fd.ICON_STYLES[style][kind], (style, kind)  # (kinds may share an icon)
     assert fd.split_icon("plain row") == (None, "plain row")
     monkeypatch.setenv("OPTMUX_FIND_ICONS", "bogus")
     fd.icon_style.cache_clear()
@@ -388,7 +389,7 @@ def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_
     rows = [(fd.what_of(r)[0], plain(r), r.split("\t")[:2]) for r in fd.list_omni("hello")]
     assert [src for src, _, _ in rows].count("tags") == 0  # symbols took the tag's place; the marker row is no symbol
     assert rows[0][1].startswith("L🔧 Hello  app.py:3") and rows[0][2] == ["app.py", "3"]  # best match, and the server's richer row
-    assert rows[1][1].startswith("L🧱 HelloNotes")  # (a class)
+    assert rows[1][1].startswith("L🧩 HelloNotes")  # (a class)
     assert all(not f.startswith("!") for _, _, (f, _) in rows)
     assert asked == [["--fast", "hello"]]
 
@@ -404,7 +405,7 @@ def test_lsp_source_rows_get_icons_and_hint_rows_their_own(monkeypatch):
             "!wait\t0\tpython: language server starting, try again in a moment", "!note\t0\tpython: language server exited"]
     monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: rows)
     got = [(r.split("\t")[0], plain(r).split(" ")[0]) for r in fd.list_lsp("x")]
-    assert got == [("a.py", "L🔧"), ("!install:go", "📥"), ("!wait", "⏳"), ("!note", "💬")]
+    assert got == [("a.py", "L🔧"), ("!install:go", "⚠️"), ("!wait", "⏳"), ("!note", "💬")]
     assert list(fd.list_lsp("  ")) == []
 
 
@@ -451,10 +452,10 @@ def test_symbol_kinds_are_grouped_into_a_few_icons_and_unknown_ones_fall_back():
     kind = fd.kind_group
     assert [kind(w) for w in ("function", "method", "constructor", "func", "methodSpec")] == ["call"] * 5
     assert [kind(w) for w in ("class", "struct", "interface", "enum", "typedef")] == ["type"] * 5
-    assert [kind(w) for w in ("module", "namespace", "package")] == ["mod"] * 3
+    assert [kind(w) for w in ("module", "namespace", "package")] == ["mod", "mod", "pkg"]
     assert [kind(w) for w in ("variable", "constant", "field", "property", "member", "const", "var")] == ["val"] * 7
     assert kind("somethingnew") == "sym" and kind("") == "sym"
-    assert [kind(w) for w in "fmcsv"] == ["call", "call", "type", "type", "val"] and kind("Y") == "sym"  # ctags' letters, best guess
+    assert [kind(w) for w in "fmcsvp"] == ["call", "call", "type", "type", "val", "pkg"] and kind("Y") == "sym"  # ctags' letters, best guess
     assert plain(fd.row("lsp", "class", "Foo", "a.py", 1)).endswith("Foo  a.py:1")
 
 

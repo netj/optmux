@@ -336,26 +336,27 @@ def boost(keys, recent):
 
 
 ICON_STYLES = {  # the row's kind, drawn: emoji work in any terminal, nerd needs a Nerd Font, text always works
-    "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "🧩", "call": "🔧", "type": "🧱", "mod": "📦", "val": "📌",
-              "install": "📥", "wait": "⏳", "note": "💬"},
-    "nerd": {"file": "\uf016", "dir": "\uf07b", "hit": "\uf002", "sym": "\uf12e", "call": "\uf0ad", "type": "\uf1b2", "mod": "\uf1b3",
-             "val": "\uf08d", "install": "\uf019", "wait": "\uf252", "note": "\uf05a"},
-    "text": {"file": "-", "dir": "d", "hit": "/", "sym": "o", "call": "f", "type": "t", "mod": "m", "val": "v",
-             "install": "+", "wait": "~", "note": "i"},
+    "emoji": {"file": "📄", "dir": "📁", "hit": "🔍", "sym": "❔", "call": "🔧", "type": "🧩", "mod": "📦", "pkg": "📦",
+              "val": "📌", "install": "⚠️", "wait": "⏳", "note": "💬"},
+    "nerd": {"file": "\uf016", "dir": "\uf07b", "hit": "\uf002", "sym": "\uf128", "call": "\uf0ad", "type": "\uf12e",
+             "mod": "\uf1b2", "pkg": "\uf1b3", "val": "\uf08d", "install": "\uf071", "wait": "\uf252", "note": "\uf05a"},
+    "text": {"file": "-", "dir": "d", "hit": "/", "sym": "o", "call": "f", "type": "t", "mod": "m", "pkg": "p", "val": "v",
+             "install": "!", "wait": "~", "note": "i"},
 }
 DEFAULT_ICONS = "emoji"
 # What a symbol is (the words ctags and optmux-lsp print), by group, so five icons say it at a glance
 SYMBOL_GROUPS = {
     "call": "function func method methodspec constructor operator event macro procedure subroutine routine".split(),
     "type": "class struct interface enum typeparameter typedef union trait protocol alias typealias record".split(),
-    "mod": "module namespace package file library unit".split(),
+    "mod": "module namespace file library unit".split(),
+    "pkg": ["package"],
     "val": ("variable var constant const field member property enummember enumerator define local key string number "
             "boolean array object null").split(),
 }
 SYMBOL_GROUP = {kind: group for group, kinds in SYMBOL_GROUPS.items() for kind in kinds}
 # ctags' one-letter kinds, if that is all a tags file has (they differ by language: a best guess)
 LETTER_GROUP = {**dict.fromkeys("fm", "call"), **dict.fromkeys("cstiegu", "type"), **dict.fromkeys("vdr", "val"),
-                **dict.fromkeys("pn", "mod")}
+                "p": "pkg", "n": "mod"}
 SOURCE_LETTERS = {"files": "F", "grep": "G", "tags": "T", "lsp": "L"}
 SOURCE_NAMES = {"files": "File path", "grep": "Grep match", "tags": "Symbol", "lsp": "Symbol"}
 FIELD_SEP = "\x1f"  # between the parts of a row's last field (see row)
@@ -387,7 +388,10 @@ def kind_group(word):
 
 
 def with_icon(kind, text):
-    return f"{ICON_STYLES[icon_style()][kind]} {text}"
+    icon = ICON_STYLES[icon_style()][kind]
+    if kind == "install":  # (the emoji is yellow already)
+        icon = f"{YELLOW}{icon}{UNDIM}"
+    return f"{icon} {text}"
 
 
 def split_icon(display):
