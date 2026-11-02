@@ -606,7 +606,7 @@ def test_preview_is_on_unless_turned_off(monkeypatch, tmp_path):
 def test_header_marks_the_current_source_and_keeps_the_keys_on_a_line_of_their_own():
     tabs, keys = fd.header("grep").split("\n")
     assert "[grep C-g]" in tabs and "omni C-o" in tabs and "[omni" not in tabs
-    assert "C-M-f: next" in keys and "C-/: preview" in keys and "^" not in keys
+    assert tabs.endswith("C-M-f: next") and "Enter: open" in keys and "C-/: preview" in keys and "^" not in keys
 
 
 def test_find_starts_in_a_given_source_with_a_given_query(capsys):

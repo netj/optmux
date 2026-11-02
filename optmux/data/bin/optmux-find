@@ -763,7 +763,7 @@ def remember_query(path, query):
 def header(mode):
     tabs = "  ".join(f"[{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}]" if m == mode else f"{m} {MODE_KEYS[m].replace('ctrl-', 'C-')}"
                      for m in MODES)
-    return f"{tabs}\nC-M-f: next;  C-u: clear;  C-p/C-n: history;  C-/: preview;  Enter: open"  # two lines: the list may be narrow
+    return f"{tabs}  C-M-f: next\nC-u: clear;  C-p/C-n: history;  C-/: preview;  Enter: open"  # two lines: the list may be narrow
 
 
 def parse_output(stdout):
