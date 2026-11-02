@@ -650,7 +650,7 @@ def test_find_starts_in_a_given_source_with_a_given_query(capsys):
 
 def test_the_preview_toggles_on_every_key_terminals_send_and_grep_drops_its_text_with_it():
     args = fd.preview_args("/b/optmux-find", "grep", compact=True)
-    for key in ("ctrl-/", "ctrl-_", "alt-p"):  # Terminal.app sends ^_ for ctrl-/ and ctrl--
+    for key in ("ctrl-/", "ctrl-_"):  # Terminal.app sends ^_ for ctrl-/ and ctrl--
         assert f"--bind={key}:toggle-preview+change-with-nth(3..4|3)" in args
     assert "--bind=ctrl-_:toggle-preview+change-with-nth(3|3..4)" in fd.preview_args("/b/optmux-find", "grep")
     assert "--bind=ctrl-_:toggle-preview" in fd.preview_args("/b/optmux-find", "files")  # rows without text stay as they are

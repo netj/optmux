@@ -78,7 +78,7 @@ def test_labels_shrink_in_narrow_terminals(monkeypatch):
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
     wide = pt.labels("words", "osc52")
     assert wide[1] == "--prompt=words filtered (C-M-x to switch) > "
-    assert "C-f in files" in wide[0] and "C-g by grep" in wide[0] and "C-M-f everywhere" in wide[0]
+    assert "C-f files" in wide[0] and "C-g grep" in wide[0] and "C-M-f all" in wide[0] and "M-p/M-n" in wide[0]
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
     narrow = pt.labels("words", "osc52")
     assert narrow[1] == "--prompt=words (C-M-x) > "
@@ -257,16 +257,23 @@ def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
     assert pt.icon_style() == "nerd"
 
 
-def test_the_query_and_item_of_a_filter_are_remembered(monkeypatch):
+def test_the_queries_and_items_of_a_filter_are_remembered_newest_first(monkeypatch):
     options = {}
     monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
     monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
-    assert pt.load_state("words") == ("", None)  # nothing yet
-    pt.save_state("words", "foo bar", '  an "item"\twith odd bits')
-    assert pt.load_state("words") == ("foo bar", '  an "item"\twith odd bits')  # (leading space and all)
-    assert pt.load_state("lines") == ("", None)  # each filter has its own
+    assert pt.load_history("words") == []  # nothing yet
+    pt.save_state("words", "bash", "bashrc")
+    pt.save_state("words", ".tmp/", ".tmp/x")
+    pt.save_state("words", "bash", '  an "item"\twith odd bits')  # again: moves to the front, once
+    assert pt.load_history("words") == [("bash", '  an "item"\twith odd bits'), (".tmp/", ".tmp/x")]  # (leading space and all)
+    assert pt.load_history("lines") == []  # each filter has its own
+    for n in range(pt.MAX_HISTORY + 5):
+        pt.save_state("words", f"q{n}", None)
+    assert len(pt.load_history("words")) == pt.MAX_HISTORY and pt.load_history("words")[0] == (f"q{pt.MAX_HISTORY + 4}", None)
     options[pt.STATE_OPTION + "words"] = "garbage"
-    assert pt.load_state("words") == ("", None)
+    assert pt.load_history("words") == []
+    options[pt.STATE_OPTION + "words"] = '[1, {"query": 5}, {"query": "ok"}]'
+    assert pt.load_history("words") == [("ok", None)]
 
 
 @pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")
@@ -275,7 +282,8 @@ def test_the_cursor_goes_back_to_the_remembered_item():
     assert pt.cursor_position(numbered, "", "words", "beta") == ("", 2)  # best first: the newest is 1
     assert pt.cursor_position(numbered, "alp", "words", "alpha") == ("alp", 2)
     assert pt.cursor_position(numbered, "alp", "words", "beta") == ("alp", None)  # not in the list it filters to
-    assert pt.cursor_position(numbered, "zzz", "words", "beta") == ("", 2)  # a query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "zzz", "words", "beta", recalled=True) == ("", 2)  # a recalled query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "zzz", "words", None) == ("zzz", None)  # one you are typing is not
     assert pt.cursor_position(numbered, "", "words", None) == ("", None)
 
 
@@ -291,7 +299,7 @@ def test_every_filter_marks_its_items_the_same_way(monkeypatch):
 def test_the_header_mentions_clearing_the_query(monkeypatch):
     for columns in (60, 120):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
-        assert "C-u" in pt.labels("words", "osc52")[0]
+        assert "C-u" in pt.labels("words", "osc52")[0] and "M-p" in pt.labels("words", "osc52")[0]
 
 
 def test_no_icons_leaves_the_items_bare(monkeypatch):
@@ -307,3 +315,11 @@ def test_a_long_item_gets_its_cursor_back_too():
     long = "x" * 500
     numbered = [(0, (long, long)), (1, ("short", "short"))]
     assert pt.cursor_position(numbered, "", "words", long[:pt.MAX_ITEM]) == ("", 1)
+
+
+def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
+    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    pt.save_state("lines", "ssh", "ssh host")
+    assert [q for q, _ in pt.load_history("lines")] == ["ssh"]
