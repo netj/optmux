@@ -455,7 +455,7 @@ def test_symbol_kinds_are_grouped_into_a_few_icons_and_unknown_ones_fall_back():
     assert [kind(w) for w in ("variable", "constant", "field", "property", "member", "const", "var")] == ["val"] * 7
     assert kind("somethingnew") == "sym" and kind("") == "sym"
     assert [kind(w) for w in "fmcsv"] == ["call", "call", "type", "type", "val"] and kind("Y") == "sym"  # ctags' letters, best guess
-    assert fd.row("lsp", "class", "Foo", "a.py", 1).split("\t")[2].endswith(("Foo  a.py:1"))
+    assert plain(fd.row("lsp", "class", "Foo", "a.py", 1)).endswith("Foo  a.py:1")
 
 
 def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_dir_in_parens(monkeypatch):
@@ -476,7 +476,8 @@ def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_
 
 def test_the_source_and_its_dir_are_dimmed_in_the_list():
     r = fd.row("tags", "function", "Layout", "pkg/gui/layout.go", 12).split("\t")[2]
-    assert r.startswith("\x1b[2mT\x1b[0m") and r.endswith("\x1b[2m(pkg/gui)\x1b[0m")
+    assert r.startswith("\x1b[2mT🔧\x1b[0m ") and r.endswith("\x1b[2m(pkg/gui)\x1b[0m")  # the source and its icon, and the dir: muted
+    assert fd.file_line("layout.go", 12) in r  # the file bold, its colon muted, the line bold yellow
 
 
 def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_and_where_it_is(tmp_path, monkeypatch, capsys):
@@ -651,6 +652,6 @@ def test_the_preview_header_keeps_the_file_name_and_line_bright_and_the_director
     what = fd.FIELD_SEP.join(fd.what_all(fd.row("tags", "function", "F", "pkg/a.go", 3).split("\t")[4]))
     fd.preview("tags", "pkg/a.go", "3", "x", what, 10)
     place = capsys.readouterr().out.splitlines()[3]
-    # the icon dim, the directory plain, the file name bold, the colon muted, the line yellow
-    assert place.endswith(f" pkg/\x1b[1ma.go\x1b[0m{fd.DIM}:{fd.UNDIM}\x1b[33m3\x1b[0m") and place.startswith(fd.DIM)
+    # the icon and directory muted, the file name bold, the colon muted, the line number bold yellow
+    assert place == f"{fd.DIM}📄 pkg/{fd.UNDIM}" + fd.file_line("a.go", 3)
 

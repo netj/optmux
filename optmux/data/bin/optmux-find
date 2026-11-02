@@ -400,6 +400,12 @@ def split_icon(display):
 
 
 DIM, UNDIM = "\x1b[2m", "\x1b[0m"
+BOLD, YELLOW_BOLD = "\x1b[1m", "\x1b[1;33m"
+
+
+def file_line(base, line):
+    """`file.go:105` as the list and the preview draw it: the file name bold, the colon muted, the line number bold yellow."""
+    return f"{BOLD}{base}{UNDIM}{DIM}:{UNDIM}{YELLOW_BOLD}{line}{UNDIM}"
 
 
 def row(source, kind, name, path, line, container="", text="", detail=""):
@@ -410,8 +416,13 @@ def row(source, kind, name, path, line, container="", text="", detail=""):
     group = kind if kind in ("file", "hit") else kind_group(kind)
     text = re.sub(r"[\t\x1f]", " ", text.strip())  # (source lines have tabs: they would split the row)
     directory, base = os.path.split(path)
-    where = "" if source in ("files", "grep") else f"  {base}:{line}"
-    shown = f"{DIM}{SOURCE_LETTERS[source]}{UNDIM}{ICON_STYLES[icon_style()][group]} {name}{where}"
+    drawn = name  # (`name` itself goes in WHAT, plain)
+    if source == "files":
+        drawn = f"{BOLD}{name}{UNDIM}"
+    elif source == "grep":
+        drawn = file_line(base, line)
+    where = "" if source in ("files", "grep") else f"  {file_line(base, line)}"
+    shown = f"{DIM}{SOURCE_LETTERS[source]}{ICON_STYLES[icon_style()][group]}{UNDIM} {drawn}{where}"
     if directory:
         shown += f"  {DIM}({directory}){UNDIM}"
     what = FIELD_SEP.join((source, kind, name, container, detail, text[:300]))
@@ -558,9 +569,9 @@ def preview_header(what, path, line):
     file_name, number = near
     width = len(file_name) + len(str(number)) + 1
     far = far[-max(0, room - width - 3):] if far else ""  # (the end of a long directory, near the file, is what counts)
-    # the directory as is, the file name bold, the line number yellow, and the colon between them muted
-    where = (f"\x1b[1m{file_name}\x1b[0m{DIM}:{UNDIM}\x1b[33m{number}\x1b[0m" if file_name else "")
-    print(f"{DIM}{icon}{UNDIM} {far}{where}")
+    # the directory muted, the file name bold, the colon between them muted, the line number bold yellow
+    where = file_line(file_name, number) if file_name else ""
+    print(f"{DIM}{icon} {far}{UNDIM}{where}")
     print(f"{DIM}{'─' * 200}{UNDIM}")  # (cut to the window by nowrap)
     sys.stdout.flush()  # bat takes over this process
     return PREVIEW_HEADER_LINES
