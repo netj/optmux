@@ -641,3 +641,15 @@ def test_a_grep_match_with_tabs_in_it_does_not_split_the_row():
     r = fd.row("grep", "hit", "a.go:7", "pkg/a.go", 7, text="\tif x {\t// go code")
     assert len(r.split("\t")) == 5 and r.split("\t")[3] == "if x { // go code"
     assert fd.what_all(r.split("\t")[4])[5] == "if x { // go code"
+
+
+def test_the_preview_header_keeps_the_file_name_and_line_bright_and_the_directory_dim(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(fd.shutil, "which", lambda name: None)
+    Path("pkg").mkdir()
+    Path("pkg/a.go").write_text("x\n" * 9)
+    what = fd.FIELD_SEP.join(fd.what_all(fd.row("tags", "function", "F", "pkg/a.go", 3).split("\t")[4]))
+    fd.preview("tags", "pkg/a.go", "3", "x", what, 10)
+    place = capsys.readouterr().out.splitlines()[3]
+    assert place.endswith(f"pkg/{fd.UNDIM}a.go:3") and place.startswith(fd.DIM)  # the directory is inside the dim span, the file after it
+
