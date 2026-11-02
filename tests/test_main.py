@@ -139,6 +139,7 @@ def test_main_creates_optmux_dir(mock_run, mock_execvp, project_yaml_file):
     menu_conf = optmux_dir / "tmux" / "tmux.optmux-menu.conf"
     assert menu_conf.exists()
     assert "New Window (C-t c)" in menu_conf.read_text()
+    assert "Find (C-M-f)" in menu_conf.read_text() and "eXtract (C-M-x)" in menu_conf.read_text()
 
 
 @patch("os.execvp")

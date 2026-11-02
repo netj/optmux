@@ -222,6 +222,16 @@ optmux:
       - key: w
         title: New Window (C-t c)
         new_window: true
+      - separator
+      - key: f
+        title: Find (C-M-f)
+        tmux: |
+          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+      - key: x
+        title: eXtract (C-M-x)
+        tmux: |
+          display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+      - separator
       - "*"
     window:
       - key: b
@@ -230,5 +240,14 @@ optmux:
       - key: q
         title: "#{?#{>:#{monitor-silence},0},Disable,Enable} Silence Alert"
         tmux: if-shell -F "#{>:#{monitor-silence},0}" "set -w monitor-silence 0" "set -w monitor-silence 15"
+      - separator
+      - key: f
+        title: Find (C-M-f)
+        tmux: |
+          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+      - key: x
+        title: eXtract (C-M-x)
+        tmux: |
+          display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       - separator
       - "*"
