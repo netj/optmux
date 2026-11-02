@@ -477,7 +477,7 @@ def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_
 def test_the_source_and_its_dir_are_dimmed_in_the_list():
     r = fd.row("tags", "function", "Layout", "pkg/gui/layout.go", 12).split("\t")[2]
     assert r.startswith("\x1b[2mT🔧\x1b[0m ") and r.endswith("\x1b[2m(pkg/gui)\x1b[0m")  # the source and its icon, and the dir: muted
-    assert fd.file_line("layout.go", 12) in r  # the file bold, its colon muted, the line bold yellow
+    assert fd.list_file_line("layout.go", 12) in r and "\x1b[1m" not in r  # the file blue, its colon muted, the line yellow; no bold: fzf bolds the selection
 
 
 def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_and_where_it_is(tmp_path, monkeypatch, capsys):
