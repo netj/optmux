@@ -17,6 +17,7 @@ The selection can also be looked up in the project instead: `C-f` finds it among
 and `C-M-f` searches everything (optmux Find, started in this same popup with the text as its query).
 """
 
+import base64
 import json
 import os
 import re
@@ -270,7 +271,15 @@ def get_option(name, choices, default):
 
 def copy(text, method):
     if method == "osc52":
-        load_buffer(text, clipboard=True)  # tmux emits OSC 52 itself (set-clipboard on), which also works over SSH
+        # The escape goes to our own terminal: in a popup that is the client whose popup this is. (`load-buffer -w` leaves
+        # the client to tmux, which picks the most recently active one: with several attached it may be another terminal.)
+        # tmux passes it on, also over SSH, because set-clipboard is on.
+        if sys.stdout.isatty():
+            load_buffer(text)
+            sys.stdout.write(f"\x1b]52;c;{base64.b64encode(text.encode()).decode()}\x07")
+            sys.stdout.flush()
+        else:
+            load_buffer(text, clipboard=True)
         return
     load_buffer(text)
     if method == "native":

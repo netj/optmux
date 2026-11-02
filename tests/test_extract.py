@@ -323,3 +323,18 @@ def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
     monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
     pt.save_state("lines", "ssh", "ssh host")
     assert [q for q, _ in pt.load_history("lines")] == ["ssh"]
+
+
+def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(monkeypatch, capsys):
+    loaded = []
+    monkeypatch.setattr(pt, "load_buffer", lambda text, clipboard=False: loaded.append((text, clipboard)))
+    monkeypatch.setattr(pt.sys, "stdout", type("T", (), {"isatty": lambda s: True, "write": lambda s, x: written.append(x), "flush": lambda s: None})())
+    written = []
+    pt.copy("héllo\nworld", "osc52")
+    assert loaded == [("héllo\nworld", False)]  # (the tmux buffer too, but tmux is not asked to pick a client)
+    assert written == ["\x1b]52;c;" + __import__("base64").b64encode("héllo\nworld".encode()).decode() + "\x07"]
+    class NotATerminal:
+        def isatty(self): return False
+    monkeypatch.setattr(pt.sys, "stdout", NotATerminal())
+    pt.copy("x", "osc52")
+    assert loaded[-1] == ("x", True)
