@@ -62,7 +62,7 @@ def test_tags_parse_line_field_and_search_patterns(repo):
     )
     rows = list(fd.list_tags(""))
     assert [r.split("\t")[:2] for r in rows] == [["app.py", "3"], ["app.py", "1"]]
-    assert [plain(r) for r in rows] == ["T⚡ Hello  app.py:3", "T📖 os  app.py:1"]  # kind letter f: a function; module: a module
+    assert [plain(r) for r in rows] == ["T⚡️ Hello  app.py:3", "T📖 os  app.py:1"]  # kind letter f: a function; module: a module
     assert fd.what_of(rows[0]) == ("tags", "f", "Hello", "")
 
 
@@ -357,7 +357,7 @@ def fresh_icon_style(monkeypatch):
 
 
 def test_icons_by_style_and_back(monkeypatch):
-    assert fd.with_icon("call", "x").startswith("⚡ ")  # emoji is the default
+    assert fd.with_icon("call", "x").startswith("⚡️ ")  # emoji is the default
     for style in fd.ICON_STYLES:
         monkeypatch.setenv("OPTMUX_FIND_ICONS", style)
         fd.icon_style.cache_clear()
@@ -388,7 +388,7 @@ def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_
     monkeypatch.setattr(fd, "lsp_finish", lambda proc, timeout: symbols)
     rows = [(fd.what_of(r)[0], plain(r), r.split("\t")[:2]) for r in fd.list_omni("hello")]
     assert [src for src, _, _ in rows].count("tags") == 0  # symbols took the tag's place; the marker row is no symbol
-    assert rows[0][1].startswith("L⚡ Hello  app.py:3") and rows[0][2] == ["app.py", "3"]  # best match, and the server's richer row
+    assert rows[0][1].startswith("L⚡️ Hello  app.py:3") and rows[0][2] == ["app.py", "3"]  # best match, and the server's richer row
     assert rows[1][1].startswith("L🧩 HelloNotes")  # (a class)
     assert all(not f.startswith("!") for _, _, (f, _) in rows)
     assert asked == [["--fast", "hello"]]
@@ -405,7 +405,7 @@ def test_lsp_source_rows_get_icons_and_hint_rows_their_own(monkeypatch):
             "!wait\t0\tpython: language server starting, try again in a moment", "!note\t0\tpython: language server exited"]
     monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: rows)
     got = [(r.split("\t")[0], plain(r).split(" ")[0]) for r in fd.list_lsp("x")]
-    assert got == [("a.py", "L⚡"), ("!install:go", "⚠️"), ("!wait", "⏳"), ("!note", "💬")]
+    assert got == [("a.py", "L⚡️"), ("!install:go", "⚠️"), ("!wait", "⏳"), ("!note", "💬")]
     assert list(fd.list_lsp("  ")) == []
 
 
@@ -464,8 +464,8 @@ def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_
     assert shown("files", "file", "layout.go", "pkg/gui/layout.go", 1) == "F📄 layout.go  (pkg/gui)"
     assert shown("files", "file", "README.md", "README.md", 1) == "F📄 README.md"
     assert shown("grep", "hit", "layout.go:12", "pkg/gui/layout.go", 12, text="x := 1") == "G🔍 layout.go:12  (pkg/gui)"
-    assert shown("tags", "function", "Layout", "pkg/gui/layout.go", 12) == "T⚡ Layout  layout.go:12  (pkg/gui)"
-    assert shown("lsp", "method", "Gui.Layout", "pkg/gui/layout.go", 12, "Gui") == "L⚡ Gui.Layout  layout.go:12  (pkg/gui)"
+    assert shown("tags", "function", "Layout", "pkg/gui/layout.go", 12) == "T⚡️ Layout  layout.go:12  (pkg/gui)"
+    assert shown("lsp", "method", "Gui.Layout", "pkg/gui/layout.go", 12, "Gui") == "L⚡️ Gui.Layout  layout.go:12  (pkg/gui)"
     monkeypatch.setenv("OPTMUX_FIND_ICONS", "text")
     fd.icon_style.cache_clear()
     assert shown("tags", "m", "Layout", "a/b.go", 3) == "Tf Layout  b.go:3  (a)"  # source letter, kind letter
@@ -477,7 +477,7 @@ def test_rows_are_drawn_the_same_for_every_source_name_first_then_where_and_the_
 
 def test_the_source_and_its_dir_are_dimmed_in_the_list():
     r = fd.row("tags", "function", "Layout", "pkg/gui/layout.go", 12).split("\t")[2]
-    assert r.startswith("\x1b[2mT⚡\x1b[0m ") and r.endswith(f"{fd.DIM}({fd.UNDIM}{fd.DIR_COLOR}pkg/gui{fd.UNDIM}{fd.DIM}){fd.UNDIM}")  # the source and its icon muted, the dir green in muted parens
+    assert r.startswith("\x1b[2mT⚡️\x1b[0m ") and r.endswith(f"{fd.DIM}({fd.UNDIM}{fd.DIR_COLOR}pkg/gui{fd.UNDIM}{fd.DIM}){fd.UNDIM}")  # the source and its icon muted, the dir green in muted parens
     assert fd.list_file_line("layout.go", 12) in r and "\x1b[1m" not in r  # the file blue, its colon muted, the line yellow; no bold: fzf bolds the selection
 
 
@@ -493,14 +493,14 @@ def test_the_preview_opens_with_where_it_is_from_what_it_is_called_what_it_is_an
     fd.preview("lsp", "pkg/a.go", "30", "x", what("lsp", "method", "Gui.Layout", "pkg/a.go", 30, "Gui", detail="go: gopls"), 20)
     out = strip(capsys.readouterr().out)
     assert len(out) == 20  # the header is part of the window's height
-    assert out[:4] == ["Symbol (lsp go: gopls)", "⚡ method · Gui.Layout", "📖 Gui", "📄 pkg/a.go:30"]
+    assert out[:4] == ["Symbol (lsp go: gopls)", "⚡️ method · Gui.Layout", "📖 Gui", "📄 pkg/a.go:30"]
     assert out[4].startswith("──") and any(l.endswith("line 30") for l in out[5:])
     fd.preview("files", "pkg/a.go", "1", "x", what("files", "file", "a.go", "pkg/a.go", 1), 10)
     assert strip(capsys.readouterr().out)[:4] == ["File path (find)", "📄 file · a.go", "", "📁 pkg/"]  # nothing said twice
     fd.preview("grep", "pkg/a.go", "7", "x", what("grep", "hit", "a.go:7", "pkg/a.go", 7, text="x := \t1"), 10)
     assert strip(capsys.readouterr().out)[:4] == ["Grep match (grep)", "🔍 match · x :=  1", "", "📄 pkg/a.go:7"]
     fd.preview("tags", "pkg/a.go", "3", "x", what("tags", "function", "Layout", "pkg/a.go", 3), 10)
-    assert strip(capsys.readouterr().out)[:2] == ["Symbol (ctags)", "⚡ function · Layout"]
+    assert strip(capsys.readouterr().out)[:2] == ["Symbol (ctags)", "⚡️ function · Layout"]
 
 
 def test_preview_shows_the_file_around_the_line_with_the_line_marked(tmp_path, monkeypatch, capsys):

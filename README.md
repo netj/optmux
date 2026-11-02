@@ -560,13 +560,13 @@ A **preview** of the selected row sits beside the list: the file around the matc
 **How a row reads.** The same for files, matches, tags and symbols: a dim letter for the source (`F` file, `G` grep match, `T` tag, `L` language-server symbol), an icon for what it is, the name, then where: `file:line`, and the directory in dim parens:
 
 ```
-T⚡ build_tags  optmux-find:172  (optmux/data/bin)
-L⚡ Gui.Layout  layout.go:12  (pkg/gui)
+T⚡️ build_tags  optmux-find:172  (optmux/data/bin)
+L⚡️ Gui.Layout  layout.go:12  (pkg/gui)
 F📄 layout.go  (pkg/gui)
 G🔍 layout.go:12  (pkg/gui)
 ```
 
-The icon is the kind: ⚡ function or method, 🧩 class, struct or interface, 📖 module or namespace, 📦 package, 🏷️ variable, constant or field, ◇ anything else, 📄 file, 🔍 grep match. Tags and symbols share them (ctags is asked for full kind names, so a tag's kind is not a bare letter), and a language server's package qualifier is left off the name (`helpers.Gui.Layout` is shown `Gui.Layout`: the file is next to it). The first lines of the preview say it all again, in words: the name, its kind and source, and the full directory (and the container, if the server gave one).
+The icon is the kind: ⚡️ function or method, 🧩 class, struct or interface, 📖 module or namespace, 📦 package, 🏷️ variable, constant or field, ⚪️ anything else, 📄 file, 🔍 grep match. Tags and symbols share them (ctags is asked for full kind names, so a tag's kind is not a bare letter), and a language server's package qualifier is left off the name (`helpers.Gui.Layout` is shown `Gui.Layout`: the file is next to it). The first lines of the preview say it all again, in words: the name, its kind and source, and the full directory (and the container, if the server gave one).
 
 Emoji are the default, because they render everywhere (also over mosh and SSH, where the machine optmux runs on cannot tell what font your terminal has). `find.icons` switches them: `nerd` draws Nerd Font glyphs (needs a Nerd Font in your terminal), `text` uses letters (`Tf` is a tag that is a function; `t` type, `m` module, `v` value, `o` other, `-` file, `/` match):
 
