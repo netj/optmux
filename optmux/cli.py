@@ -59,7 +59,7 @@ def parse_project_name(yaml_path_str):
 
 
 KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit", "find", "icons"}
-KNOWN_FIND_KEYS = {"lsp", "preview"}
+KNOWN_FIND_KEYS = {"lsp", "preview", "ignore_files"}
 KNOWN_LSP_LANGUAGE_KEYS = {"extensions", "servers", "command", "install", "enabled", "open_first_file", "language_id"}
 KNOWN_LSP_SERVER_KEYS = {"command", "install"}
 KNOWN_SHORTCUT_KEYS = {
@@ -96,6 +96,14 @@ def _validate_optmux_section(optmux, source):
         _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
         if "preview" in find and not isinstance(find["preview"], bool):
             print(f"optmux: {source}: find.preview: {find['preview']!r} is not true or false", file=sys.stderr)
+        ignore = find.get("ignore_files")
+        if ignore is not None and not isinstance(ignore, dict):
+            print(f"optmux: {source}: find.ignore_files: {ignore!r} is not a mapping of groups to lists of patterns",
+                  file=sys.stderr)
+        for group, patterns in (ignore if isinstance(ignore, dict) else {}).items():
+            if patterns is not None and not (isinstance(patterns, list) and all(isinstance(x, str) for x in patterns)):
+                print(f"optmux: {source}: find.ignore_files.{group}: {patterns!r} is not a list of patterns",
+                      file=sys.stderr)
         for lang, cfg in (find.get("lsp") or {}).items():
             if isinstance(cfg, dict):
                 _warn_unknown_keys(cfg.keys(), KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")

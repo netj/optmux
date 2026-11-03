@@ -518,7 +518,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 `C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
 - **`C-o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows are drawn alike in every source (see below); the best 100 are shown. Grep stays on its own key, `C-g`.
-- **`C-f` files**: `git ls-files` (tracked and untracked, minus ignored), or `find` outside a repo.
+- **`C-f` files**: `git ls-files` (tracked and untracked) first, then every other file `find` turns up, ignored ones included (scratch scripts, local notes), minus what `find.ignore_files` names (`node_modules`, `.venv`, caches, optmux's own `.optmux.d`; see below). Just `find` outside a repo.
 - **`C-g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`C-t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own, the way such a hook would (`git ls-files | ctags -L -`), the first time, and refreshes it in the background whenever the commit or the tracked files that changed differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It needs [universal-ctags](https://ctags.io) (`brew install universal-ctags`, a dependency of the Homebrew formula; exuberant ctags should do too, minus line numbers it can find from patterns). macOS's own `/usr/bin/ctags` does not: it takes no file list and only knows C-like languages. It is stored per project in `.optmux.d/find/`. To use the same tags in your editor, `optmux-find --tags-path` prints the file (building it first if there is none yet, and exiting 1 when there is no project; for tags of its own it prints a copy with absolute paths, since an editor reads them relative to the tags file's directory): in vim, `:let &tags .= ',' . escape(trim(system('optmux-find --tags-path 2>/dev/null')), ' ,')`. It resolves the same way inside and outside optmux only where `$OPTMUX_DIR` is the same, so run it from a pane of the project's optmux session.
 - **`C-l` lsp**: symbols from the project's language servers, searched as you type (see [Language servers](#language-servers-l) below).
@@ -554,6 +554,22 @@ optmux:
         install: gem install ruby-lsp
       bash:
         enabled: false
+```
+
+`find.ignore_files` lists what the file list leaves out, as glob patterns matched against each name in a path (`node_modules` skips that directory, `*.pyc` the files), in groups. Setting a group replaces its list, `[]` drops it, and a new group adds to the rest; `.git` is always skipped:
+
+```yaml
+optmux:
+  find:
+    ignore_files:
+      dependencies:  # replaces the bundled list
+      - node_modules
+      - .venv
+      - vendor
+      caches: []  # look inside caches too
+      scratch:  # a group of your own
+      - "*.log"
+      - tmp
 ```
 
 The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.

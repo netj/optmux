@@ -28,11 +28,29 @@ def repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_files_lists_tracked_and_untracked_not_ignored(repo):
+def test_files_lists_what_git_knows_then_the_ignored(repo):
     (repo / "new.txt").write_text("x")
     (repo / ".gitignore").write_text("ignored.txt\n")
     (repo / "ignored.txt").write_text("x")
-    assert [l.split("\t")[0] for l in fd.list_files("")] == [".gitignore", "app.py", "new.txt", "sub/notes.md"]
+    assert [l.split("\t")[0] for l in fd.list_files("")] == [".gitignore", "app.py", "new.txt", "sub/notes.md", "ignored.txt"]
+
+
+def test_files_also_lists_ignored_ones_minus_find_ignore_files(repo, monkeypatch, tmp_path_factory):
+    (repo / ".gitignore").write_text("scratch.sh\nnode_modules/\n.x.optmux.d/\n")
+    for f in ("scratch.sh", "node_modules/m.js", ".x.optmux.d/p.sh", "sub/a.pyc", "sub/.git/h"):
+        (repo / f).parent.mkdir(parents=True, exist_ok=True)
+        (repo / f).write_text("x")
+    names = lambda: [l.split("\t")[0] for l in fd.list_files("")]
+    assert "scratch.sh" in names() and "node_modules/m.js" in names()  # (no config, nothing skipped but .git)
+    assert ".git/h" not in " ".join(names()) and "sub/.git/h" not in names()
+    cfg = tmp_path_factory.mktemp("optmux")
+    (cfg / "find.json").write_text('{"ignore_files": {"deps": ["node_modules"], "optmux": ["*.optmux.d"], "off": null, "c": ["*.pyc"]}}')
+    monkeypatch.setenv("OPTMUX_DIR", str(cfg))
+    fd.find_config.cache_clear()
+    try:
+        assert names() == [".gitignore", "app.py", "sub/notes.md", "scratch.sh"]
+    finally:
+        fd.find_config.cache_clear()
 
 
 def plain(entry_or_text):

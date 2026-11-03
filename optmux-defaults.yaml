@@ -73,6 +73,28 @@ optmux:
   find:
     # The selected row's file around its line, beside the list (^/ toggles it; hidden on narrow screens).
     preview: true
+    # Files the file list (^f) leaves out even though they are there: glob patterns matched against each name in a
+    # path (`node_modules` skips the whole directory, `*.pyc` the files), in groups so you can target one: set
+    # a group in your optmux.yaml to replace its list, `[]` (or null) to drop it, or add a group of your own.
+    # (.git is always skipped.)
+    ignore_files:
+      dependencies:
+      - node_modules
+      - .venv
+      - venv
+      - .tox
+      - .gradle
+      caches:
+      - __pycache__
+      - .mypy_cache
+      - .pytest_cache
+      - .ruff_cache
+      - .cache
+      - .DS_Store
+      build:
+      - target
+      optmux:  # optmux's own state: its plugins, scripts, tags
+      - "*.optmux.d"
     lsp:
       python:
         extensions: [py, pyi]
