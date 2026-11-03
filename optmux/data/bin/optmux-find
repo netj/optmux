@@ -7,7 +7,7 @@ query, as optmux-extract does for a selection)
 
 One picker with five sources, like ctrl-p in vim but remembering where you were:
   omni   (^o)  tags and file paths ranked together, best match first, each row labeled
-  files  (^f)  git ls-files (or find outside a repo)
+  files  (^f)  git ls-files, then the ignored files find turns up
   grep   (^g)  git grep, live: the list is re-searched as you type
   tags   (^t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
   lsp    (^l)  symbols from the project's language servers, as you type (see optmux-lsp)
@@ -24,6 +24,7 @@ Internal: `optmux-find --list MODE QUERY` prints the candidates (what fzf reload
 """
 
 import argparse
+import fnmatch
 import functools
 import hashlib
 import json
@@ -83,13 +84,27 @@ def state_dir():
 
 # ---- candidates: lines of `FILE \t LINE \t DISPLAY` ----------------------------------------------------
 
+def ignore_patterns():
+    """Glob patterns of names to leave out of the file list: every group of `find.ignore_files` (see
+    optmux-defaults.yaml), and always .git."""
+    groups = find_config().get("ignore_files")
+    return [".git", *(p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
+                      for p in g if isinstance(p, str))]
+
+
 def list_files(_query):
+    """Every file under the working directory: what git knows first (tracked and untracked, minus ignored), then the
+    ignored ones (scratch scripts, local notes, generated files); minus `find.ignore_files`. Outside a repo, all of it."""
+    known = []
     if repo_root():
-        out = run("git", "ls-files", "-co", "--exclude-standard").stdout
-    else:
-        out = run("find", ".", "-type", "f", "-not", "-path", "*/.git/*").stdout
-    for f in sorted({f.removeprefix("./") for f in out.splitlines()}):  # (`find .` says ./a)
-        if f and os.path.isfile(f):
+        known = run("git", "ls-files", "-co", "--exclude-standard").stdout.splitlines()
+    ignored = ignore_patterns()
+    prune = [x for pat in ignored for x in ("-name", pat, "-o")][:-1]
+    rest = run("find", ".", "(", *prune, ")", "-prune", "-o", "-type", "f", "-print").stdout.splitlines()
+    seen = set()
+    for f in [*sorted(known), *sorted(f.removeprefix("./") for f in rest)]:
+        if f and f not in seen and not any(fnmatch.fnmatchcase(n, pat) for n in f.split("/") for pat in ignored) and os.path.isfile(f):
+            seen.add(f)
             yield row("files", "file", os.path.basename(f), f, 1)
 
 
@@ -572,7 +587,7 @@ def source_title(source, detail):
     `Grep match (git grep)`. A language server says which language the symbol is of (`detail` is `go: gopls`)."""
     name = SOURCE_NAMES[source]
     if source == "files":
-        how = "git ls-files" if repo_root() else "find"
+        how = "git ls-files + find" if repo_root() else "find"
     elif source == "grep":
         how = "git grep" if repo_root() else "grep"
     elif source == "lsp":
