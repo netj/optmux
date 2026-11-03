@@ -142,16 +142,16 @@ Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcu
 session_name: example
 start_directory: .
 
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-b: gh browse .
     C-M-e:
-      command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
-      new_window: true                              # in a new-window
+      +command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (default for str, no latency)
+      +new_window: true                              # in a new-window
     E:
-      send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (command is run in a new shell)
-      zoom: false                                   # do not zoom (defaults to zoom when split-window)
-  tmux_config:
+      +send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (command is run in a new shell)
+      +zoom: false                                   # do not zoom (defaults to zoom when split-window)
+  +tmux_config:
     project-settings: |
       set -g status-style bg=blue
 
@@ -181,25 +181,29 @@ Each project gets its own `.$NAME.optmux.d/` directory:
 | `tmux/resurrect/` | Saved session state (tmux-resurrect), isolated per project |
 | `env.sh` | optmux's opinionated environment ([`env`](#env), [`git_config`](#git_config), [`lazygit`](#lazygit)), applied by [`optmux-env`](#optmux-env) |
 | `bin/` | Helper scripts (`optmux-*`), on `PATH` for shortcuts (and in shells that source `env.sh`) |
-| `lazygit/config.yml` | Generated from [`lazygit:`](#lazygit) |
+| `lazygit/config.yml` | Generated from [`+lazygit:`](#lazygit) |
 
 `env.sh`, `bin/`, and `lazygit/` are regenerated on every launch.
 
 ## optmux YAML config
 
-Add an `optmux:` section to your tmuxp YAML to configure shortcuts and tmux settings:
+Add an `+optmux:` section to your tmuxp YAML to configure shortcuts and tmux settings.
+
+A leading `+` marks a word optmux defines (`+optmux:`, `+shortcuts:`, `+command:`); names you choose (a shortcut's key, a plugin, an environment variable, a language) stay bare. Everything outside `+optmux:` is plain tmuxp. The same sections work in `~/.optmux.yaml`.
+
+> **Upgrading from 0.14 and earlier:** the bare `optmux:` with `shortcuts:`, `command:`, ... still loads, with a deprecation warning. To upgrade, put a `+` before each of optmux's words (`optmux:` → `+optmux:`, `shortcuts:` → `+shortcuts:`, `command:` → `+command:`, `_tip_url:` → `+tip_url:`, and so on). Your own names and everything under `+lazygit:`, which is lazygit's own config, stay as they are.
 
 ```yaml
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-b: gh browse .                              # Ctrl+Alt+b (Control+Option+b on a Mac): run command directly
     C-M-e:
-      command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
-      new_window: true                              # open in a new-window
+      +command: ${VISUAL:-${EDITOR:-vim}} README.md  # exec directly (no shell)
+      +new_window: true                              # open in a new-window
     E:
-      send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (runs in a new shell)
-      zoom: false                                   # do not zoom (default: true for splits)
-  tmux_config:
+      +send_keys: ${VISUAL:-${EDITOR:-vim}} .        # send_keys (runs in a new shell)
+      +zoom: false                                   # do not zoom (default: true for splits)
+  +tmux_config:
     project-settings: |
       set -g status-style bg=blue
 ```
@@ -211,8 +215,8 @@ Shortcuts bind tmux keys to commands:
 - **`C-M-*` keys** are bound globally (no prefix needed)
 - **Other keys** require the tmux prefix (`C-t`)
 
-What a shortcut's value can *do* — `command:`, `send_keys:`, `new_window:`,
-etc. — is the [action block](#action-block), shared with `menu:` custom
+What a shortcut's value can *do* — `+command:`, `+send_keys:`, `+new_window:`,
+etc. — is the [action block](#action-block), shared with `+menu:` custom
 items below.
 
 ### Detached shortcuts
@@ -237,17 +241,17 @@ Workarounds, in order of preference:
 
 ### Action block
 
-`shortcuts:` values and `menu:` custom items describe an action the same
+`+shortcuts:` values and `+menu:` custom items describe an action the same
 way — this is the shared vocabulary compiled by `optmux/actions.py`:
 
-- **`command:`** — shell command, run directly (default for a plain string value)
-- **`send_keys:`** — sends the command to a fresh shell instead of running it directly (supports shell expansion; one line at a time)
-- **`tmux:`** — a raw tmux command, run as-is (bypasses everything below)
+- **`+command:`** — shell command, run directly (default for a plain string value)
+- **`+send_keys:`** — sends the command to a fresh shell instead of running it directly (supports shell expansion; one line at a time)
+- **`+tmux:`** — a raw tmux command, run as-is (bypasses everything below)
 - **`new_window: true`** — opens in a new window instead of a split
 - **`float_window: true`** — opens in a floating pane (tmux 3.7+) — see [detached shortcuts](#detached-shortcuts) above
 - **`zoom: false`** — disables auto-zoom on splits (default: true)
 - **`detached: true`** — runs it without stealing focus, and holds it open on failure (see [`remain`](#detached-shortcuts))
-- **`remain:`** — `on-error` (default when detached/new_window/float_window), `true`, or `false` — see [detached shortcuts](#detached-shortcuts)
+- **`+remain:`** — `on-error` (default when detached/new_window/float_window), `true`, or `false` — see [detached shortcuts](#detached-shortcuts)
 
 One default differs between the two: a **shortcut** with none of
 `new_window`/`float_window` set opens a **split** (it's a keybinding, so
@@ -257,11 +261,11 @@ this over there"). Set either explicitly to override.
 
 ### plugins
 
-`plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. optmux installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
+`+plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. optmux installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
 
 ```yaml
-optmux:
-  plugins:
++optmux:
+  +plugins:
     netj/claritmux:
       claritmux_status_hostname: 1          # same as: set -g @claritmux_status_hostname "1"
     tmux-plugins/tmux-resurrect:
@@ -269,47 +273,47 @@ optmux:
     Morantron/tmux-fingers: false    # disable a bundled plugin
 ```
 
-A dict entry may also carry `_tip_url:` (a string or a list) to showcase a great page or video; keys starting with `_` are metadata, not options. The tips screen lists every plugin with its GitHub URL (derived from `user/repo`) plus any `_tip_url` links beneath it:
+A dict entry may also carry `+tip_url` (a string or a list) to showcase a great page or video; other keys are the plugin's tmux options. The tips screen lists every plugin with its GitHub URL (derived from `user/repo`) plus any `+tip_url` links beneath it:
 
 ```yaml
-optmux:
-  plugins:
++optmux:
+  +plugins:
     netj/claritmux:
-      _tip_url: https://www.youtube.com/watch?v=VIDEO_ID
+      +tip_url: https://www.youtube.com/watch?v=VIDEO_ID
       claritmux_status_hostname: 1
 ```
 
-Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole (including `_tip_url`). See `optmux/data/optmux-defaults.yaml` for the bundled list.
+Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole (including `+tip_url`). See `optmux/data/optmux-defaults.yaml` for the bundled list.
 
 ### tmux_config
 
-Entries under `tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.
+Entries under `+tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.
 
 ### Menu
 
 tmux has no API for editing its built-in right-click menus (session, window,
-pane) — the only way to change one is to redefine it whole. `menu:` lets you
+pane) — the only way to change one is to redefine it whole. `+menu:` lets you
 do that from YAML: list the items you want, in order, and optmux compiles a
 static `bind`/`display-menu` config for you. A bare `"*"` pulls in the rest
 of tmux's own default items for that menu, unchanged, so you only spell out
 what you're adding or reordering:
 
 ```yaml
-optmux:
-  menu:
-    pane:
-      - key: w
-        title: New Window (C-t c)
-        new_window: true      # bundled default: adds "New Window" ahead of tmux's own items
++optmux:
+  +menu:
+    +pane:
+      - +key: w
+        +title: New Window (C-t c)
+        +new_window: true      # bundled default: adds "New Window" ahead of tmux's own items
       - "*"
 ```
 
 The bundled defaults also add **Find** (`C-M-f`) and **eXtract** (`C-M-x`) to the pane and window menus, so they are one right-click away. Menu layers add up (yours come after the bundled items), so a key of yours that is also `f` or `x` loses its accelerator to them: pick another.
 
-- **`key:` / `title:`** — the accelerator and label for a custom item, plus the [action block](#action-block) fields (`command:`, `tmux:`, `send_keys:`, `new_window:`, `float_window:`, `zoom:`, `detached:`, `remain:`)
-- **`default: <name>`** (or a bare string) — reuses one of tmux's own items by name; add `title:`/`key:` alongside it to retitle or remap that item without changing what it does
+- **`+key:` / `+title:`** — the accelerator and label for a custom item, plus the [action block](#action-block) fields (`+command:`, `+tmux:`, `+send_keys:`, `+new_window:`, `+float_window:`, `+zoom:`, `+detached:`, `+remain:`)
+- **`+default: <name>`** (or a bare string) — reuses one of tmux's own items by name; add `+title:`/`+key:` alongside it to retitle or remap that item without changing what it does
 - **`separator`** (or `""`) — a divider line
-- Supported contexts: `session`, `window`, `pane`. A context left out of `menu:` keeps tmux's untouched default.
+- Supported contexts: `session`, `window`, `pane`. A context left out of `+menu:` keeps tmux's untouched default.
 
 **Reordering/retitling only touches items you name.** `"*"` inserts *unclaimed*
 defaults (in tmux's own order) wherever it appears — it doesn't replace a
@@ -321,31 +325,31 @@ list every item you want, in order — see the session example below.
 More examples:
 
 ```yaml
-optmux:
-  menu:
++optmux:
+  +menu:
     # Pane menu: a floating lazygit, a "run tests" that types into a split,
     # and a background clipboard copy -- then everything tmux ships by default.
-    pane:
-      - key: g
-        title: lazygit
-        command: lazygit
-        float_window: true          # floats over the window; layout/zoom untouched
-      - key: t
-        title: Run tests
-        send_keys: pytest -x        # types the command into a fresh split and runs it
-      - key: y
-        title: Copy path
-        command: printf '%s' "$PWD" | pbcopy
-        detached: true              # menu items default to new_window, so this is a
+    +pane:
+      - +key: g
+        +title: lazygit
+        +command: lazygit
+        +float_window: true          # floats over the window; layout/zoom untouched
+      - +key: t
+        +title: Run tests
+        +send_keys: pytest -x        # types the command into a fresh split and runs it
+      - +key: y
+        +title: Copy path
+        +command: printf '%s' "$PWD" | pbcopy
+        +detached: true              # menu items default to new_window, so this is a
                                      # background window -- nothing on screen changes
       - "*"
 
     # Window menu: keep everything, just rename/remap Kill to something less
     # trigger-happy under the mouse.
-    window:
-      - default: Kill
-        title: Close Window
-        key: q
+    +window:
+      - +default: Kill
+        +title: Close Window
+        +key: q
       - "*"
 
     # Session menu: replace Detach with a confirm-before version, and add
@@ -353,13 +357,13 @@ optmux:
     # No "*" here -- confirm-before *replaces* the item at 'd', so the rest
     # is spelled out in tmux's own order to keep Detach's original binding
     # from also showing up. 'T' avoids colliding with New Window's 'w'.
-    session:
-      - key: d
-        title: Detach (confirm)
-        tmux: confirm-before -p "detach? (y/n)" detach-client
-      - key: T
-        title: Windows/Panes
-        tmux: choose-tree -Zw
+    +session:
+      - +key: d
+        +title: Detach (confirm)
+        +tmux: confirm-before -p "detach? (y/n)" detach-client
+      - +key: T
+        +title: Windows/Panes
+        +tmux: choose-tree -Zw
       - Next
       - Previous
       - separator
@@ -370,15 +374,15 @@ optmux:
       - New Window
 ```
 
-A context left out of `menu:` entirely keeps tmux's untouched default. Supported contexts: `session`, `window`, `pane`.
+A context left out of `+menu:` entirely keeps tmux's untouched default. Supported contexts: `session`, `window`, `pane`.
 
 ### env
 
 Environment variables for commands run through [`optmux-env`](#optmux-env). `$VAR` expands at launch, and a null value unsets the variable. Layers merge by variable name.
 
 ```yaml
-optmux:
-  env:
++optmux:
+  +env:
     EDITOR: nvim
     LESS: -R --mouse   # replaces the bundled -XRiMWSc --mouse
     PAGER:             # null: unset
@@ -391,10 +395,10 @@ optmux:
 The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`), since your shell startup files may rebuild `PATH`: `C-M-g` runs lazygit and `C-M-d` runs the PR diff through it. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
 
 ```yaml
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-l:
-      command: |
+      +command: |
         "$OPTMUX_DIR/bin/optmux-env" git log -p
 ```
 
@@ -409,8 +413,8 @@ Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` 
 git config for commands run through [`optmux-env`](#optmux-env), passed through `GIT_CONFIG_PARAMETERS` (the env equivalent of `git -c`, which, unlike `GIT_CONFIG_COUNT`, delta also reads for its `delta.*` settings). It takes precedence over `~/.gitconfig` and repo config without modifying either. Keys merge across layers. A pager setting (`core.pager`, `interactive.diffFilter`, `pager.*`) whose command isn't installed is skipped, so a missing delta falls back to your own pager.
 
 ```yaml
-optmux:
-  git_config:
++optmux:
+  +git_config:
     delta.side-by-side: true
     delta.line-numbers: false
     core.pager:          # null: drop the bundled delta pager
@@ -421,8 +425,8 @@ optmux:
 [lazygit config](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md), written to `$OPTMUX_DIR/lazygit/config.yml` and loaded *after* your own lazygit config via `LG_CONFIG_FILE`. Settings optmux doesn't mention keep your values, and the ones it does mention use optmux's. Layers deep-merge (lists replace). A `git.diffRenderers` entry whose command isn't installed is skipped.
 
 ```yaml
-optmux:
-  lazygit:
++optmux:
+  +lazygit:
     gui:
       nerdFontsVersion: "3"
     git:
@@ -436,10 +440,10 @@ optmux:
 Create `~/.optmux.yaml` to define personal defaults that apply to all optmux sessions:
 
 ```yaml
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-g: lazygit
-  tmux_config:
+  +tmux_config:
     my-defaults: |
       set -g status-style bg=green
 ```
@@ -468,9 +472,9 @@ optmux sets these before launching tmux/tmuxp:
 
 | Variable | Value |
 |---|---|
-| anything under [`env:`](#env) | e.g. `PAGER`, `LESS`, `LESS_OSC8_OPEN_ANY` by default |
-| `GIT_CONFIG_PARAMETERS` | from [`git_config:`](#git_config) |
-| `LG_CONFIG_FILE` | your own lazygit config, then optmux's from [`lazygit:`](#lazygit) |
+| anything under [`+env:`](#env) | e.g. `PAGER`, `LESS`, `LESS_OSC8_OPEN_ANY` by default |
+| `GIT_CONFIG_PARAMETERS` | from [`+git_config:`](#git_config) |
+| `LG_CONFIG_FILE` | your own lazygit config, then optmux's from [`+lazygit:`](#lazygit) |
 
 ## Git, diffs, and links
 
@@ -518,7 +522,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 `C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
 
 - **`C-o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows are drawn alike in every source (see below); the best 100 are shown. Grep stays on its own key, `C-g`.
-- **`C-f` files**: `git ls-files` (tracked and untracked) first, then every other file `find` turns up, ignored ones included (scratch scripts, local notes), minus what `find.ignore_files` names (`node_modules`, `.venv`, caches, optmux's own `.optmux.d`; see below). Just `find` outside a repo.
+- **`C-f` files**: `git ls-files` (tracked and untracked) first, then every other file `find` turns up, ignored ones included (scratch scripts, local notes), minus what `+find` → `+ignore_files` names (`node_modules`, `.venv`, caches, optmux's own `.optmux.d`; see below). Just `find` outside a repo.
 - **`C-g` grep**: live `git grep`, re-run on every keystroke, smart-case.
 - **`C-t` tags**: your `tags` file at the repo root if there is one (then keeping it fresh is up to you, e.g. a `post-commit` hook running `ctags`). Otherwise optmux builds its own, the way such a hook would (`git ls-files | ctags -L -`), the first time, and refreshes it in the background whenever the commit or the tracked files that changed differ, so opening the picker never waits for it (it keeps using the old tags until the new ones are ready). It needs [universal-ctags](https://ctags.io) (`brew install universal-ctags`, a dependency of the Homebrew formula; exuberant ctags should do too, minus line numbers it can find from patterns). macOS's own `/usr/bin/ctags` does not: it takes no file list and only knows C-like languages. It is stored per project in `.optmux.d/find/`. To use the same tags in your editor, `optmux-find --tags-path` prints the file (building it first if there is none yet, and exiting 1 when there is no project; for tags of its own it prints a copy with absolute paths, since an editor reads them relative to the tags file's directory): in vim, `:let &tags .= ',' . escape(trim(system('optmux-find --tags-path 2>/dev/null')), ' ,')`. It resolves the same way inside and outside optmux only where `$OPTMUX_DIR` is the same, so run it from a pane of the project's optmux session.
 - **`C-l` lsp**: symbols from the project's language servers, searched as you type (see [Language servers](#language-servers-l) below).
@@ -539,29 +543,29 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language. `servers` replaces the preference list, the first installed one is used; `command` alone is a one-server shorthand; `enabled: false` turns a language off. `open_first_file: true` opens one file after the server starts, for servers that find their project from it (typescript and c do that by default):
 
 ```yaml
-optmux:
-  find:
-    lsp:
++optmux:
+  +find:
+    +lsp:
       python:
-        servers:
-        - command: ty server
-          install: uv tool install ty
-        - command: basedpyright-langserver --stdio
-          install: brew install basedpyright
+        +servers:
+        - +command: ty server
+          +install: uv tool install ty
+        - +command: basedpyright-langserver --stdio
+          +install: brew install basedpyright
       ruby:
-        extensions: [rb]
-        command: ruby-lsp
-        install: gem install ruby-lsp
+        +extensions: [rb]
+        +command: ruby-lsp
+        +install: gem install ruby-lsp
       bash:
-        enabled: false
+        +enabled: false
 ```
 
-`find.ignore_files` lists what the file list leaves out, as glob patterns matched against each name in a path (`node_modules` skips that directory, `*.pyc` the files), in groups. Setting a group replaces its list, `[]` drops it, and a new group adds to the rest; `.git` is always skipped:
+`+ignore_files` (under `+find:`) lists what the file list leaves out, as glob patterns matched against each name in a path (`node_modules` skips that directory, `*.pyc` the files), in groups. Setting a group replaces its list, `[]` drops it, and a new group adds to the rest; `.git` is always skipped:
 
 ```yaml
-optmux:
-  find:
-    ignore_files:
++optmux:
+  +find:
+    +ignore_files:
       dependencies:  # replaces the bundled list
       - node_modules
       - .venv
@@ -587,13 +591,13 @@ G🔍 layout.go:12  (pkg/gui)
 
 The icon is the kind: ⚡️ function or method, 🧩 class, struct or interface, 📖 module or namespace, 📦 package, 🏷️ variable, constant or field, 🔖 anything else, 📄 file, 🔍 grep match. Tags and symbols share them (ctags is asked for full kind names, so a tag's kind is not a bare letter), and a language server's package qualifier is left off the name (gopls's `github.com/org/repo/pkg/gui.Gui.Layout` is shown `Gui.Layout`: the file is next to it). The first lines of the preview say it all again, in words: the name, its kind and source, and the full directory (and the container, if the server gave one).
 
-Nerd Font glyphs are the default, so the terminal needs a [Nerd Font](https://www.nerdfonts.com) (without one the icons show as boxes: set `icons: emoji`, `text` or `none`). `icons` (at the top of the `optmux:` section, for eXtract too) switches them: `emoji` renders in any terminal, also where optmux runs on a machine that cannot tell what font your terminal has (mosh, SSH), `text` uses letters in Find (`f` function, `t` type, `m` module, `p` package, `v` value, `o` other, `d` directory, `-` file, `/` match) and words in eXtract (`url`, `path`, `line`, ...), and `none` draws no icon at all:
+Nerd Font glyphs are the default, so the terminal needs a [Nerd Font](https://www.nerdfonts.com) (without one the icons show as boxes: set `+icons: emoji`, `text` or `none`). `+icons` (at the top of the `+optmux:` section, for eXtract too) switches them: `emoji` renders in any terminal, also where optmux runs on a machine that cannot tell what font your terminal has (mosh, SSH), `text` uses letters in Find (`f` function, `t` type, `m` module, `p` package, `v` value, `o` other, `d` directory, `-` file, `/` match) and words in eXtract (`url`, `path`, `line`, ...), and `none` draws no icon at all:
 
 ```yaml
-optmux:
-  icons: nerd
-  find:
-    preview: false
++optmux:
+  +icons: nerd
+  +find:
+    +preview: false
 ```
 
 ### optmux eXtract: text from the screen
@@ -602,7 +606,7 @@ optmux:
 
 - **`C-M-x`** again (the key that opened the picker) cycles what is listed: **lines**, **spans** (runs of text the program colored or styled: the command, path or name worth copying; one the program wrapped onto the next line in the same style is joined back when it clearly filled the line), **patterns** (URLs, paths, file names with an optional `:line:col`, commit hashes, semver versions) and **words**. The last one used is remembered.
 - **`C-y`** copies by the method **`C-t`** cycles: `osc52` (eXtract writes an OSC 52 escape to its own terminal and tmux relays it, so it reaches your local clipboard over SSH too), `native` (`pbcopy`, `wl-copy`, `xclip` or `xsel`) or `buffer` (the tmux buffer only). Also remembered. Either way the tmux buffer holds the text afterwards.
-- **Where you were is remembered**, per filter: eXtract opens fresh (a new extract starts from an empty query), and `M-p` steps back through that filter's earlier queries, each with the cursor on the item you last picked or stood on, so the `bash`, `.tmp/` or pattern you use often is a few keystrokes away (`M-n` goes forward again to a fresh start). A recalled query that matches nothing on the screen now is dropped. `C-u` clears the query. The **patterns** filter draws each kind with an icon (🔗 URL, 📁 path, 📄 file name, #️⃣ commit hash, 🏷️ version), in the style of `icons` (`nerd` by default; shown here as emoji) like Find.
+- **Where you were is remembered**, per filter: eXtract opens fresh (a new extract starts from an empty query), and `M-p` steps back through that filter's earlier queries, each with the cursor on the item you last picked or stood on, so the `bash`, `.tmp/` or pattern you use often is a few keystrokes away (`M-n` goes forward again to a fresh start). A recalled query that matches nothing on the screen now is dropped. `C-u` clears the query. The **patterns** filter draws each kind with an icon (🔗 URL, 📁 path, 📄 file name, #️⃣ commit hash, 🏷️ version), in the style of `+icons` (`nerd` by default; shown here as emoji) like Find.
 - **`C-f`, `C-g`, `C-M-f`** look the selection up in the project instead of typing it: the picks (or, with nothing matching, the text you typed in the filter) become the query of [optmux Find](#optmux-find-open-a-file-line-or-tag), which continues in this same popup: **`C-f`** in the files, **`C-g`** by grep, **`C-M-f`** in omni (tags, symbols and files). Pick an error's path, a function name or a phrase from the screen, then jump to where it lives (a `:line:col` after a path is left off, since a file name has none).
 - Several picks go on one line separated by spaces, except lines mode (always one pick per line) and picks that themselves contain whitespace, such as commands in spans mode, which each get their own line.
 - Picks are pasted as a bracketed paste, so a shell (or Claude Code) takes several lines as one paste. A program that doesn't ask for bracketed paste (plain `cat`, some REPLs) receives each newline as `Enter`.

@@ -1,7 +1,7 @@
-optmux:
++optmux:
   # tmux plugins (TPM): plugin -> tmux config lines for its options (empty for none).
   # A later layer's entry replaces the whole entry; `false` disables a plugin.
-  plugins:
+  +plugins:
     tmux-plugins/tmux-sensible:      # hx limit, mouse, C-n/C-p over awkward n/p
     tmux-plugins/tmux-pain-control:  # move around panes with j and k, a bit like vim; resize panes like vim
     Morantron/tmux-fingers:          # prefix+F to highlight and copy URLs/paths/hashes/IPs
@@ -25,7 +25,7 @@ optmux:
   # everything they start; it wins over your own settings there, while your shells stay untouched.
   # All of env, git_config, and lazygit end up in $OPTMUX_DIR/env.sh.
   # `$VAR` expands; a null value unsets the variable.
-  env:
+  +env:
     PAGER: less
     # --no-init --RAW-CONTROL-CHARS --ignore-case --LONG-PROMPT --HILITE-UNREAD --chop-long-lines --clear-screen --mouse
     LESS: -XRiMWSc --mouse
@@ -35,7 +35,7 @@ optmux:
 
   # git config, passed through GIT_CONFIG_PARAMETERS (like `git -c`; delta reads that too) so it wins over ~/.gitconfig without touching it.
   # A pager whose command isn't installed (e.g., no delta) is skipped.
-  git_config:
+  +git_config:
     core.pager: delta
     interactive.diffFilter: delta --color-only
     delta.navigate: true
@@ -48,7 +48,7 @@ optmux:
 
   # lazygit config, layered on top of your own lazygit config (deep-merged; lists replace).
   # A diffRenderer whose command isn't installed is skipped.
-  lazygit:
+  +lazygit:
     promptToReturnFromSubprocess: false
     git:
       diffRenderers:
@@ -69,15 +69,15 @@ optmux:
   # find their project from it. `install` (one command or a list of alternatives, the first whose installer is present is used) is offered in the list: Enter runs it.
   # How a row of optmux Find or eXtract says what it is: nerd (Nerd Font glyphs; boxes without the font), emoji
   # (works everywhere), text (letters), or none.
-  icons: nerd
-  find:
+  +icons: nerd
+  +find:
     # The selected row's file around its line, beside the list (^/ toggles it; hidden on narrow screens).
-    preview: true
+    +preview: true
     # Files the file list (^f) leaves out even though they are there: glob patterns matched against each name in a
     # path (`node_modules` skips the whole directory, `*.pyc` the files), in groups so you can target one: set
     # a group in your optmux.yaml to replace its list, `[]` (or null) to drop it, or add a group of your own.
     # (.git is always skipped.)
-    ignore_files:
+    +ignore_files:
       dependencies:
       - node_modules
       - .venv
@@ -95,182 +95,182 @@ optmux:
       - target
       optmux:  # optmux's own state: its plugins, scripts, tags
       - "*.optmux.d"
-    lsp:
+    +lsp:
       python:
-        extensions: [py, pyi]
-        servers:
-        - command: basedpyright-langserver --stdio
-          install:
+        +extensions: [py, pyi]
+        +servers:
+        - +command: basedpyright-langserver --stdio
+          +install:
           - brew install basedpyright
           - uv tool install basedpyright
           - pipx install basedpyright
-        - command: pyright-langserver --stdio
-          install: npm install -g pyright
-        - command: pylsp
-          install: pip install python-lsp-server
+        - +command: pyright-langserver --stdio
+          +install: npm install -g pyright
+        - +command: pylsp
+          +install: pip install python-lsp-server
       typescript:
-        extensions: [ts, tsx, js, jsx, mjs, cjs, mts, cts]
-        open_first_file: true
-        servers:
-        - command: typescript-language-server --stdio
-          install:
+        +extensions: [ts, tsx, js, jsx, mjs, cjs, mts, cts]
+        +open_first_file: true
+        +servers:
+        - +command: typescript-language-server --stdio
+          +install:
           - brew install typescript-language-server
           - npm install -g typescript-language-server typescript
-        - command: vtsls --stdio
-          install: npm install -g @vtsls/language-server
+        - +command: vtsls --stdio
+          +install: npm install -g @vtsls/language-server
       go:
-        extensions: [go]
-        servers:
-        - command: gopls
-          install:
+        +extensions: [go]
+        +servers:
+        - +command: gopls
+          +install:
           - brew install gopls
           - go install golang.org/x/tools/gopls@latest
       rust:
-        extensions: [rs]
-        servers:
-        - command: rust-analyzer
-          install:
+        +extensions: [rs]
+        +servers:
+        - +command: rust-analyzer
+          +install:
           - brew install rust-analyzer
           - rustup component add rust-analyzer
       c:
-        extensions: [c, h, cc, cpp, cxx, hpp, hh, m, mm]
-        open_first_file: true  # clangd only finds compile_commands.json from a file it has been told about
-        servers:
-        - command: clangd
-          install: brew install llvm
+        +extensions: [c, h, cc, cpp, cxx, hpp, hh, m, mm]
+        +open_first_file: true  # clangd only finds compile_commands.json from a file it has been told about
+        +servers:
+        - +command: clangd
+          +install: brew install llvm
       lua:
-        extensions: [lua]
-        servers:
-        - command: lua-language-server
-          install: brew install lua-language-server
+        +extensions: [lua]
+        +servers:
+        - +command: lua-language-server
+          +install: brew install lua-language-server
       bash:
-        extensions: [sh, bash]
-        servers:
-        - command: bash-language-server start
-          install:
+        +extensions: [sh, bash]
+        +servers:
+        - +command: bash-language-server start
+          +install:
           - brew install bash-language-server
           - npm install -g bash-language-server
 
-  shortcuts:
+  +shortcuts:
     # Workflow
     C-M-c:
-      command: WTCODE_TMUX_MODE=split-window wtcode
-      new_window: true
-      remain: false
-      tip: wtcode
+      +command: WTCODE_TMUX_MODE=split-window wtcode
+      +new_window: true
+      +remain: false
+      +tip: wtcode
     C-M-f:
-      tmux: |
+      +tmux: |
         display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
-      tip: >
+      +tip: >
         find a file or a tag (ranked together, omni) or a line (git grep) to edit; C-M-f cycles them and it resumes where you left off
     C-M-g:
-      command: |
+      +command: |
         (sleep 0.5; tmux send-keys Enter '*' Enter) &
         "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch
-      tip: |
+      +tip: |
         Open lazygit and see the diff of commits of this branch
     C-M-d:
-      command: |
+      +command: |
         "$OPTMUX_DIR/bin/optmux-env" optmux-diff-base
-      tip: clickable diff against the default branch (same as lazygit's C-g)
+      +tip: clickable diff against the default branch (same as lazygit's C-g)
     C-M-s:
-      command: ""
-      tip: shell in same dir
+      +command: ""
+      +tip: shell in same dir
     C-M-w:
-      command: |
+      +command: |
         "$OPTMUX_DIR/bin/optmux-gh-open"
-      detached: true
-      new_window: true
-      tip: open PR (or repo) on GitHub
+      +detached: true
+      +new_window: true
+      +tip: open PR (or repo) on GitHub
     C-M-x:
-      tmux: |
+      +tmux: |
         display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
-      tip: same as C-t X, without the prefix (optmux eXtract)
+      +tip: same as C-t X, without the prefix (optmux eXtract)
     C-M-h:
-      command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
-      new_window: true
-      tip: tips (this screen)
+      +command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
+      +new_window: true
+      +tip: tips (this screen)
 
     # Quick access (raw tmux actions)
     C-M-z:
-      tmux: resize-pane -Z
-      tip: quick toggle zoom
+      +tmux: resize-pane -Z
+      +tip: quick toggle zoom
     "C-M-\\":
-      tmux: select-pane -l \; resize-pane -Z
-      tip: last pane + zoom
+      +tmux: select-pane -l \; resize-pane -Z
+      +tip: last pane + zoom
     C-M-o:
-      tmux: select-pane -t :.- \; resize-pane -Z
-      tip: prev pane + zoom
+      +tmux: select-pane -t :.- \; resize-pane -Z
+      +tip: prev pane + zoom
 
     # Reference (display-only, bound in tmux.conf or plugins)
     C-t C-t:
-      tip: last window
+      +tip: last window
     C-t C-c:
-      tip: new window
+      +tip: new window
     C-t C-d:
-      tip: detach
+      +tip: detach
     C-t C-o:
-      tip: rotate panes forward
+      +tip: rotate panes forward
     C-t o:
-      tip: rotate panes backward
+      +tip: rotate panes backward
     C-t n:
-      tip: next window with bell
+      +tip: next window with bell
     C-t p:
-      tip: prev window with bell
+      +tip: prev window with bell
     C-t w:
-      tip: list all windows (pick one to jump to)
+      +tip: list all windows (pick one to jump to)
     C-t z:
-      tip: toggle zoom
+      +tip: toggle zoom
     "C-t `":
-      tip: kill session (confirm)
+      +tip: kill session (confirm)
     C-t R:
-      tip: reload config
+      +tip: reload config
     C-t F:
-      tip: tmux-fingers (copy URLs/paths/hashes)
+      +tip: tmux-fingers (copy URLs/paths/hashes)
     X:
-      tmux: |
+      +tmux: |
         display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
-      tip: >
+      +tip: >
         optmux eXtract: lines, colored spans, URLs/paths/hashes/versions or words on screen,
         to type or copy (C-M-x cycles, C-y copies, C-f/C-g find or grep it in the project)
     C-t h/j/k/l:
-      tip: navigate panes
+      +tip: navigate panes
     C-t t:
-      tip: send prefix to nested TMUX
+      +tip: send prefix to nested TMUX
     C-t T:
-      tip: swap prefix (nested TMUX)
+      +tip: swap prefix (nested TMUX)
 
-  menu:
-    pane:
-      - key: w
-        title: New Window (C-t c)
-        new_window: true
+  +menu:
+    +pane:
+      - +key: w
+        +title: New Window (C-t c)
+        +new_window: true
       - separator
-      - key: f
-        title: Find (C-M-f)
-        tmux: |
+      - +key: f
+        +title: Find (C-M-f)
+        +tmux: |
           display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
-      - key: x
-        title: eXtract (C-M-x)
-        tmux: |
+      - +key: x
+        +title: eXtract (C-M-x)
+        +tmux: |
           display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       - separator
       - "*"
-    window:
-      - key: b
-        title: "#{?monitor-bell,Disable,Enable} Bell Alert"
-        tmux: if-shell -F "#{monitor-bell}" "set -w monitor-bell off" "set -w monitor-bell on"
-      - key: q
-        title: "#{?#{>:#{monitor-silence},0},Disable,Enable} Silence Alert"
-        tmux: if-shell -F "#{>:#{monitor-silence},0}" "set -w monitor-silence 0" "set -w monitor-silence 15"
+    +window:
+      - +key: b
+        +title: "#{?monitor-bell,Disable,Enable} Bell Alert"
+        +tmux: if-shell -F "#{monitor-bell}" "set -w monitor-bell off" "set -w monitor-bell on"
+      - +key: q
+        +title: "#{?#{>:#{monitor-silence},0},Disable,Enable} Silence Alert"
+        +tmux: if-shell -F "#{>:#{monitor-silence},0}" "set -w monitor-silence 0" "set -w monitor-silence 15"
       - separator
-      - key: f
-        title: Find (C-M-f)
-        tmux: |
+      - +key: f
+        +title: Find (C-M-f)
+        +tmux: |
           display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
-      - key: x
-        title: eXtract (C-M-x)
-        tmux: |
+      - +key: x
+        +title: eXtract (C-M-x)
+        +tmux: |
           display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       - separator
       - "*"

@@ -27,8 +27,8 @@ def e2e_yaml(tmp_path):
     content = {
         "session_name": "e2etest",
         "start_directory": str(tmp_path),
-        "optmux": {
-            "shortcuts": {
+        "+optmux": {
+            "+shortcuts": {
                 "C-M-b": "echo e2e-test",
             },
         },
@@ -48,6 +48,7 @@ def tmux_env(e2e_yaml):
         generate_tmux_conf_files,
         load_bundled_defaults,
         load_optmux_conf,
+        read_optmux_section,
         merge_optmux,
         parse_project_name,
     )
@@ -79,7 +80,7 @@ def tmux_env(e2e_yaml):
     bundled = load_bundled_defaults()
     with open(yaml_path) as f:
         data = yaml.safe_load(f) or {}
-    project = data.get("optmux") or {}
+    project = read_optmux_section(data, str(yaml_path))
     optmux = merge_optmux(bundled, project)
     generate_tmux_conf_files(tmux_dir, optmux)
 

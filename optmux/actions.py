@@ -1,4 +1,4 @@
-"""Shared tmux-action compiler for optmux.yaml's `shortcuts:` and `menu:` items.
+"""Shared tmux-action compiler for optmux.yaml's `+shortcuts:` and `+menu:` items.
 
 Both sections describe the same vocabulary -- run a shell command or
 send_keys, optionally in a new window or floating pane, with zoom/detached/

@@ -85,7 +85,7 @@ def state_dir():
 # ---- candidates: lines of `FILE \t LINE \t DISPLAY` ----------------------------------------------------
 
 def ignore_patterns():
-    """Glob patterns of names to leave out of the file list: every group of `find.ignore_files` (see
+    """Glob patterns of names to leave out of the file list: every group of `+ignore_files` (under `+find`) (see
     optmux-defaults.yaml), and always .git."""
     groups = find_config().get("ignore_files")
     return [".git", *(p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
@@ -94,7 +94,7 @@ def ignore_patterns():
 
 def list_files(_query):
     """Every file under the working directory: what git knows first (tracked and untracked, minus ignored), then the
-    ignored ones (scratch scripts, local notes, generated files); minus `find.ignore_files`. Outside a repo, all of it."""
+    ignored ones (scratch scripts, local notes, generated files); minus `+ignore_files` (under `+find`). Outside a repo, all of it."""
     known = []
     if repo_root():
         known = run("git", "ls-files", "-co", "--exclude-standard").stdout.splitlines()

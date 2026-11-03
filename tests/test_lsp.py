@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from optmux.cli import _validate_optmux_section, load_bundled_defaults, merge_optmux, setup_tools_env
+from optmux.cli import normalize_optmux_section, load_bundled_defaults, merge_optmux, setup_tools_env
 
 sys.dont_write_bytecode = True
 SCRIPT = Path(__file__).parent.parent / "optmux/data/bin/optmux-lsp"
@@ -177,7 +177,7 @@ def test_find_config_merges_per_language_and_replaces_server_lists():
 
 
 def test_find_config_typos_are_warned_about(capsys):
-    _validate_optmux_section({"find": {"lsp": {"python": {"serverz": [], "servers": [{"comand": "x"}]}}, "lspp": {}}}, "src")
+    normalize_optmux_section({"find": {"lsp": {"python": {"serverz": [], "servers": [{"comand": "x"}]}}, "lspp": {}}}, "src")
     err = capsys.readouterr().err
     assert "lspp" in err and "serverz" in err and "comand" in err
 
@@ -416,10 +416,10 @@ def test_icons_setting_is_known_and_defaulted():
     from contextlib import redirect_stderr
     err = io.StringIO()
     with redirect_stderr(err):
-        _validate_optmux_section({"icons": "nerd"}, "src")
+        normalize_optmux_section({"icons": "nerd"}, "src")
     assert err.getvalue() == ""
     with redirect_stderr(err):
-        _validate_optmux_section({"icons": "sparkles", "find": {"preview": "off"}}, "src")
+        normalize_optmux_section({"icons": "sparkles", "find": {"preview": "off"}}, "src")
     assert "sparkles" in err.getvalue() and "emoji" in err.getvalue() and "find.preview: 'off'" in err.getvalue()
 
 

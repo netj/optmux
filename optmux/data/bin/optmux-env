@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # optmux-env — run a command with optmux's opinionated environment ($OPTMUX_DIR/env.sh):
-# the optmux: env, git_config, and lazygit sections, e.g., delta as git's pager and less with
+# the +optmux: +env, +git_config, and +lazygit sections, e.g., delta as git's pager and less with
 # mouse and clickable links. It applies to the command and everything it starts, overriding
 # your own settings there; shells inside optmux are left alone.
 #   optmux-env lazygit

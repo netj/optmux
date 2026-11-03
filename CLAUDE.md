@@ -8,6 +8,7 @@
 
 ## YAML Style
 
+- **`+` marks optmux's own words** (`+optmux:`, `+shortcuts:`, `+command:`, `+find:`, `+tip_url:`); names the user picks (shortcut keys, plugins, env vars, languages, `ignore_files` groups) stay bare, and so does everything under `+lazygit:` (lazygit's schema). Use it in every example, test fixture, and message. The bare `optmux:` form still loads, with a deprecation warning (`read_optmux_section` in `cli.py`); new reserved words go in the `KNOWN_*` sets there.
 - README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
 - **Prefer YAML block scalars over quoting** for anything with shell or tmux syntax (`command:`, `tmux:`, `tip:`, in `optmux-defaults.yaml`, README examples, tests). Use the **literal** style `|` (keeps newlines, so a script reads as written) and, for long prose, the **folded** style `>` (joins lines). Quoting (`'...'`, `"..."`) fights with the `$`, quotes, and `\` already in shell commands, and plain scalars choke on `: `, `#`, or a leading quote. Quote only what a block can't hold (e.g. a `"\x10..."` escape).
 

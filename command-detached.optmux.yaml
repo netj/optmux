@@ -14,48 +14,48 @@
 session_name: command-detached
 start_directory: .
 
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
 
     # ── remain variants (split pane in the current window) ─────────────────────
     C-M-b:
-      command: gh browse .              # exits 0 → pane closes silently
-      detached: true
+      +command: gh browse .              # exits 0 → pane closes silently
+      +detached: true
     C-M-m:
-      command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
-      detached: true
+      +command: uvx marimo edit          # Ctrl-C (exit 130) → hold open with prompt
+      +detached: true
     C-M-n:
-      command: uvx marimo edit
-      detached: true
-      remain: false                     # always close, no hold
+      +command: uvx marimo edit
+      +detached: true
+      +remain: false                     # always close, no hold
     C-M-y:
-      command: uvx marimo edit
-      detached: true
-      remain: true                      # always hold open
+      +command: uvx marimo edit
+      +detached: true
+      +remain: true                      # always hold open
 
     # ── float_window: quick commands that must not disturb the layout ──────────
     C-M-a:
-      command: open -R .git             # done in a blink → float pops and vanishes
-      detached: true
-      float_window: true                # zoom survives, unlike a detached split
+      +command: open -R .git             # done in a blink → float pops and vanishes
+      +detached: true
+      +float_window: true                # zoom survives, unlike a detached split
     C-M-t:
-      command: uvx marimo edit          # long-running is fine too: it floats on top
-      detached: true
-      float_window: true
+      +command: uvx marimo edit          # long-running is fine too: it floats on top
+      +detached: true
+      +float_window: true
 
     # ── new_window: runs off in its own window ─────────────────────────────────
     C-M-d:
-      command: |-
+      +command: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
         if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
         else echo "CPU OK"
         fi
-      new_window: true                  # exit 0 → window closes; exit 1 → hold open
-      detached: true
+      +new_window: true                  # exit 0 → window closes; exit 1 → hold open
+      +detached: true
     C-M-e:
-      command: ${VISUAL:-${EDITOR:-vim}} README.md
-      new_window: true
-      detached: true
+      +command: ${VISUAL:-${EDITOR:-vim}} README.md
+      +new_window: true
+      +detached: true
 
 windows:
   - window_name: shell

@@ -91,7 +91,7 @@ def test_merge_lazygit_deep():
 
 
 def test_new_keys_validated_without_warnings(capsys):
-    cli._validate_optmux_section(load_bundled_defaults(), "bundled")
+    cli.normalize_optmux_section(load_bundled_defaults(), "bundled")
     assert capsys.readouterr().err == ""
 
 

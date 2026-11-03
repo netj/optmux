@@ -49,10 +49,10 @@ def project_yaml_file(tmp_path):
     content = """\
 session_name: myproject
 start_directory: .
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-b: gh browse .
-  tmux_config:
+  +tmux_config:
     project-settings: |
       set -g status-style bg=blue
 windows:
@@ -69,8 +69,8 @@ windows:
 def personal_yaml_file(tmp_path):
     """Create a temporary personal ~/.optmux.yaml, return its path."""
     content = """\
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-x: htop
 """
     p = tmp_path / ".optmux.yaml"

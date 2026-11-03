@@ -71,29 +71,55 @@ KNOWN_SHORTCUT_KEYS = {
 KNOWN_MENU_ITEM_KEYS = {"default", "title", "key"} | (KNOWN_SHORTCUT_KEYS - {"tip"})
 
 
-def _warn_unknown_keys(keys, allowed, context):
-    """Print a warning for keys not in allowed (ignoring keys starting with '_')."""
-    unknown = [k for k in keys if k not in allowed and not str(k).startswith("_")]
-    if unknown:
-        allowed_list = ", ".join(sorted(allowed))
-        for key in unknown:
-            print(
-                f"optmux: {context}: unrecognized key {key!r} (allowed: {allowed_list})",
-                file=sys.stderr,
-            )
+def _reserved_keys(mapping, allowed, strict, where, source_hint=None, kind="key"):
+    """Return `mapping` restricted to the optmux keywords in `allowed`, with the `+` stripped.
+
+    optmux's own words are written `+word`; names you pick (shortcut keys, env vars, languages) stay bare.
+    A strict (`+optmux:`) section takes only `+word`; a legacy (`optmux:`) one also takes the bare word.
+    Anything else is warned about, except keys starting with '_' (scratch data), which pass through.
+    """
+    out = {}
+    for key, value in mapping.items():
+        k = str(key)
+        if k.startswith("_"):
+            out[key] = value
+        elif k.startswith("+") and k[1:] in allowed:
+            out[k[1:]] = value
+        elif not strict and k in allowed:
+            out[k] = value
+        else:
+            hint = f" (write +{k})" if k in allowed else ""
+            allowed_list = ", ".join("+" + a for a in sorted(allowed))
+            print(f"optmux: {where}: unrecognized {kind} {key!r}{hint} (allowed: {allowed_list})", file=sys.stderr)
+    return out
 
 
-def _validate_optmux_section(optmux, source):
-    """Warn about unrecognized keys in an optmux: section, its shortcuts, and its menu."""
-    _warn_unknown_keys(optmux.keys(), KNOWN_OPTMUX_KEYS, source)
-    for key, value in (optmux.get("shortcuts") or {}).items():
-        if isinstance(value, dict):
-            _warn_unknown_keys(value.keys(), KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
-    if optmux.get("icons") not in (None, "nerd", "emoji", "text", "none"):
-        print(f"optmux: {source}: icons: {optmux['icons']!r} is not one of nerd, emoji, text, none", file=sys.stderr)
-    find = optmux.get("find")
-    if isinstance(find, dict):
-        _warn_unknown_keys(find.keys(), KNOWN_FIND_KEYS, f"{source}: find")
+def normalize_optmux_section(raw, source, strict=False):
+    """The contents of an `optmux:`/`+optmux:` section with bare keywords, warning about mistakes.
+
+    Everything past this point (merging, generating tmux config, the tools) sees the bare names.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out = _reserved_keys(raw, KNOWN_OPTMUX_KEYS, strict, source)
+
+    def fields(value, allowed, where):
+        return _reserved_keys(value, allowed, strict, where) if isinstance(value, dict) else value
+
+    if isinstance(out.get("shortcuts"), dict):
+        out["shortcuts"] = {
+            key: fields(value, KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
+            for key, value in out["shortcuts"].items()
+        }
+    if isinstance(out.get("plugins"), dict):
+        out["plugins"] = {
+            plugin: _plugin_options(cfg, plugin, source)
+            for plugin, cfg in out["plugins"].items()
+        }
+    if out.get("icons") not in (None, "nerd", "emoji", "text", "none"):
+        print(f"optmux: {source}: icons: {out['icons']!r} is not one of nerd, emoji, text, none", file=sys.stderr)
+    if isinstance(out.get("find"), dict):
+        find = _reserved_keys(out["find"], KNOWN_FIND_KEYS, strict, f"{source}: find")
         if "preview" in find and not isinstance(find["preview"], bool):
             print(f"optmux: {source}: find.preview: {find['preview']!r} is not true or false", file=sys.stderr)
         ignore = find.get("ignore_files")
@@ -104,25 +130,60 @@ def _validate_optmux_section(optmux, source):
             if patterns is not None and not (isinstance(patterns, list) and all(isinstance(x, str) for x in patterns)):
                 print(f"optmux: {source}: find.ignore_files.{group}: {patterns!r} is not a list of patterns",
                       file=sys.stderr)
-        for lang, cfg in (find.get("lsp") or {}).items():
-            if isinstance(cfg, dict):
-                _warn_unknown_keys(cfg.keys(), KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
-                for server in cfg.get("servers") or []:
-                    if isinstance(server, dict):
-                        _warn_unknown_keys(server.keys(), KNOWN_LSP_SERVER_KEYS, f"{source}: find.lsp.{lang}.servers")
-    for context, entries in (optmux.get("menu") or {}).items():
-        if context not in menu_compiler.CONTEXTS:
-            print(
-                f"optmux: {source}: menu: unrecognized context {context!r} "
-                f"(allowed: {', '.join(menu_compiler.CONTEXTS)})",
-                file=sys.stderr,
-            )
-            continue
-        for entry in entries or []:
-            if isinstance(entry, dict):
-                _warn_unknown_keys(
-                    entry.keys(), KNOWN_MENU_ITEM_KEYS, f"{source}: menu.{context} item {entry!r}"
-                )
+        if isinstance(find.get("lsp"), dict):
+            for lang, cfg in find["lsp"].items():
+                cfg = fields(cfg, KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
+                find["lsp"][lang] = cfg
+                if isinstance(cfg, dict) and isinstance(cfg.get("servers"), list):
+                    cfg["servers"] = [
+                        fields(server, KNOWN_LSP_SERVER_KEYS, f"{source}: find.lsp.{lang}.servers")
+                        for server in cfg["servers"]
+                    ]
+        out["find"] = find
+    if isinstance(out.get("menu"), dict):
+        menu = _reserved_keys(out["menu"], set(menu_compiler.CONTEXTS), strict, f"{source}: menu", kind="context")
+        for context, entries in menu.items():
+            if isinstance(entries, list):
+                menu[context] = [
+                    fields(entry, KNOWN_MENU_ITEM_KEYS, f"{source}: menu.{context} item {entry!r}")
+                    for entry in entries
+                ]
+        out["menu"] = menu
+    return out
+
+
+def _plugin_options(config, plugin, source):
+    """A plugin's tmux options (bare, they're yours) with its `+tip_url` kept as `_tip_url`."""
+    if not isinstance(config, dict):
+        return config
+    out = {}
+    for key, value in config.items():
+        if str(key) == "+tip_url":
+            out["_tip_url"] = value
+        elif str(key).startswith("+"):
+            print(f"optmux: {source}: plugin {plugin!r}: unrecognized key {key!r} (allowed: +tip_url)", file=sys.stderr)
+        else:
+            out[key] = value
+    return out
+
+
+def read_optmux_section(data, source):
+    """The optmux config out of a parsed YAML file: `+optmux:`, or the deprecated bare `optmux:`."""
+    if not isinstance(data, dict):
+        return {}
+    layers = []
+    if data.get("optmux"):
+        print(
+            f"optmux: {source}: bare `optmux:` is deprecated; write `+optmux:` with +-prefixed keywords "
+            "(+shortcuts:, +command:, ...) so what's syntax and what's your names are told apart",
+            file=sys.stderr,
+        )
+        layers.append(normalize_optmux_section(data["optmux"], source))
+    if data.get("+optmux"):
+        layers.append(normalize_optmux_section(data["+optmux"], source, strict=True))
+    if len(layers) == 2:
+        print(f"optmux: {source}: has both `optmux:` and `+optmux:`; merging them, `+optmux:` wins", file=sys.stderr)
+    return merge_optmux(*layers) if len(layers) > 1 else (layers[0] if layers else {})
 
 
 def load_bundled_defaults():
@@ -130,7 +191,7 @@ def load_bundled_defaults():
     defaults_path = files("optmux").joinpath("data", "optmux-defaults.yaml")
     with open(str(defaults_path)) as f:
         data = yaml.safe_load(f) or {}
-    return data.get("optmux") or {}
+    return read_optmux_section(data, "bundled defaults")
 
 
 def load_optmux_conf(conf_path=None):
@@ -140,9 +201,7 @@ def load_optmux_conf(conf_path=None):
     if conf_path.exists():
         with open(conf_path) as f:
             data = yaml.safe_load(f) or {}
-        optmux = data.get("optmux") or {}
-        _validate_optmux_section(optmux, str(conf_path))
-        return optmux
+        return read_optmux_section(data, str(conf_path))
     return {}
 
 
@@ -394,7 +453,7 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     # optmux.menu → tmux.optmux-menu.conf (compiled display-menu bindings)
     menu_cfg = optmux.get("menu") or {}
     if menu_cfg:
-        menu_content = menu_compiler.generate_menu_conf(menu_cfg, source="optmux: menu")
+        menu_content = menu_compiler.generate_menu_conf(menu_cfg, source="+optmux: +menu")
         if menu_content:
             new_files["tmux.optmux-menu.conf"] = menu_content.encode()
             (tmux_dir / "tmux.optmux-menu.conf").write_text(menu_content)
@@ -522,7 +581,7 @@ def generate_lazygit_env(optmux_dir, lazygit):
     lazygit_dir.mkdir(parents=True, exist_ok=True)
     config = lazygit_dir / "config.yml"
     config.write_text(
-        "# DO NOT EDIT — regenerated by optmux on every launch from the optmux: lazygit: section.\n"
+        "# DO NOT EDIT — regenerated by optmux on every launch from the +optmux: +lazygit: section.\n"
         + yaml.safe_dump(lazygit, sort_keys=False, allow_unicode=True)
     )
     user_files = _user_lazygit_config_files()
@@ -536,7 +595,7 @@ def generate_env_sh(bin_dir, env):
     """Render env.sh: put optmux's helper scripts on PATH, then set/unset env."""
     q = shlex.quote
     lines = [
-        "# DO NOT EDIT — regenerated by optmux on every launch from the optmux: env, git_config, and lazygit sections.\n",
+        "# DO NOT EDIT — regenerated by optmux on every launch from the +optmux: +env, +git_config, and +lazygit sections.\n",
         "# Applied by optmux-env (which shortcuts use) to the command it runs. To use it in every shell,\n",
         "# add to your shell rc: [ -n \"$OPTMUX_DIR\" ] && . \"$OPTMUX_DIR/env.sh\"\n",
         f"export PATH={q(str(bin_dir))}\"${{PATH:+:$PATH}}\"\n",
@@ -655,8 +714,7 @@ def setup_optmux_env(resolved):
     if yaml_path:
         with open(yaml_path) as f:
             data = yaml.safe_load(f) or {}
-        project = data.get("optmux") or {}
-        _validate_optmux_section(project, str(yaml_path))
+        project = read_optmux_section(data, str(yaml_path))
         optmux = merge_optmux(bundled, project, personal)
     else:
         optmux = merge_optmux(bundled, personal)
