@@ -286,6 +286,15 @@ def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
     assert not fake_ctags.exists()
 
 
+def test_user_tags_without_line_numbers_are_not_used_since_finding_each_line_is_slow(repo, fake_ctags):
+    (repo / "tags").write_text('mine\tapp.py\t/^def mine():$/;"\tf\n')  # (a hook's `ctags -R`: patterns only)
+    assert fd.has_line_numbers(repo / "tags") is False
+    assert fd.tags_file() != repo / "tags"  # (ours is built instead, with the line numbers)
+    assert fd.has_line_numbers(repo / "tags") is False and (repo / "tags").read_text().startswith("mine")  # (left alone)
+    (repo / "tags").write_text('!_TAG_FILE_FORMAT\t2\t/x/\nmine\tapp.py\t1;"\tf\tline:1\n')
+    assert fd.tags_file() == repo / "tags"
+
+
 def test_tags_path_prints_the_tags_an_editor_can_use(repo, tmp_path, tmp_path_factory):
     run = lambda where: subprocess.run([sys.executable, "-B", fd.__file__, "--tags-path"], cwd=where, capture_output=True, text=True,
                                        env={**os.environ, "OPTMUX_DIR": str(tmp_path / "od")})
