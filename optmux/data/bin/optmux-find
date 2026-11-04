@@ -27,7 +27,6 @@ import argparse
 import fnmatch
 import functools
 import hashlib
-import itertools
 import json
 import os
 import re
@@ -260,29 +259,15 @@ def refresh_tags(root):
                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
 
-def has_line_numbers(path):
-    """Whether a tags file says on which line each tag is (`line:N` from `ctags --fields=+n`, or a number for the
-    ex command, from `--excmd=number`). Without, finding the
-    line means reading the source file of every tag: minutes for a large project, at every open. A sample is
-    enough, since one ctags run wrote the whole file."""
-    try:
-        with open(path, errors="replace") as f:
-            tags = list(itertools.islice((l for l in f if not l.startswith("!_")), 200))
-    except OSError:
-        return False
-    return not tags or any("\tline:" in l or (l.split("\t", 2) + ["", ""])[2].partition(";\"")[0].strip().isdigit() for l in tags)
-
-
 def tags_file(check=None):
-    """Your `tags` file at the project root, if there is one (yours to keep fresh). Otherwise, in a git project,
-    our own: built by ctags on first use, and refreshed in the background once the project changed (this open
-    still uses the tags it has). `check` False only reads what exists: fzf re-lists omni on every keystroke."""
-    root = repo_root() or os.getcwd()
-    existing = Path(root, "tags")
-    if existing.is_file() and has_line_numbers(existing):  # (yours, unless it makes opening take minutes: see above)
-        return existing
-    if not repo_root():  # no git to say what to index, and a whole directory tree is no project: only yours, if any
-        return existing if existing.is_file() else None
+    """The tags of the project (the git repository of the working directory): built by ctags on first use and refreshed
+    in the background once the project changed (this open still uses the tags it has). Always optmux's own, never a
+    `tags` file in the project: what it holds (patterns without line numbers, JSON keys, a hook's options) is not
+    ours to know, and the picker depends on what it holds. `check` False only reads what exists: fzf re-lists omni on
+    every keystroke."""
+    root = repo_root()
+    if not root:
+        return None  # no git to say what to index, and a whole directory tree is no project
     out = tags_cache(root)
     if (CHECK_TAGS if check is None else check) and find_ctags():
         failed, lock = out.with_suffix(".failed"), out.with_suffix(".lock")
@@ -302,18 +287,15 @@ def tags_file(check=None):
                         refresh_tags(root)
                     except OSError:
                         lock.unlink(missing_ok=True)
-    if out.is_file():
-        return out
-    return existing if existing.is_file() else None  # (ours could not be built: yours, slow as it is, beats none)
+    return out if out.is_file() else None
 
 
 def tags_for_editors():
     """Path of tags an editor can use from anywhere, or None. Ours name files relative to the project root, but an
-    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths. Your own
-    `tags` at the root is as good as it is."""
+    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths."""
     found = tags_file()
     root = repo_root()
-    if not found or not root or found == Path(root, "tags"):
+    if not found or not root:
         return found
     absolute = found.with_suffix(".abs.tags")
     if not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime:
@@ -368,7 +350,7 @@ def list_tags(_query, warn=True):
         if warn:
             print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
         return
-    root = tags.parent if tags.name == "tags" else (repo_root() or os.getcwd())
+    root = repo_root() or os.getcwd()
     for raw in tags.read_text(errors="replace").splitlines():
         if raw.startswith("!_TAG_"):
             continue
