@@ -69,7 +69,7 @@ Some lazygit keys optmux adds:
 | `Ctrl-g` | Diff the branch against the default branch (`origin/HEAD`). This is what the PR will contain. |
 | click a line number | Open that line in your `$EDITOR` |
 
-Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `lazygit:` in `~/.optmux.yaml`; see [lazygit](README.md#lazygit).
+Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `+lazygit:` in `~/.optmux.yaml`; see [lazygit](README.md#lazygit).
 
 ## 3. Teach by example
 
@@ -105,7 +105,7 @@ It renders with delta and opens in less with mouse support and link handling:
 optmux applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
 For anything else, prefix the command with `optmux env`: `optmux env git log -p`, `optmux env git show HEAD`.
 To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
-Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](README.md#env).
+Tweak the settings with [`+git_config:`](README.md#git_config) and [`+env:`](README.md#env).
 
 ## 4. Keep many going
 
@@ -125,5 +125,5 @@ A typical rhythm:
 
 ## Where to go next
 
-- [README](README.md): the full `optmux:` config reference (shortcuts, menus, plugins), warp sessions, clipboard over SSH
-- Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `env`, `git_config`, and `lazygit` settings for every session. See [Personal config](README.md#personal-config-optmuxyaml).
+- [README](README.md): the full `+optmux:` config reference (shortcuts, menus, plugins), warp sessions, clipboard over SSH
+- Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `+env`, `+git_config`, and `+lazygit` settings for every session. See [Personal config](README.md#personal-config-optmuxyaml).

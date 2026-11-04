@@ -1,4 +1,4 @@
-"""Compile optmux `menu:` YAML config into static tmux display-menu bindings.
+"""Compile optmux `+menu:` YAML config into static tmux display-menu bindings.
 
 tmux's built-in session/window/pane menus are C macros (DEFAULT_SESSION_MENU
 etc. in key-bindings.c) with no API to edit them at runtime. Rather than
@@ -335,7 +335,7 @@ _BIND_LINE_BUILDERS = {
 
 
 def generate_menu_conf(menu_cfg, source="<menu>"):
-    """Compile an optmux `menu:` config dict into tmux bind-key lines.
+    """Compile an optmux `+menu:` config dict into tmux bind-key lines.
 
     Contexts absent from menu_cfg are left untouched (tmux's own default
     menu still applies).
@@ -344,7 +344,7 @@ def generate_menu_conf(menu_cfg, source="<menu>"):
     for context in menu_cfg:
         if context not in CONTEXTS:
             print(
-                f"optmux: {source}: menu: unrecognized context {context!r} "
+                f"optmux: {source}: +menu: unrecognized context {context!r} "
                 f"(allowed: {', '.join(CONTEXTS)})",
                 file=sys.stderr,
             )

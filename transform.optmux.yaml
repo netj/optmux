@@ -1,0 +1,178 @@
+#!/usr/bin/env optmux
+# More than meets the eye: what optmux's plugins and tools can be configured to do, to take to your own
+# ~/.optmux.yaml (or a project's optmux.yaml). Not a reference manual and not exhaustive, just things worth trying.
+# Most lines are commented out; delete the `#` in front of one to transform your optmux. (A commented-out setting has
+# the `#` right before the key, so removing it leaves the indentation right.)
+#
+# Plugin options come from each plugin's own README, and are yours to name (no `+`). The words with a `+` are
+# optmux's. tests/test_load_config.py loads this file with every setting switched on, so the lines stay valid;
+# the plugins' options are worth re-checking against their READMEs now and then.
+session_name: transform
+start_directory: .
+
++optmux:
+  # --- Plugins ------------------------------------------------------------------------------------------------
+  # Each plugin is a name and its options, which optmux writes as `set -g @option "value"` (`@` optional, `$VAR`
+  # expands, true/false become on/off). Your entry for a plugin replaces optmux's whole entry for it, so repeat
+  # the options you want to keep. `false` turns a plugin off.
+  +plugins:
+    tmux-plugins/tmux-pain-control:
+      #pane_resize: 10                   # cells per resize step (default 5)
+
+    Morantron/tmux-fingers:             # prefix+F: hints on URLs, paths, hashes, IPs, ... to copy
+      fingers-skip-wizard: 1
+      #fingers-key: f
+      #fingers-jump-key: j               # like F, but moves the cursor to the match in copy mode
+      # (its default, J, is also pain-control's resize-down: whichever loads last wins)
+      #fingers-keyboard-layout: qwerty-homerow  # hint letters from the home row only (also dvorak, colemak, ...)
+      #fingers-hint-position: right
+      #fingers-hint-style: fg=magenta,bold
+      #fingers-show-copied-notification: 1
+      #fingers-enabled-builtin-patterns: url,path,sha,ip,uuid  # of: ip uuid sha digit url path hex kubernetes git-status git-status-branch diff
+      # What a hint does: the letter copies, Ctrl+letter opens, Shift+letter pastes; Alt+letter is free for you.
+      #fingers-ctrl-action: ':open:'
+      #fingers-shift-action: ':paste:'
+      #fingers-alt-action: pbcopy        # the match arrives on stdin; also $HINT and $MODIFIER
+      # Patterns of your own (PCRE; a named group (?<match>...) copies only that part).
+      #fingers-pattern-0: 'git rebase --(abort|continue)'
+      #fingers-pattern-1: '\b[A-Z][A-Z0-9]+-\d+\b'   # ticket ids like OPT-123
+      #fingers-pattern-2: 'issue #(?<match>\d+)'
+
+    netj/tmux-yank:                     # y in copy mode copies to the system clipboard
+      #yank_action: copy-pipe            # stay in copy mode after yanking
+      #yank_with_mouse: off              # let the mouse select without copying
+      #yank_selection_mouse: clipboard   # (Linux) clipboard, primary, or secondary
+      #shell_mode: vi                    # vi keys at the tmux command prompt too
+      #override_copy_command: wl-copy    # when your clipboard tool isn't one it knows
+
+    tmux-plugins/tmux-resurrect:        # prefix+Ctrl-s saves the layout, prefix+Ctrl-r restores it
+      resurrect-strategy-vim: session
+      resurrect-capture-pane-contents: true
+      resurrect-dir: $OPTMUX_DIR/tmux/resurrect  # saved per project, not one shared directory
+      #resurrect-strategy-nvim: session
+      #resurrect-processes: ssh psql mysql "~rails server" "~yarn watch"  # programs to start again; ~ matches anywhere
+      #resurrect-save: A                 # rebind a key (after the prefix); resurrect-restore does the same for restoring
+
+    #tmux-plugins/tmux-continuum:       # off by default: saves in the background, restores on start
+    #  continuum-restore: true
+
+    netj/claritmux:                     # the status line: what it shows, and in which colors
+      claritmux_status_workdir: 0
+      claritmux_status_date: 0
+      claritmux_status_time: 0
+      claritmux_status_hostname: 1
+      #claritmux_color_active: '#a6e3a1'
+      #claritmux_color_prefix: '#89dceb'
+      #claritmux_color_bell: '#f38ba8'
+      #claritmux_color_host: '#585b70'   # 16 colors in all: see claritmux's README
+      #claritmux_style_status_session: bg=default,fg=magenta
+      #claritmux_format_window_named: ' #{window_name}'
+    # To follow another theme, give claritmux raw tmux lines instead of a mapping (so `-gF` expands the theme's
+    # variables), after a `catppuccin/tmux:` entry: `- set -gF @claritmux_color_bg '#{@thm_bg}'` and so on
+    # (claritmux's README, "With catppuccin/tmux").
+
+  # Anything else for tmux itself, in files named whatever you like (tmux.optmux-extras.<name>.conf).
+  #+tmux_config:
+  #  my-settings: |
+  #    set -g history-limit 100000       # tmux-sensible's 50000 is plenty for most
+  #    set -g status-position top
+  #    set -g renumber-windows on
+  #    setw -g mode-keys vi
+
+  # --- Shortcuts ----------------------------------------------------------------------------------------------
+  # The key is yours (C-M-<key> needs no prefix; other keys follow the prefix, C-t). `+tip` puts it on the tips
+  # screen (C-M-h). A split by default; +new_window, +float_window (tmux 3.7+) or +detached say where it runs.
+  # Taken by optmux: C-M-c d f g h o s w x z (and C-M-\); the others below are free.
+  +shortcuts:
+    C-M-b: gh browse .                  # a plain string is a command
+    #C-M-t:                             # run the tests where you can watch them, then dismiss
+    #  +command: make test
+    #  +remain: on-error                 # closes on success, stays open on failure
+    #  +tip: run the tests
+    #C-M-p:
+    #  +command: gh pr checks --watch
+    #  +new_window: true
+    #  +tip: watch this PR's checks
+    #C-M-l:
+    #  +command: git log --graph --oneline --decorate --all
+    #  +new_window: true
+    #  +tip: the shape of the history
+    #C-M-n:
+    #  +command: ${VISUAL:-${EDITOR:-vim}} NOTES.md
+    #  +float_window: true               # a floating pane, zoom untouched
+    #  +tip: scratch notes for this project
+    #C-M-u:
+    #  +command: brew update && brew upgrade
+    #  +detached: true                   # works in the background; holds itself open (and rings) if it fails
+    #  +tip: update Homebrew without leaving what you're doing
+    #C-M-j:
+    #  +tmux: choose-tree -Zs
+    #  +tip: jump to a session
+    #C-M-v:
+    #  +send_keys: source .venv/bin/activate   # typed into a fresh shell, so the venv stays active there
+    #  +tip: a shell with the venv on
+    #Q:                                  # prefix+Q toggles typing in every pane of the window at once
+    #  +tmux: |
+    #    setw synchronize-panes \; display-message "synchronize-panes #{?pane_synchronized,on,off}"
+    #  +tip: type in all panes at once
+    #B: htop                            # prefix+B (taken: h j k l move panes, H J K L resize them, F fingers, R reload)
+    #G: lazygit log
+
+  # Items in the right-click menus (pane, window, session); "*" keeps tmux's own, in its usual place.
+  #+menu:
+  #  +pane:
+  #  - +key: t
+  #    +title: Run tests
+  #    +command: make test
+  #    +new_window: true
+  #  - separator
+  #  - "*"
+
+  # --- Around the tools ---------------------------------------------------------------------------------------
+  # Environment for commands optmux starts (lazygit, git's pager, ...): a null value unsets one.
+  #+env:
+  #  EDITOR: nvim
+  #  DELTA_FEATURES: +side-by-side
+
+  # git config, like `git -c` but without touching ~/.gitconfig (delta reads it too).
+  #+git_config:
+  #  delta.side-by-side: true
+  #  delta.line-numbers: false
+  #  merge.conflictStyle: zdiff3
+
+  # lazygit's own config, layered over yours.
+  #+lazygit:
+  #  gui:
+  #    nerdFontsVersion: '3'
+  #    showFileTree: false
+  #  git:
+  #    autoFetch: false
+  #  os:
+  #    editPreset: nvim
+
+  # --- Find and eXtract ---------------------------------------------------------------------------------------
+  #+icons: emoji                         # nerd (default), emoji, text, or none
+  #+find:
+  #  +preview: false                     # no preview pane beside the list
+  #  # Groups of what to leave out of the file list (C-f) and the tags index (C-t); the group names are yours.
+  #  +ignore_files:
+  #    mine:
+  #    - fixtures
+  #    - "*.snap"
+  #  +ignore_tags:
+  #    mine:
+  #    - "*.sql"
+  #  # Language servers (C-l), per language: `+servers` replaces the list, the first one installed is used.
+  #  +lsp:
+  #    ruby:
+  #      +extensions:
+  #      - rb
+  #      +command: ruby-lsp
+  #      +install: gem install ruby-lsp
+  #    lua:
+  #      +enabled: false                 # not for this project
+
+windows:
+  - window_name: shell
+    panes:
+      - ""

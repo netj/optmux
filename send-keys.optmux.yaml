@@ -4,25 +4,25 @@
 session_name: send-keys
 start_directory: .
 
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-b:
-      send_keys: gh browse .            # shell stays open after browser launches
+      +send_keys: gh browse .            # shell stays open after browser launches
     C-M-m:
-      send_keys: uvx marimo edit
+      +send_keys: uvx marimo edit
     C-M-d:
-      send_keys: |-
+      +send_keys: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
         if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
         else echo "CPU OK"
         fi
-      new_window: true
+      +new_window: true
     C-M-e:
-      send_keys: ${VISUAL:-${EDITOR:-vim}} README.md
-      new_window: true
+      +send_keys: ${VISUAL:-${EDITOR:-vim}} README.md
+      +new_window: true
     E:
-      send_keys: ${VISUAL:-${EDITOR:-vim}} .
-      zoom: false
+      +send_keys: ${VISUAL:-${EDITOR:-vim}} .
+      +zoom: false
 
 windows:
   - window_name: shell

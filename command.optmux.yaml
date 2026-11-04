@@ -4,23 +4,23 @@
 session_name: command
 start_directory: .
 
-optmux:
-  shortcuts:
++optmux:
+  +shortcuts:
     C-M-b: gh browse .                  # string shorthand = command; pane closes on exit 0
     C-M-m: uvx marimo edit              # zoomed pane; stays until you quit
     C-M-d:
-      command: |-
+      +command: |-
         hi=$(ps -A -o %cpu=,pid=,command= | sort -rn | awk '$1>50')
         if [ -n "$hi" ]; then echo "High CPU:"; echo "$hi"; exit 1
         else echo "CPU OK"
         fi
-      new_window: true
+      +new_window: true
     C-M-e:
-      command: ${VISUAL:-${EDITOR:-vim}} README.md
-      new_window: true
+      +command: ${VISUAL:-${EDITOR:-vim}} README.md
+      +new_window: true
     E:
-      command: ${VISUAL:-${EDITOR:-vim}} .
-      zoom: false
+      +command: ${VISUAL:-${EDITOR:-vim}} .
+      +zoom: false
 
 windows:
   - window_name: shell
