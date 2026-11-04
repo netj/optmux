@@ -6,7 +6,7 @@
 # Plugin options come from each plugin's own README, and are yours to name (no `+`). The words with a `+` are
 # optmux's. tests/test_load_config.py loads this file with every setting switched on, so the lines stay valid;
 # the plugins' options are worth re-checking against their READMEs now and then.
-session_name: example-full
+session_name: allspark
 start_directory: .
 
 +optmux:
