@@ -17,7 +17,7 @@ loader.exec_module(fd)
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path, tmp_path_factory, monkeypatch):
     git = lambda *a: subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
     git("init", "-q")
     (tmp_path / "app.py").write_text("import os\n\ndef Hello():\n    return 'hi'\n")
@@ -25,7 +25,15 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / "sub/notes.md").write_text("say hello there\n")
     git("add", ".")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od")))  # (outside the repo: not one of its files)
     return tmp_path
+
+
+@pytest.fixture
+def put_tags(repo, monkeypatch):
+    """Sets the project's tags (the index optmux keeps), as ctags would have written them, and takes them as they are."""
+    monkeypatch.setattr(fd, "CHECK_TAGS", False)
+    return lambda text: fd.tags_cache(str(repo)).write_text(text)
 
 
 def test_files_lists_what_git_knows_then_the_ignored(repo):
@@ -53,6 +61,56 @@ def test_files_also_lists_ignored_ones_minus_find_ignore_files(repo, monkeypatch
         fd.find_config.cache_clear()
 
 
+def test_tags_index_leaves_out_find_ignore_tags(repo, monkeypatch, tmp_path_factory):
+    for f in ("data/big.json", "src/generated/api.ts", "src/app.js"):
+        (repo / f).parent.mkdir(parents=True, exist_ok=True)
+        (repo / f).write_text("x")
+    run_git = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    run_git("add", "-A")
+    cfg = tmp_path_factory.mktemp("optmux")
+    monkeypatch.setenv("OPTMUX_DIR", str(cfg))
+    (cfg / "find.json").write_text('{"ignore_tags": {"data": ["*.json"], "generated": ["generated"], "off": null}}')
+    fd.find_config.cache_clear()
+    try:
+        files = fd.project_files(str(repo))
+        assert "src/app.js" in files and "data/big.json" not in files and "src/generated/api.ts" not in files
+        stamp = fd.tags_stamp(str(repo))
+        (cfg / "find.json").write_text('{"ignore_tags": {}}')
+        fd.find_config.cache_clear()
+        assert "data/big.json" in fd.project_files(str(repo))
+        assert fd.tags_stamp(str(repo)) != stamp  # (changing the patterns re-indexes)
+    finally:
+        fd.find_config.cache_clear()
+
+
+def test_tags_without_line_numbers_are_found_by_pattern_without_rescanning_the_file(tmp_path, monkeypatch):
+    n = 3000  # a generated file: one tag per line, and no `line:` field to read
+    (tmp_path / "gen.ts").write_text("".join(f"export const s{i} = {i};\n" for i in range(n)))
+    tags = tmp_path / "tags"
+    tags.write_text("".join(f's{i}\tgen.ts\t/^export const s{i} = {i};$/;"\tkind:constant\n' for i in range(n)))
+    monkeypatch.setattr(fd, "tags_file", lambda check=None: tags)
+    monkeypatch.setattr(fd, "repo_root", lambda: str(tmp_path))
+    fd.file_index.cache_clear(); fd.file_lines.cache_clear()
+    reads = []
+    real = fd.file_lines.__wrapped__
+    monkeypatch.setattr(fd, "file_lines", lambda root, path: reads.append(path) or real(root, path))
+    rows = [r.split("\t") for r in fd.list_tags("")]
+    assert [r[1] for r in rows[:3]] == ["1", "2", "3"] and rows[-1][1] == str(n)
+    assert len(reads) == 1  # (indexed once, not once per tag)
+
+
+def test_a_killed_child_is_reaped_not_left_defunct():
+    import time
+    child = subprocess.Popen(["sleep", "30"])
+    fd.reap(child).kill()
+    for _ in range(100):
+        state = subprocess.run(["ps", "-o", "stat=", "-p", str(child.pid)], capture_output=True, text=True).stdout.strip()
+        if not state:
+            break
+        time.sleep(0.02)
+    assert state == ""  # (gone from the process table; a zombie would show as `Z`)
+
+
 def plain(entry_or_text):
     """What a candidate looks like on screen: the display field, without the dim codes."""
     text = entry_or_text.split("\t")[2] if "\t" in entry_or_text else entry_or_text
@@ -73,8 +131,8 @@ def test_grep_rows_keep_the_matching_text_in_a_field_of_its_own(repo):
     assert plain(row) == "G🔍 app.py:3" and what.split(fd.FIELD_SEP)[:3] == ["grep", "hit", "app.py:3"]
 
 
-def test_tags_parse_line_field_and_search_patterns(repo):
-    (repo / "tags").write_text(
+def test_tags_parse_line_field_and_search_patterns(repo, put_tags):
+    put_tags(
         '!_TAG_FILE_FORMAT\t2\t/extended format/\n'
         'Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n'
         'os\tapp.py\t/^import os$/;"\tkind:module\n'
@@ -163,8 +221,8 @@ def test_cursor_position_in_grep_is_plain_list_index():
 
 
 @skip_no_fzf
-def test_omni_ranks_tags_and_files_together_by_match_strength(repo):
-    (repo / "tags").write_text(
+def test_omni_ranks_tags_and_files_together_by_match_strength(repo, put_tags):
+    put_tags(
         'hel_per_function_with_a_long_name\tapp.py\t/^x/;"\tf\tline:1\n'
         'Hello\tapp.py\t/^def Hello():$/;"\tf\tline:3\n')
     (repo / "hello.txt").write_text("x")
@@ -202,8 +260,8 @@ def test_recent_roundtrip_and_ordering(tmp_path, monkeypatch):
 
 
 @skip_no_fzf
-def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo):
-    (repo / "tags").write_text("")
+def test_omni_puts_recent_first_with_no_query_and_pulls_it_up_with_one(repo, put_tags):
+    put_tags("")
     import os
     os.environ["OPTMUX_DIR"] = str(repo / ".od")
     try:
@@ -242,18 +300,27 @@ def test_tags_are_built_on_first_use_and_reused_while_the_project_is_unchanged(r
     assert fake_ctags.read_text().count("run") == 1  # unchanged: no rebuild, no refresh
 
 
-def test_user_tags_file_wins_and_is_left_alone(repo, fake_ctags):
+def test_a_tags_file_in_the_project_is_never_used(repo, fake_ctags):
+    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')  # (even a good one: the picker depends on what it holds)
+    assert "mine" not in [fd.what_of(l)[2] for l in fd.list_tags("")]
+    assert fake_ctags.read_text().count("run") == 1 and (repo / "tags").read_text().startswith("mine")  # (ours built; yours left alone)
+
+
+def test_without_git_or_ctags_there_are_no_tags_even_with_a_tags_file(repo, monkeypatch, tmp_path_factory):
     (repo / "tags").write_text('mine\tapp.py\t1;"\tf\tline:1\n')
-    assert [fd.what_of(l)[2] for l in fd.list_tags("")] == ["mine"]
-    assert not fake_ctags.exists()
+    monkeypatch.setattr(fd, "find_ctags", lambda: None)
+    assert fd.tags_file() is None
+    monkeypatch.chdir(tmp_path_factory.mktemp("not-a-project"))
+    assert fd.tags_file() is None
 
 
-def test_tags_path_prints_the_tags_an_editor_can_use(repo, tmp_path, tmp_path_factory):
+def test_tags_path_prints_the_tags_an_editor_can_use(repo, fake_ctags, tmp_path, tmp_path_factory):
     run = lambda where: subprocess.run([sys.executable, "-B", fd.__file__, "--tags-path"], cwd=where, capture_output=True, text=True,
-                                       env={**os.environ, "OPTMUX_DIR": str(tmp_path / "od")})
-    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\n')
+                                       env={**os.environ, "OPTMUX_DIR": str(tmp_path_factory.mktemp("od2"))})
+    (repo / "tags").write_text('mine\tapp.py\t1;"\tf\n')  # (not what it points at)
     done = run(repo)
-    assert done.returncode == 0 and done.stdout.strip() == str(repo / "tags")
+    path = Path(done.stdout.strip())
+    assert done.returncode == 0 and path.name.endswith(".abs.tags") and path != repo / "tags" and path.is_file()
     elsewhere = tmp_path_factory.mktemp("not-a-project")  # (tmp_path itself is the repo)
     assert run(elsewhere).returncode == 1 and run(elsewhere).stdout == ""  # nothing to point at: an error, not an empty path
 
@@ -273,8 +340,6 @@ def test_editors_get_tags_with_absolute_paths(repo, monkeypatch, tmp_path_factor
     ours.touch()
     path = fd.tags_for_editors()
     assert path.read_bytes() == f'ff\t{repo}/c.py\t/^def ff(x="a\x0cb"):$/;"\tf\n'.encode()
-    (repo / "tags").write_text("mine\tapp.py\t1\n")  # yours wins, as it is
-    assert fd.tags_for_editors() == repo / "tags"
 
 
 def test_stale_tags_are_served_while_a_refresh_is_started(repo, fake_ctags, monkeypatch):
@@ -434,9 +499,9 @@ def test_icon_style_comes_from_the_find_config(monkeypatch, tmp_path):
 
 
 @skip_no_fzf
-def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_and_file(repo, monkeypatch):
+def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_and_file(repo, put_tags, monkeypatch):
     # ctags says line 2 (the decorator), the server line 3: still one definition
-    (repo / "tags").write_text('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:2\n')
+    put_tags('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:2\n')
     S = fd.FIELD_SEP
     symbols = [f"app.py\t3\tHello{S}function{S}mod", f"sub/notes.md\t1\tHelloNotes{S}class{S}",
                "!note\t0\tno language server configuration"]

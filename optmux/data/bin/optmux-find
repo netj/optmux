@@ -35,6 +35,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -84,12 +85,28 @@ def state_dir():
 
 # ---- candidates: lines of `FILE \t LINE \t DISPLAY` ----------------------------------------------------
 
+def reap(proc):
+    """Wait for a child we are not waiting for otherwise (one we killed, or started and forgot), so it does not stay
+    a zombie (`<defunct>`) for as long as this picker is open. Returns `proc`."""
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return proc
+
+
 def ignore_patterns():
     """Glob patterns of names to leave out of the file list: every group of `+ignore_files` (under `+find`) (see
     optmux-defaults.yaml), and always .git."""
     groups = find_config().get("ignore_files")
     return [".git", *(p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
                       for p in g if isinstance(p, str))]
+
+
+def ignore_tag_patterns():
+    """Glob patterns of names to leave out of the tags index: every group of `+ignore_tags` (under `+find`) (see
+    optmux-defaults.yaml). Data files and generated code hold hundreds of thousands of "symbols" (every JSON key is one
+    to ctags) that bury the real ones and make the tags list take minutes."""
+    groups = find_config().get("ignore_tags")
+    return [p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
+            for p in g if isinstance(p, str)]
 
 
 def list_files(_query):
@@ -134,7 +151,7 @@ def list_grep(query):
             if m:
                 hits.append((m[1].removeprefix("./"), int(m[2]), m[3].strip()))
             if len(hits) >= MAX_RESULTS:
-                proc.kill()
+                reap(proc).kill()
                 break
         status = 0 if len(hits) >= MAX_RESULTS else proc.wait()
         if status not in (2, 128) or hits:  # 128 (git) / 2 (grep): not a valid regex; retry as plain text
@@ -176,7 +193,7 @@ def tags_stamp(root):
         except OSError:
             dirty.append(path)
     head = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
-    return hashlib.sha1("\n".join([TAGS_FORMAT, head, *dirty]).encode()).hexdigest()
+    return hashlib.sha1("\n".join([TAGS_FORMAT, *ignore_tag_patterns(), head, *dirty]).encode()).hexdigest()
 
 
 def project_files(root):
@@ -184,7 +201,9 @@ def project_files(root):
     case the project does not ignore it. NUL-separated, or git quotes odd names (`"\\303\\251.py"`)."""
     files = run("git", "ls-files", "-z", cwd=root).stdout.split("\0")
     mine = os.path.relpath(state_dir(), root)
-    return [f for f in files if f and not f.startswith(mine + os.sep) and os.path.isfile(Path(root, f))]
+    skip = ignore_tag_patterns()
+    return [f for f in files if f and not f.startswith(mine + os.sep) and os.path.isfile(Path(root, f))
+            and not any(fnmatch.fnmatchcase(n, pat) for n in f.split("/") for pat in skip)]
 
 
 def build_tags(root, out):
@@ -236,19 +255,18 @@ def build_locked(root, out):
 
 def refresh_tags(root):
     """Rebuild the tags in the background, detached, so opening the picker never waits for it."""
-    subprocess.Popen([os.path.abspath(sys.argv[0]), "--build-tags", root], start_new_session=True,
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    reap(subprocess.Popen([os.path.abspath(sys.argv[0]), "--build-tags", root], start_new_session=True,
+                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
 
 def tags_file(check=None):
-    """Your `tags` file at the project root, if there is one (yours to keep fresh). Otherwise, in a git project,
-    our own: built by ctags on first use, and refreshed in the background once the project changed (this open
-    still uses the tags it has). `check` False only reads what exists: fzf re-lists omni on every keystroke."""
-    root = repo_root() or os.getcwd()
-    existing = Path(root, "tags")
-    if existing.is_file():
-        return existing
-    if not repo_root():
+    """The tags of the project (the git repository of the working directory): built by ctags on first use and refreshed
+    in the background once the project changed (this open still uses the tags it has). Always optmux's own, never a
+    `tags` file in the project: what it holds (patterns without line numbers, JSON keys, a hook's options) is not
+    ours to know, and the picker depends on what it holds. `check` False only reads what exists: fzf re-lists omni on
+    every keystroke."""
+    root = repo_root()
+    if not root:
         return None  # no git to say what to index, and a whole directory tree is no project
     out = tags_cache(root)
     if (CHECK_TAGS if check is None else check) and find_ctags():
@@ -274,11 +292,10 @@ def tags_file(check=None):
 
 def tags_for_editors():
     """Path of tags an editor can use from anywhere, or None. Ours name files relative to the project root, but an
-    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths. Your own
-    `tags` at the root is as good as it is."""
+    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths."""
     found = tags_file()
     root = repo_root()
-    if not found or not root or found == Path(root, "tags"):
+    if not found or not root:
         return found
     absolute = found.with_suffix(".abs.tags")
     if not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime:
@@ -303,13 +320,26 @@ def file_lines(root, path):
         return ()
 
 
+@functools.lru_cache(maxsize=256)
+def file_index(root, path):
+    """Each distinct line of a file and the number of its first occurrence, so a tag's pattern is found without
+    reading the file again (a generated file can have ten thousand tags)."""
+    index = {}
+    for n, line in enumerate(file_lines(root, path), 1):
+        index.setdefault(line, n)
+    return index
+
+
 def tag_line(root, path, excmd):
     """Line number of a tag whose ex command is a /pattern/ rather than a number (older ctags give no line)."""
     if excmd.isdigit():
         return excmd
     pattern = re.sub(r"^[/?]\^?|\$?[/?]$", "", excmd).replace("\\/", "/").replace("\\\\", "\\")
-    for n, line in enumerate(file_lines(str(root), path), 1):
-        if line == pattern or (pattern and pattern in line):
+    found = file_index(str(root), path).get(pattern)  # (ctags patterns are whole lines: one lookup, not a scan)
+    if found:
+        return str(found)
+    for n, line in enumerate(file_lines(str(root), path), 1):  # (a pattern cut short or an edited file: the slow way)
+        if pattern and pattern in line:
             return str(n)
     return "1"
 
@@ -320,7 +350,7 @@ def list_tags(_query, warn=True):
         if warn:
             print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
         return
-    root = tags.parent if tags.name == "tags" else (repo_root() or os.getcwd())
+    root = repo_root() or os.getcwd()
     for raw in tags.read_text(errors="replace").splitlines():
         if raw.startswith("!_TAG_"):
             continue
@@ -527,7 +557,7 @@ def lsp_finish(proc, timeout):
     try:
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        reap(proc).kill()
         return []
     return [line for line in out.splitlines() if line.count("\t") >= 2]
 
@@ -897,8 +927,8 @@ def pick(pane, start_mode=None, start_query=None):
         if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
             fzf += preview_args(me, mode, compact)
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
-            subprocess.Popen([sys.executable, lsp_exe(), "status"],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            reap(subprocess.Popen([sys.executable, lsp_exe(), "status"],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         candidates = list(LISTERS[mode](query))
         if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
             candidates = by_recency(candidates, lambda e: e.split("\t", 1)[0], load_recent())

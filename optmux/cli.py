@@ -59,7 +59,7 @@ def parse_project_name(yaml_path_str):
 
 
 KNOWN_OPTMUX_KEYS = {"shortcuts", "tmux_config", "menu", "plugins", "env", "git_config", "lazygit", "find", "icons"}
-KNOWN_FIND_KEYS = {"lsp", "preview", "ignore_files"}
+KNOWN_FIND_KEYS = {"lsp", "preview", "ignore_files", "ignore_tags"}
 KNOWN_LSP_LANGUAGE_KEYS = {"extensions", "servers", "command", "install", "enabled", "open_first_file", "language_id"}
 KNOWN_LSP_SERVER_KEYS = {"command", "install"}
 KNOWN_SHORTCUT_KEYS = {
@@ -122,14 +122,15 @@ def normalize_optmux_section(raw, source, strict=False):
         find = _reserved_keys(out["find"], KNOWN_FIND_KEYS, strict, f"{source}: find")
         if "preview" in find and not isinstance(find["preview"], bool):
             print(f"optmux: {source}: find.preview: {find['preview']!r} is not true or false", file=sys.stderr)
-        ignore = find.get("ignore_files")
-        if ignore is not None and not isinstance(ignore, dict):
-            print(f"optmux: {source}: find.ignore_files: {ignore!r} is not a mapping of groups to lists of patterns",
-                  file=sys.stderr)
-        for group, patterns in (ignore if isinstance(ignore, dict) else {}).items():
-            if patterns is not None and not (isinstance(patterns, list) and all(isinstance(x, str) for x in patterns)):
-                print(f"optmux: {source}: find.ignore_files.{group}: {patterns!r} is not a list of patterns",
+        for key in ("ignore_files", "ignore_tags"):
+            ignore = find.get(key)
+            if ignore is not None and not isinstance(ignore, dict):
+                print(f"optmux: {source}: find.{key}: {ignore!r} is not a mapping of groups to lists of patterns",
                       file=sys.stderr)
+            for group, patterns in (ignore if isinstance(ignore, dict) else {}).items():
+                if patterns is not None and not (isinstance(patterns, list) and all(isinstance(x, str) for x in patterns)):
+                    print(f"optmux: {source}: find.{key}.{group}: {patterns!r} is not a list of patterns",
+                          file=sys.stderr)
         if isinstance(find.get("lsp"), dict):
             for lang, cfg in find["lsp"].items():
                 cfg = fields(cfg, KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
