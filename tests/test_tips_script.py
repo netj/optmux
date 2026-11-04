@@ -1,6 +1,7 @@
 """Tests for the tips screen script (tips.sh): OSC 52 terminal detection, structure, scrolling."""
 
 import os
+import shutil
 import subprocess
 from importlib.resources import files as pkg_files
 
@@ -199,6 +200,44 @@ def test_tall_screen_opens_in_tmux_copy_mode_at_the_top(tmp_path):
         assert tmux_out("display-message", "-p", "#{pane_in_mode}") == "0"
         assert "q/Enter: dismiss" in tmux_out("capture-pane", "-p")
         # dismissing exits cleanly (no unbound-variable error from the cleanup trap)
+        subprocess.run([*tmux, "send-keys", "q"], check=True)
+        for _ in range(50):
+            if (tmp_path / "exit-status").exists():
+                break
+            time.sleep(0.1)
+        assert (tmp_path / "exit-status").read_text().strip() == "0"
+    finally:
+        subprocess.run([*tmux, "kill-server"], capture_output=True)
+
+
+@skip_no_tmux
+@pytest.mark.skipif(shutil.which("less") is None, reason="less not installed")
+def test_tall_screen_in_popup_is_paged_with_less(tmp_path):
+    """--popup (C-M-h and the first attach) has no window to put in copy-mode: it pages with less, then asks to dismiss."""
+    import time
+    sock = f"optmux-tips-popup-test-{os.getpid()}"
+    tmux = ["tmux", "-L", sock, "-f", "/dev/null"]
+
+    def screen():
+        return subprocess.run([*tmux, "capture-pane", "-p"], capture_output=True, text=True).stdout
+
+    def wait_for(text):
+        for _ in range(100):
+            if text in screen():
+                return True
+            time.sleep(0.1)
+        return False
+
+    try:
+        subprocess.run(
+            [*tmux, "new-session", "-d", "-x", "100", "-y", "10",
+             f"OPTMUX_DIR={tmp_path} TERM=screen-256color bash {TIPS_SH} --force --popup; "
+             f"echo $? > {tmp_path}/exit-status; sleep 30"],
+            check=True,
+        )
+        assert wait_for("q when done reading")  # less's prompt line is the scroll hint
+        subprocess.run([*tmux, "send-keys", "q"], check=True)
+        assert wait_for("q/Enter: dismiss")
         subprocess.run([*tmux, "send-keys", "q"], check=True)
         for _ in range(50):
             if (tmp_path / "exit-status").exists():

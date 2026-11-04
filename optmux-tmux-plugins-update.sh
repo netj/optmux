@@ -2,7 +2,15 @@
 # optmux tmux plugin setup/update script
 # Bootstraps TPM, installs missing plugins, and updates all plugins.
 # Run manually to update: ./path/to/workflow.optmux.d/tmux/plugins-update.sh
+#   --bootstrap   only make sure TPM itself is present (what tmux.conf needs to start); optmux
+#                 runs this before starting tmux and leaves the rest to the popup on first attach
+# OPTMUX_POPUP=1 (set by `prefix I`/`U`) reports the outcome and waits for ENTER; OPTMUX_POPUP=chain (the
+# first attach, which goes on to show the tips) waits only when something failed.
 set -euo pipefail
+
+if [[ -n "${OPTMUX_POPUP:-}" ]]; then
+    trap 'rc=$?; echo; if ((rc == 0)); then [[ "$OPTMUX_POPUP" == chain ]] && exit 0; echo "optmux: plugins updated and config reloaded; press ENTER"; else echo "optmux: plugin update FAILED ($rc); press ENTER"; fi; read -r _ || true' EXIT
+fi
 
 : ${OPTMUX_DIR:="$(cd "$(dirname "$0")/.."; pwd)"}
 : ${TMUX_PLUGIN_MANAGER_PATH:="$OPTMUX_DIR/tmux/plugins"}
@@ -27,6 +35,8 @@ if [[ ! -x "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/tpm ]]; then
     git clone --reference-if-able "$_optmux_git_cache" \
         https://github.com/$tpm "$TMUX_PLUGIN_MANAGER_PATH"/$tpm
 fi
+
+[[ "${1:-}" == --bootstrap ]] && exit 0
 
 # Pre-clone plugins in parallel so TPM's install_plugins finds them already present
 # (parses @plugin entries from the optmux-plugins.conf generated from +plugins in YAML)
