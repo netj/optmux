@@ -572,6 +572,8 @@ optmux:
       - tmp
 ```
 
+`find.ignore_tags` is the same for the tags index (`C-t`, and the tags in `C-o`): ctags makes a symbol of every key in a JSON file, so a few big data files or generated bindings can mean hundreds of thousands of rows and a list that takes minutes to load. The defaults leave out `*.json`, `*.csv`, lockfiles, `generated` directories and minified files; set a group to `[]` to index them after all. Changing the patterns re-indexes on the next open.
+
 The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
 
 A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `C-/` (or `^_`, which is what macOS Terminal.app sends for `ctrl-/` and `ctrl--`) toggles it; while it is on, grep's list shows just `path:line` (the preview has the text); it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.

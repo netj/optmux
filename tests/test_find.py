@@ -53,6 +53,28 @@ def test_files_also_lists_ignored_ones_minus_find_ignore_files(repo, monkeypatch
         fd.find_config.cache_clear()
 
 
+def test_tags_index_leaves_out_find_ignore_tags(repo, monkeypatch, tmp_path_factory):
+    for f in ("data/big.json", "src/generated/api.ts", "src/app.js"):
+        (repo / f).parent.mkdir(parents=True, exist_ok=True)
+        (repo / f).write_text("x")
+    run_git = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    run_git("add", "-A")
+    cfg = tmp_path_factory.mktemp("optmux")
+    monkeypatch.setenv("OPTMUX_DIR", str(cfg))
+    (cfg / "find.json").write_text('{"ignore_tags": {"data": ["*.json"], "generated": ["generated"], "off": null}}')
+    fd.find_config.cache_clear()
+    try:
+        files = fd.project_files(str(repo))
+        assert "src/app.js" in files and "data/big.json" not in files and "src/generated/api.ts" not in files
+        stamp = fd.tags_stamp(str(repo))
+        (cfg / "find.json").write_text('{"ignore_tags": {}}')
+        fd.find_config.cache_clear()
+        assert "data/big.json" in fd.project_files(str(repo))
+        assert fd.tags_stamp(str(repo)) != stamp  # (changing the patterns re-indexes)
+    finally:
+        fd.find_config.cache_clear()
+
+
 def plain(entry_or_text):
     """What a candidate looks like on screen: the display field, without the dim codes."""
     text = entry_or_text.split("\t")[2] if "\t" in entry_or_text else entry_or_text

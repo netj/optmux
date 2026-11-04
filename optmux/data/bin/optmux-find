@@ -92,6 +92,15 @@ def ignore_patterns():
                       for p in g if isinstance(p, str))]
 
 
+def ignore_tag_patterns():
+    """Glob patterns of names to leave out of the tags index: every group of `find.ignore_tags` (see
+    optmux-defaults.yaml). Data files and generated code hold hundreds of thousands of "symbols" (every JSON key is one
+    to ctags) that bury the real ones and make the tags list take minutes."""
+    groups = find_config().get("ignore_tags")
+    return [p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
+            for p in g if isinstance(p, str)]
+
+
 def list_files(_query):
     """Every file under the working directory: what git knows first (tracked and untracked, minus ignored), then the
     ignored ones (scratch scripts, local notes, generated files); minus `find.ignore_files`. Outside a repo, all of it."""
@@ -176,7 +185,7 @@ def tags_stamp(root):
         except OSError:
             dirty.append(path)
     head = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
-    return hashlib.sha1("\n".join([TAGS_FORMAT, head, *dirty]).encode()).hexdigest()
+    return hashlib.sha1("\n".join([TAGS_FORMAT, *ignore_tag_patterns(), head, *dirty]).encode()).hexdigest()
 
 
 def project_files(root):
@@ -184,7 +193,9 @@ def project_files(root):
     case the project does not ignore it. NUL-separated, or git quotes odd names (`"\\303\\251.py"`)."""
     files = run("git", "ls-files", "-z", cwd=root).stdout.split("\0")
     mine = os.path.relpath(state_dir(), root)
-    return [f for f in files if f and not f.startswith(mine + os.sep) and os.path.isfile(Path(root, f))]
+    skip = ignore_tag_patterns()
+    return [f for f in files if f and not f.startswith(mine + os.sep) and os.path.isfile(Path(root, f))
+            and not any(fnmatch.fnmatchcase(n, pat) for n in f.split("/") for pat in skip)]
 
 
 def build_tags(root, out):
