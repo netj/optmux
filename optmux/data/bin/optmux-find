@@ -800,12 +800,15 @@ def open_in_split(pane, path, line):
     split_pane(pane, after_zoom(editor_command(path, line)))
 
 
-def install_in_split(pane, lang):
-    """Install a language server in a pane of its own, so its output (and any password prompt) can be seen. Run by
-    sh, whatever shell tmux is set to use."""
+def install_here(lang):
+    """Install a language server right here, in the picker's own terminal (the popup), so its output (and any
+    password prompt) can be seen; the picker comes back when it is done. (A popup cannot open another popup over
+    itself, and a pane behind it would hide the result.) Run by sh, whatever shell tmux is set to use."""
     script = (f"OPTMUX_DIR={shlex.quote(os.environ.get('OPTMUX_DIR', ''))} {shlex.quote(sys.executable)} "
-              f"{shlex.quote(lsp_exe())} install --yes {shlex.quote(lang)}; printf '\\nPress Enter to close '; read _")
-    split_pane(pane, f"exec sh -c {shlex.quote(script)}")
+              f"{shlex.quote(lsp_exe())} install --yes {shlex.quote(lang)}; printf '\\nPress Enter to return to Find '; read _")
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+    subprocess.run(["sh", "-c", script])
 
 
 def dedupe_history(path):
@@ -967,8 +970,9 @@ def pick(pane, start_mode=None, start_query=None):
                 return 0
             marker = marker_kind(mode, f)
             if marker == "install":  # a row that offers to install a language server
-                install_in_split(pane, f.split(":", 1)[1])
-                return 0
+                install_here(f.split(":", 1)[1])
+                carried = query  # and back to the picker, where the server should show up within seconds
+                continue
             if marker:  # waiting, or a note: nothing to open, stay
                 carried = query
                 continue

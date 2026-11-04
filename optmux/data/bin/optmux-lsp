@@ -123,6 +123,16 @@ def best_install(cfg):
     return ""
 
 
+def brew_link_fallback(how):
+    """`brew link PKG...` for a `brew install PKG...`, for a package brew calls "already installed, just not
+    linked" (it exits 0 and puts nothing on the PATH). None for any other command."""
+    words = shlex.split(how)
+    if words[:2] != ["brew", "install"]:
+        return None
+    packages = [w for w in words[2:] if not w.startswith("-")]
+    return ["brew", "link", *packages] if packages else None
+
+
 def first_install(cfg):
     """The preferred install command, runnable here or not (to tell the user what to do by hand)."""
     return next((cmd for server in servers_of(cfg) for cmd in install_options(server)), "")
@@ -642,6 +652,9 @@ def main(argv):
             elif yes or input(f"{lang}: run `{how}`? [y/N] ").strip().lower() == "y":
                 print(f"$ {how}", flush=True)
                 status = subprocess.run(how, shell=True, env={**os.environ, "PATH": search_path()}).returncode
+                if status == 0 and not installed_server(cfg) and (link := brew_link_fallback(how)):
+                    print(f"$ {shlex.join(link)}", flush=True)  # installed but not linked, perhaps
+                    status = subprocess.run(link, env={**os.environ, "PATH": search_path()}).returncode
                 if status != 0:
                     print(f"{lang}: failed (exit {status})")
                 elif installed_server(cfg):
