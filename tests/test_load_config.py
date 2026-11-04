@@ -175,3 +175,28 @@ def test_examples_load_without_warnings(capsys):
         read_optmux_section(yaml.safe_load(p.read_text()), p.name)
     assert capsys.readouterr().err == ""
 
+
+
+def test_example_full_works_with_every_setting_switched_on(capsys, tmp_path):
+    """example-full.optmux.yaml is for shopping lines from, so each commented-out line must be valid to use."""
+    import re
+    from optmux.cli import generate_plugins_conf, generate_shortcut_line, generate_tmux_conf_files, merge_optmux
+
+    text = (Path(__file__).parent.parent / "example-full.optmux.yaml").read_text()
+    # delete the `#` of commented-out settings (`#key` or `#  key`); `# prose` has exactly one space
+    on = re.sub(r"^( *)#(?=[^\s!]| {2})", r"\1", text, flags=re.M)
+    assert on != text
+    data = yaml.safe_load(on)
+    mine = read_optmux_section(data, "example-full")
+    assert capsys.readouterr().err == ""
+    assert mine["plugins"]["Morantron/tmux-fingers"]["fingers-pattern-1"] == r"\b[A-Z][A-Z0-9]+-\d+\b"
+    assert all(generate_shortcut_line(key, value) is not None for key, value in mine["shortcuts"].items())
+    merged = merge_optmux(load_bundled_defaults(), mine)
+    assert "@fingers-hint-position" in generate_plugins_conf(merged["plugins"])
+    assert merged["find"]["ignore_files"]["dependencies"] and merged["find"]["ignore_files"]["mine"]
+    assert merged["find"]["lsp"]["python"]["servers"] and merged["find"]["lsp"]["ruby"]["command"]
+    tmux_dir = tmp_path / "tmux"
+    tmux_dir.mkdir()
+    generate_tmux_conf_files(tmux_dir, merged, load_bundled_defaults()["shortcuts"])
+    assert "set -g history-limit 100000" in (tmux_dir / "tmux.optmux-extras.my-settings.conf").read_text()
+    assert capsys.readouterr().err == ""
