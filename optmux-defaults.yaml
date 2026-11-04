@@ -95,6 +95,21 @@ optmux:
       - target
       optmux:  # optmux's own state: its plugins, scripts, tags
       - "*.optmux.d"
+    # Files the tags index (^t, and the tags in ^o) leaves out, like ignore_files and with the same rules. ctags makes
+    # a "symbol" of every key in a JSON file and of every generated binding, so a few big ones can mean hundreds of
+    # thousands of rows and a list that takes minutes to load.
+    ignore_tags:
+      data:
+      - "*.json"
+      - "*.jsonl"
+      - "*.ndjson"
+      - "*.csv"
+      - "*.lock"
+      generated:
+      - generated
+      - "*.min.js"
+      - "*.min.css"
+      - "*.map"
     lsp:
       python:
         extensions: [py, pyi]
