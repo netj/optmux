@@ -33,7 +33,7 @@ On first run, optmux will:
 
 1. Create `.example.optmux.d/tmux/` next to the YAML file
 2. Seed a default `tmux.conf` with TPM and plugins
-3. Install TPM and all plugins (visible in window 0)
+3. Bootstrap TPM, then install/update all plugins in a popup on first attach (same as `prefix I`); window 0 holds the tips
 4. Launch tmuxp with an isolated tmux server
 
 ## Usage

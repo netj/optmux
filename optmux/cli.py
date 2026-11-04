@@ -642,9 +642,8 @@ def setup_optmux_env(resolved):
     tmux_conf.chmod(0o444)
 
     setup_script = tmux_dir / "plugins-update.sh"
-    if not setup_script.exists():
-        shutil.copy2(data_dir / "plugins-update.sh", setup_script)
-        setup_script.chmod(0o755)
+    shutil.copy2(data_dir / "plugins-update.sh", setup_script)  # always current: older copies lack --bootstrap
+    setup_script.chmod(0o755)
 
     tips_script = tmux_dir / "tips.sh"
     if tips_script.exists():
@@ -685,11 +684,17 @@ def setup_optmux_env(resolved):
 
 
 def create_optmux_window(tmux_cmd, tips_script, setup_script, session_name):
-    """Create window 0 with tips + plugins-update panes."""
+    """Create window 0 with the tips pane; the first client to attach gets the plugin update in a popup."""
     # Create window 0 (base-index is 1, so window 0 doesn't auto-exist)
     target = f"{session_name}:0"
     subprocess.run([*tmux_cmd, "new-window", "-t", target, "-n", "optmux", str(tips_script)], check=True)
-    subprocess.run([*tmux_cmd, "split-window", "-t", target, "-v", str(setup_script)], check=True)
+    # One-shot: install/update plugins (and reload) in a popup over whoever attaches first
+    popup = (
+        f"display-popup -E -w 90% -h 80% -d {shlex.quote(str(setup_script.parent))} "
+        + shlex.quote(f"OPTMUX_POPUP=1 bash {shlex.quote(str(setup_script))}")
+        + f" ; set-hook -u -t {shlex.quote(session_name)} client-attached"
+    )
+    subprocess.run([*tmux_cmd, "set-hook", "-t", session_name, "client-attached", popup], check=True)
 
 
 def cmd_stop(resolved):
@@ -784,7 +789,7 @@ def cmd_start(resolved, remaining_args):
     except OSError as e:
         print(f"optmux: couldn't update the project list: {e}", file=sys.stderr)
 
-    subprocess.run([str(env["setup_script"])], check=True)
+    subprocess.run([str(env["setup_script"]), "--bootstrap"], check=True)  # the rest runs in a popup on attach
 
     if yaml_path:
         has_session = subprocess.run(
