@@ -7,8 +7,10 @@ dismissed="$OPTMUX_DIR/tmux/.tips-dismissed"
 
 # parse flags
 force=false
+popup=false  # --popup: shown in a tmux popup (no window of its own to put in copy-mode), so page tall screens with less
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && force=true
+    [[ "$arg" == "--popup" ]] && popup=true
 done
 
 # check suppression (skipped when --force)
@@ -222,7 +224,17 @@ clear 2>/dev/null || true  # unknown TERM (common over SSH) must not abort the t
 printf '%s\n' "${lines[@]}"
 printf '\n%s\n%s\n\n' "$(rule)" "$footer"
 if [[ -t 0 && -t 1 ]] && ((${#lines[@]} + 5 > $(screen_rows))); then
-    scroll_in_tmux
+    if [[ "$popup" == true ]] && command -v less >/dev/null 2>&1; then
+        less_version=$(less --version 2>/dev/null | sed -n '1s/^less \([0-9]*\).*/\1/p')
+        less_mouse=(); [[ "${less_version:-0}" -ge 551 ]] && less_mouse=(--mouse)
+        # the prompt line doubles as the scroll hint (no ? : . % in it, which are less prompt syntax); q goes on to the dismiss prompt
+        hint=' wheel / arrows / PgUp / PgDn scroll  -  / searches  -  q when done reading '
+        printf '%s\n' "${lines[@]}" | less -R "${less_mouse[@]}" -Ps"$hint" -Pm"$hint" -PM"$hint" || true
+        clear 2>/dev/null || true
+        printf '\n%s\n%s\n\n' "$(rule)" "$footer"
+    elif [[ "$popup" != true ]]; then
+        scroll_in_tmux  # (in a popup without less there's nothing to scroll with: copy-mode would hit the pane underneath)
+    fi
 fi
 while true; do
     read -rsn1 key

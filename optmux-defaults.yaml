@@ -202,8 +202,8 @@ optmux:
         display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       tip: same as C-t X, without the prefix (optmux eXtract)
     C-M-h:
-      command: bash "$OPTMUX_DIR/tmux/tips.sh" --force
-      new_window: true
+      tmux: |
+        display-popup -E -w 90% -h 90% -b rounded -T ' optmux tips ' 'bash "$OPTMUX_DIR/tmux/tips.sh" --force --popup'
       tip: tips (this screen)
 
     # Quick access (raw tmux actions)

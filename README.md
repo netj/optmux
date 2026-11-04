@@ -33,7 +33,7 @@ On first run, optmux will:
 
 1. Create `.example.optmux.d/tmux/` next to the YAML file
 2. Seed a default `tmux.conf` with TPM and plugins
-3. Install TPM and all plugins (visible in window 0)
+3. Bootstrap TPM; the first attach opens a popup that installs/updates all plugins (same as `prefix I`) and then shows the tips (`C-M-h` shows them again)
 4. Launch tmuxp with an isolated tmux server
 
 ## Usage
@@ -511,7 +511,7 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 **Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
-**Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (window 0, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
+**Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (shown on first attach, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
 
 ### optmux Find: open a file, line or tag
 
