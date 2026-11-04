@@ -232,8 +232,8 @@ if [[ -t 0 && -t 1 ]] && ((${#lines[@]} + 5 > $(screen_rows))); then
         printf '%s\n' "${lines[@]}" | less -R "${less_mouse[@]}" -Ps"$hint" -Pm"$hint" -PM"$hint" || true
         clear 2>/dev/null || true
         printf '\n%s\n%s\n\n' "$(rule)" "$footer"
-    else
-        scroll_in_tmux
+    elif [[ "$popup" != true ]]; then
+        scroll_in_tmux  # (in a popup without less there's nothing to scroll with: copy-mode would hit the pane underneath)
     fi
 fi
 while true; do
