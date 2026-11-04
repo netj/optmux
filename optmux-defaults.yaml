@@ -203,7 +203,7 @@ optmux:
       tip: same as C-t X, without the prefix (optmux eXtract)
     C-M-h:
       tmux: |
-        display-popup -E -w 100% -h 100% -b rounded -T ' optmux tips ' 'bash "$OPTMUX_DIR/tmux/tips.sh" --force --popup'
+        display-popup -E -w 90% -h 90% -b rounded -T ' optmux tips ' 'bash "$OPTMUX_DIR/tmux/tips.sh" --force --popup'
       tip: tips (this screen)
 
     # Quick access (raw tmux actions)

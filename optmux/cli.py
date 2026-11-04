@@ -691,7 +691,7 @@ def arm_first_attach_popup(tmux_cmd, tips_script, setup_script, session_name):
     osc7 = r'run-shell -b "printf \"\\033]7;file://localhost#{pane_current_path}\\007\" > \"#{client_tty}\" 2>/dev/null"'
     shell_cmd = f"OPTMUX_POPUP=chain bash {shlex.quote(str(setup_script))}; bash {shlex.quote(str(tips_script))} --popup"
     popup = (
-        f"{osc7} ; display-popup -E -w 100% -h 100% -b rounded -T ' optmux ' -d {shlex.quote(str(setup_script.parent))} "
+        f"{osc7} ; display-popup -E -w 90% -h 90% -b rounded -T ' optmux ' -d {shlex.quote(str(setup_script.parent))} "
         + shlex.quote(shell_cmd)
         + f" ; set-hook -u -t {shlex.quote(session_name)} client-attached"
     )
