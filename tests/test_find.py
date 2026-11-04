@@ -75,6 +75,22 @@ def test_tags_index_leaves_out_find_ignore_tags(repo, monkeypatch, tmp_path_fact
         fd.find_config.cache_clear()
 
 
+def test_tags_without_line_numbers_are_found_by_pattern_without_rescanning_the_file(tmp_path, monkeypatch):
+    n = 3000  # a generated file: one tag per line, and no `line:` field to read
+    (tmp_path / "gen.ts").write_text("".join(f"export const s{i} = {i};\n" for i in range(n)))
+    tags = tmp_path / "tags"
+    tags.write_text("".join(f's{i}\tgen.ts\t/^export const s{i} = {i};$/;"\tkind:constant\n' for i in range(n)))
+    monkeypatch.setattr(fd, "tags_file", lambda check=None: tags)
+    monkeypatch.setattr(fd, "repo_root", lambda: str(tmp_path))
+    fd.file_index.cache_clear(); fd.file_lines.cache_clear()
+    reads = []
+    real = fd.file_lines.__wrapped__
+    monkeypatch.setattr(fd, "file_lines", lambda root, path: reads.append(path) or real(root, path))
+    rows = [r.split("\t") for r in fd.list_tags("")]
+    assert [r[1] for r in rows[:3]] == ["1", "2", "3"] and rows[-1][1] == str(n)
+    assert len(reads) == 1  # (indexed once, not once per tag)
+
+
 def plain(entry_or_text):
     """What a candidate looks like on screen: the display field, without the dim codes."""
     text = entry_or_text.split("\t")[2] if "\t" in entry_or_text else entry_or_text

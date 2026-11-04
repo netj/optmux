@@ -314,13 +314,26 @@ def file_lines(root, path):
         return ()
 
 
+@functools.lru_cache(maxsize=256)
+def file_index(root, path):
+    """Each distinct line of a file and the number of its first occurrence, so a tag's pattern is found without
+    reading the file again (a generated file can have ten thousand tags)."""
+    index = {}
+    for n, line in enumerate(file_lines(root, path), 1):
+        index.setdefault(line, n)
+    return index
+
+
 def tag_line(root, path, excmd):
     """Line number of a tag whose ex command is a /pattern/ rather than a number (older ctags give no line)."""
     if excmd.isdigit():
         return excmd
     pattern = re.sub(r"^[/?]\^?|\$?[/?]$", "", excmd).replace("\\/", "/").replace("\\\\", "\\")
-    for n, line in enumerate(file_lines(str(root), path), 1):
-        if line == pattern or (pattern and pattern in line):
+    found = file_index(str(root), path).get(pattern)  # (ctags patterns are whole lines: one lookup, not a scan)
+    if found:
+        return str(found)
+    for n, line in enumerate(file_lines(str(root), path), 1):  # (a pattern cut short or an edited file: the slow way)
+        if pattern and pattern in line:
             return str(n)
     return "1"
 
