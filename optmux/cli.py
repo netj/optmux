@@ -685,17 +685,14 @@ def setup_optmux_env(resolved):
     }
 
 
-def create_optmux_window(tmux_cmd, tips_script, setup_script, session_name):
-    """Create window 0 with the tips pane; the first client to attach gets the plugin update in a popup."""
-    # Create window 0 (base-index is 1, so window 0 doesn't auto-exist)
-    target = f"{session_name}:0"
-    subprocess.run([*tmux_cmd, "new-window", "-t", target, "-n", "optmux", str(tips_script)], check=True)
-    # One-shot: install/update plugins (and reload) in a popup over whoever attaches first
+def arm_first_attach_popup(tmux_cmd, tips_script, setup_script, session_name):
+    """One-shot: the first client to attach gets the plugin install/update (and reload), then the tips, in a popup."""
     # (a session-level hook shadows the global client-attached one that reports the cwd via OSC 7, so repeat it)
     osc7 = r'run-shell -b "printf \"\\033]7;file://localhost#{pane_current_path}\\007\" > \"#{client_tty}\" 2>/dev/null"'
+    shell_cmd = f"OPTMUX_POPUP=chain bash {shlex.quote(str(setup_script))}; bash {shlex.quote(str(tips_script))} --popup"
     popup = (
-        f"{osc7} ; display-popup -E -w 90% -h 80% -d {shlex.quote(str(setup_script.parent))} "
-        + shlex.quote(f"OPTMUX_POPUP=1 bash {shlex.quote(str(setup_script))}")
+        f"{osc7} ; display-popup -E -w 100% -h 100% -b rounded -T ' optmux ' -d {shlex.quote(str(setup_script.parent))} "
+        + shlex.quote(shell_cmd)
         + f" ; set-hook -u -t {shlex.quote(session_name)} client-attached"
     )
     subprocess.run([*tmux_cmd, "set-hook", "-t", session_name, "client-attached", popup], check=True)
@@ -809,7 +806,7 @@ def cmd_start(resolved, remaining_args):
              yaml_file, *remaining_args],
             check=True,
         )
-        create_optmux_window(tmux, env["tips_script"], env["setup_script"], session_name)
+        arm_first_attach_popup(tmux, env["tips_script"], env["setup_script"], session_name)
         os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
     else:
         has_session = subprocess.run(
@@ -822,7 +819,7 @@ def cmd_start(resolved, remaining_args):
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
         else:
             subprocess.run([*tmux, "-f", conf, "new-session", "-d", "-s", session_name], check=True)
-            create_optmux_window(tmux, env["tips_script"], env["setup_script"], session_name)
+            arm_first_attach_popup(tmux, env["tips_script"], env["setup_script"], session_name)
             os.execvp(tmux[0], [*tmux, "attach-session", "-t", session_name])
 
 
