@@ -164,3 +164,21 @@ def test_unknown_plus_keyword_is_warned_about(capsys):
     normalize_optmux_section({"+shortcutz": {}, "+menu": {"+pane": [{"+titel": "x", "+key": "k"}], "+nope": []}}, "src", strict=True)
     err = capsys.readouterr().err
     assert "+shortcutz" in err and "+titel" in err and "'+nope'" in err
+
+
+def test_examples_load_without_warnings(capsys):
+    """The example files in the repo use the current syntax and only words optmux knows."""
+    from pathlib import Path
+    examples = sorted(Path(__file__).parent.parent.glob("*example*.optmux.yaml"))
+    assert any(p.name == "example-full.optmux.yaml" for p in examples)
+    for p in examples:
+        read_optmux_section(yaml.safe_load(p.read_text()), p.name)
+    assert capsys.readouterr().err == ""
+
+
+def test_example_full_plugins_mirror_the_bundled_defaults():
+    """example-full.optmux.yaml's live plugin entries are optmux-defaults.yaml's; update both together."""
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "example-full.optmux.yaml"
+    mine = read_optmux_section(yaml.safe_load(p.read_text()), p.name)["plugins"]
+    assert mine == load_bundled_defaults()["plugins"]
