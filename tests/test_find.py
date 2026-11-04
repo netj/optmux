@@ -91,6 +91,18 @@ def test_tags_without_line_numbers_are_found_by_pattern_without_rescanning_the_f
     assert len(reads) == 1  # (indexed once, not once per tag)
 
 
+def test_a_killed_child_is_reaped_not_left_defunct():
+    import time
+    child = subprocess.Popen(["sleep", "30"])
+    fd.reap(child).kill()
+    for _ in range(100):
+        state = subprocess.run(["ps", "-o", "stat=", "-p", str(child.pid)], capture_output=True, text=True).stdout.strip()
+        if not state:
+            break
+        time.sleep(0.02)
+    assert state == ""  # (gone from the process table; a zombie would show as `Z`)
+
+
 def plain(entry_or_text):
     """What a candidate looks like on screen: the display field, without the dim codes."""
     text = entry_or_text.split("\t")[2] if "\t" in entry_or_text else entry_or_text
@@ -292,6 +304,12 @@ def test_user_tags_without_line_numbers_are_not_used_since_finding_each_line_is_
     assert fd.tags_file() != repo / "tags"  # (ours is built instead, with the line numbers)
     assert fd.has_line_numbers(repo / "tags") is False and (repo / "tags").read_text().startswith("mine")  # (left alone)
     (repo / "tags").write_text('!_TAG_FILE_FORMAT\t2\t/x/\nmine\tapp.py\t1;"\tf\tline:1\n')
+    assert fd.tags_file() == repo / "tags"
+
+
+def test_user_tags_without_line_numbers_still_beat_none(repo, monkeypatch):
+    (repo / "tags").write_text('mine\tapp.py\t/^def mine():$/;"\tf\n')
+    monkeypatch.setattr(fd, "find_ctags", lambda: None)  # (ours cannot be built)
     assert fd.tags_file() == repo / "tags"
 
 
