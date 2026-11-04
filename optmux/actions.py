@@ -11,8 +11,8 @@ item is already inside '{ }' and joins with plain ' ; '.
 import sys
 
 
-def sq(s):  # escape ' for single-quoted tmux string
-    return s.replace("'", "'\\''")
+def sq(s):  # escape ' for single-quoted tmux string (a title like 2024 arrives from YAML as an int)
+    return str(s).replace("'", "'\\''")
 
 
 def split_if_fits(plain, full):

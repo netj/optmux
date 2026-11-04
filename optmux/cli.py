@@ -107,15 +107,22 @@ def normalize_optmux_section(raw, source, strict=False):
         return _reserved_keys(value, allowed, strict, where) if isinstance(value, dict) else value
 
     if isinstance(out.get("shortcuts"), dict):
-        out["shortcuts"] = {
-            key: fields(value, KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
-            for key, value in out["shortcuts"].items()
-        }
+        shortcuts = {}
+        for key, value in out["shortcuts"].items():
+            text = _as_key_text(key, f"{source}: shortcut {key!r}")
+            if text is not None:
+                if text in shortcuts:
+                    print(f"optmux: {source}: shortcut {key!r} is the same key as an earlier one ({text!r}); the later wins",
+                          file=sys.stderr)
+                shortcuts[text] = fields(value, KNOWN_SHORTCUT_KEYS, f"{source}: shortcut {key!r}")
+        out["shortcuts"] = shortcuts
     if isinstance(out.get("plugins"), dict):
-        out["plugins"] = {
-            plugin: _plugin_options(cfg, plugin, source)
-            for plugin, cfg in out["plugins"].items()
-        }
+        plugins = {}
+        for plugin, cfg in out["plugins"].items():
+            name = _as_key_text(plugin, f"{source}: plugin {plugin!r}")
+            if name is not None:
+                plugins[name] = _plugin_options(cfg, name, source)
+        out["plugins"] = plugins
     if out.get("icons") not in (None, "nerd", "emoji", "text", "none"):
         print(f"optmux: {source}: icons: {out['icons']!r} is not one of nerd, emoji, text, none", file=sys.stderr)
     if isinstance(out.get("find"), dict):
@@ -145,12 +152,32 @@ def normalize_optmux_section(raw, source, strict=False):
         menu = _reserved_keys(out["menu"], set(menu_compiler.CONTEXTS), strict, f"{source}: menu", kind="context")
         for context, entries in menu.items():
             if isinstance(entries, list):
-                menu[context] = [
-                    fields(entry, KNOWN_MENU_ITEM_KEYS, f"{source}: menu.{context} item {entry!r}")
-                    for entry in entries
-                ]
+                items = []
+                for entry in entries:
+                    entry = fields(entry, KNOWN_MENU_ITEM_KEYS, f"{source}: menu.{context} item {entry!r}")
+                    if isinstance(entry, dict) and "key" in entry:
+                        entry["key"] = _as_key_text(entry["key"], f"{source}: menu.{context} item {entry!r}")
+                        if entry["key"] is None:
+                            continue
+                    items.append(entry)
+                menu[context] = items
         out["menu"] = menu
     return out
+
+
+def _as_key_text(key, where):
+    """A tmux key written in YAML as text, or None (with a warning) when YAML read it as something else.
+
+    `1:` is a number we can turn back into "1", but `on:`, `no:` and `~:` become True, False and null and the
+    letters are gone, so those must be quoted (so must a float, whose spelling is not kept either).
+    """
+    if isinstance(key, str):
+        return key
+    if isinstance(key, int) and not isinstance(key, bool):
+        return str(key)
+    print(f"optmux: {where}: the key {key!r} is not text (YAML reads on/off/yes/no/~ as true/false/null): "
+          "quote it, e.g. 'on'", file=sys.stderr)
+    return None
 
 
 def _plugin_options(config, plugin, source):

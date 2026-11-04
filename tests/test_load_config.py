@@ -234,3 +234,65 @@ def test_a_non_mapping_plus_optmux_is_warned_about(capsys):
 def test_bundled_defaults_load_clean_through_the_file_reader(capsys):
     load_bundled_defaults()
     assert capsys.readouterr().err == ""
+
+
+def test_shortcut_keys_yaml_reads_as_numbers_work_as_text(capsys, tmp_path):
+    """`1:` is an int in YAML; it is the key "1" (prefix+1), not a crash."""
+    from optmux.cli import generate_tmux_conf_files, merge_optmux
+
+    data = yaml.safe_load("+optmux:\n  +shortcuts:\n    1: echo one\n    C-M-9: echo nine\n")
+    mine = read_optmux_section(data, "src")
+    assert list(mine["shortcuts"]) == ["1", "C-M-9"]
+    tmux_dir = tmp_path / "tmux"
+    tmux_dir.mkdir()
+    generate_tmux_conf_files(tmux_dir, merge_optmux(load_bundled_defaults(), mine), load_bundled_defaults()["shortcuts"])
+    assert "bind 1 " in (tmux_dir / "tmux.optmux-shortcuts.conf").read_text()
+    assert capsys.readouterr().err == ""
+
+
+def test_shortcut_keys_yaml_reads_as_booleans_or_null_are_skipped_with_a_hint(capsys):
+    """`on:`, `no:` and `~:` lose their letters in YAML, so they warn (quote them) instead of crashing."""
+    data = yaml.safe_load("+optmux:\n  +shortcuts:\n    on: echo a\n    no: echo b\n    ~: echo c\n    ok: echo d\n")
+    assert read_optmux_section(data, "src")["shortcuts"] == {"ok": "echo d"}
+    err = capsys.readouterr().err
+    assert err.count("is not text") == 3 and "quote it" in err and "shortcut True" in err
+
+
+def test_menu_item_keys_and_titles_that_yaml_reads_as_non_text(capsys):
+    from optmux import menu
+
+    mine = read_optmux_section(yaml.safe_load("""\
++optmux:
+  +menu:
+    +pane:
+    - +key: 1
+      +title: 2024
+      +command: echo a
+    - +key: on
+      +title: Skipped
+      +command: echo b
+"""), "src")
+    assert mine["menu"]["pane"] == [{"key": "1", "title": 2024, "command": "echo a"}]
+    assert "is not text" in capsys.readouterr().err
+    out = menu.generate_menu_conf(mine["menu"], source="src")
+    assert "'2024' '1'" in out
+
+
+def test_plugin_names_that_yaml_reads_as_non_text_do_not_crash(capsys):
+    from optmux.cli import generate_plugins_conf
+
+    plugins = read_optmux_section(yaml.safe_load("+optmux:\n  +plugins:\n    1:\n    off:\n    a/b:\n"), "src")["plugins"]
+    assert list(plugins) == ["1", "a/b"]
+    assert "set -g @plugin '1'" in generate_plugins_conf(plugins)
+    assert "plugin False" in capsys.readouterr().err
+
+
+def test_two_spellings_of_one_shortcut_key_are_warned_about(capsys):
+    data = yaml.safe_load("+optmux:\n  +shortcuts:\n    '1': echo a\n    1: echo b\n")
+    assert read_optmux_section(data, "src")["shortcuts"] == {"1": "echo b"}
+    assert "same key as an earlier one" in capsys.readouterr().err
+
+
+def test_float_shortcut_keys_must_be_quoted(capsys):
+    assert read_optmux_section(yaml.safe_load("+optmux:\n  +shortcuts:\n    1.5: echo\n"), "src")["shortcuts"] == {}
+    assert "quote it" in capsys.readouterr().err
