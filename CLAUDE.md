@@ -12,7 +12,7 @@
 - README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
 - **Prefer YAML block scalars over quoting** for anything with shell or tmux syntax (`command:`, `tmux:`, `tip:`, in `optmux-defaults.yaml`, README examples, tests). Use the **literal** style `|` (keeps newlines, so a script reads as written) and, for long prose, the **folded** style `>` (joins lines). Quoting (`'...'`, `"..."`) fights with the `$`, quotes, and `\` already in shell commands, and plain scalars choke on `: `, `#`, or a leading quote. Quote only what a block can't hold (e.g. a `"\x10..."` escape).
 
-- `allspark.optmux.yaml` is a hand-written shopping list of plugin options, shortcut ideas, and tool settings for users to take to their own config (not exhaustive, no generator; plugin options come from the plugins' READMEs); a test checks that it loads without warnings.
+- `transform.optmux.yaml` is a hand-written showcase ("more than meets the eye") of plugin options, shortcut ideas, and tool settings for users to take to their own config (not exhaustive, no generator; plugin options come from the plugins' READMEs); a test checks that it loads without warnings.
 
 ## Release Checklist
 

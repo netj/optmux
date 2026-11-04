@@ -1,12 +1,13 @@
 #!/usr/bin/env optmux
-# Lines to shop from for your own ~/.optmux.yaml (or a project's optmux.yaml): not a reference manual, not
-# exhaustive, just things worth trying. Most are commented out; delete the `#` in front of the ones you like.
-# (Commented-out settings have the `#` right before the key, so removing it leaves the indentation right.)
+# More than meets the eye: what optmux's plugins and tools can be configured to do, to take to your own
+# ~/.optmux.yaml (or a project's optmux.yaml). Not a reference manual and not exhaustive, just things worth trying.
+# Most lines are commented out; delete the `#` in front of one to transform your optmux. (A commented-out setting has
+# the `#` right before the key, so removing it leaves the indentation right.)
 #
 # Plugin options come from each plugin's own README, and are yours to name (no `+`). The words with a `+` are
 # optmux's. tests/test_load_config.py loads this file with every setting switched on, so the lines stay valid;
 # the plugins' options are worth re-checking against their READMEs now and then.
-session_name: allspark
+session_name: transform
 start_directory: .
 
 +optmux:

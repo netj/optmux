@@ -135,7 +135,7 @@ Runs the command with optmux's opinionated environment (delta as git's pager, le
 
 ## Example tmuxp YAML
 
-**Transform your optmux:** [`allspark.optmux.yaml`](allspark.optmux.yaml) is a shopping list of lines to take to your own `~/.optmux.yaml`: plugin options (tmux-fingers, tmux-yank, tmux-resurrect, claritmux, ...), shortcut ideas, and tool settings, mostly commented out. Try it with `./allspark.optmux.yaml`.
+**More than meets the eye:** [`transform.optmux.yaml`](transform.optmux.yaml) shows what optmux's plugins and tools can transform into: options for tmux-fingers, tmux-yank, tmux-resurrect and claritmux, shortcut ideas, and tool settings, mostly commented out. Delete the `#` in front of the ones you like in your own `~/.optmux.yaml`, or try the file as is with `./transform.optmux.yaml`.
 
 Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
 
