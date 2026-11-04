@@ -546,3 +546,15 @@ def test_open_scripts_tells_the_server_about_each_one(tmp_path):
 def test_icons_setting_is_merged_last_wins_and_written_for_the_helpers():
     assert merge_optmux({"icons": "emoji"}, {"find": {}}, {"icons": "nerd"})["icons"] == "nerd"
     assert "icons" not in merge_optmux({}, {})
+
+
+def test_brew_link_is_the_fallback_for_an_installed_but_unlinked_brew_package():
+    import importlib.machinery, importlib.util
+    from pathlib import Path
+    path = Path(__file__).parent.parent / "optmux/data/bin/optmux-lsp"
+    loader = importlib.machinery.SourceFileLoader("optmux_lsp_link", str(path))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("optmux_lsp_link", loader))
+    loader.exec_module(mod)
+    assert mod.brew_link_fallback("brew install basedpyright") == ["brew", "link", "basedpyright"]
+    assert mod.brew_link_fallback("brew install --formula gopls") == ["brew", "link", "gopls"]
+    assert mod.brew_link_fallback("uv tool install python-lsp-server") is None

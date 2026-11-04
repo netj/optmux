@@ -538,12 +538,14 @@ def test_opening_a_symbol_remembers_it_like_a_tag(monkeypatch, tmp_path):
     assert fd.load_recent()[:4] == ["walk\tb.py", "b.py", "run\ta.py", "a.py"]
 
 
-def test_enter_on_an_install_row_runs_the_installer_in_a_pane(monkeypatch):
+def test_enter_on_an_install_row_runs_the_installer_in_the_picker_s_own_terminal(monkeypatch):
     ran = []
-    monkeypatch.setattr(fd, "split_pane", lambda pane, command: ran.append((pane, command)))
+    monkeypatch.setattr(fd.subprocess, "run", lambda argv, **kw: ran.append(argv))
     monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
-    fd.install_in_split("%3", "go")
-    assert "OPTMUX_DIR=/p/.optmux.d " in ran[0][1] and ran[0][0] == "%3" and "optmux-lsp" in ran[0][1] and "install --yes go" in ran[0][1] and "read _" in ran[0][1]
+    fd.install_here("go")
+    argv = ran[0]
+    assert argv[:2] == ["sh", "-c"] and "OPTMUX_DIR=/p/.optmux.d " in argv[2]
+    assert "optmux-lsp" in argv[2] and "install --yes go" in argv[2] and "read _" in argv[2]
 
 
 def test_marker_rows_exist_only_in_the_language_server_source():
@@ -560,14 +562,6 @@ def test_a_tag_named_like_an_icon_word_is_still_recorded_as_its_tag(monkeypatch,
     fd.icon_style.cache_clear()
     fd.record_opened("tags", fd.row("tags", "f", "file", "x.py", 1))  # a tag called `file`
     assert fd.load_recent()[:2] == ["file\tx.py", "x.py"]
-
-
-def test_the_install_pane_runs_under_sh_whatever_tmuxs_shell_is(monkeypatch):
-    ran = []
-    monkeypatch.setattr(fd, "split_pane", lambda pane, command: ran.append(command))
-    monkeypatch.setenv("OPTMUX_DIR", "/p/.optmux.d")
-    fd.install_in_split("%1", "go")
-    assert ran[0].startswith("exec sh -c ") and "install --yes go" in ran[0]
 
 
 def test_symbol_kinds_are_grouped_into_a_few_icons_and_unknown_ones_fall_back():
