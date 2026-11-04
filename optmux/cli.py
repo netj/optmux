@@ -642,8 +642,10 @@ def setup_optmux_env(resolved):
     tmux_conf.chmod(0o444)
 
     setup_script = tmux_dir / "plugins-update.sh"
-    shutil.copy2(data_dir / "plugins-update.sh", setup_script)  # always current: older copies lack --bootstrap
-    setup_script.chmod(0o755)
+    # always current (older copies lack --bootstrap); swapped in atomically, as a popup may be running the old one
+    shutil.copy2(data_dir / "plugins-update.sh", setup_script.with_name(".plugins-update.sh.new"))
+    setup_script.with_name(".plugins-update.sh.new").chmod(0o755)
+    os.replace(setup_script.with_name(".plugins-update.sh.new"), setup_script)
 
     tips_script = tmux_dir / "tips.sh"
     if tips_script.exists():
@@ -689,8 +691,10 @@ def create_optmux_window(tmux_cmd, tips_script, setup_script, session_name):
     target = f"{session_name}:0"
     subprocess.run([*tmux_cmd, "new-window", "-t", target, "-n", "optmux", str(tips_script)], check=True)
     # One-shot: install/update plugins (and reload) in a popup over whoever attaches first
+    # (a session-level hook shadows the global client-attached one that reports the cwd via OSC 7, so repeat it)
+    osc7 = r'run-shell -b "printf \"\\033]7;file://localhost#{pane_current_path}\\007\" > \"#{client_tty}\" 2>/dev/null"'
     popup = (
-        f"display-popup -E -w 90% -h 80% -d {shlex.quote(str(setup_script.parent))} "
+        f"{osc7} ; display-popup -E -w 90% -h 80% -d {shlex.quote(str(setup_script.parent))} "
         + shlex.quote(f"OPTMUX_POPUP=1 bash {shlex.quote(str(setup_script))}")
         + f" ; set-hook -u -t {shlex.quote(session_name)} client-attached"
     )
