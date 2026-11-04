@@ -24,15 +24,15 @@ def split_if_fits(plain, full):
 def build_action_parts(opts, label):
     """Build the tmux command parts for an action opts dict.
 
-    Supports: command, send_keys, new_window, float_window, zoom, detached,
-    remain. `label` (e.g. "shortcut 'C-M-x'") names the entry in warnings.
+    Supports: +command, +send_keys, +new_window, +float_window, +zoom, +detached,
+    +remain. `label` (e.g. "shortcut 'C-M-x'") names the entry in warnings.
     Returns None when the combination is invalid.
     """
     if "send_keys" in opts and "remain" in opts:
         print(
-            f"optmux: ignoring {label}: 'remain' is incompatible with "
-            "'send_keys' (the shell stays alive after the command — send_keys "
-            "implicitly means remain: true; drop 'remain' to silence)",
+            f"optmux: ignoring {label}: '+remain' is incompatible with "
+            "'+send_keys' (the shell stays alive after the command — +send_keys "
+            "implicitly means +remain: true; drop '+remain' to silence)",
             file=sys.stderr,
         )
         return None
@@ -42,17 +42,17 @@ def build_action_parts(opts, label):
     detached = opts.get("detached", False)
     if use_float and use_window:
         print(
-            f"optmux: {label}: 'float_window' and 'new_window' are mutually "
-            "exclusive — using float_window",
+            f"optmux: {label}: '+float_window' and '+new_window' are mutually "
+            "exclusive — using +float_window",
             file=sys.stderr,
         )
         use_window = False
     if use_float and "send_keys" in opts:
         print(
-            f"optmux: ignoring {label}: 'send_keys' is incompatible with "
-            "'float_window' (no tmux target names a floating pane — it is appended "
+            f"optmux: ignoring {label}: '+send_keys' is incompatible with "
+            "'+float_window' (no tmux target names a floating pane — it is appended "
             "past ':.+' and sits outside the layout that '{bottom}' & co. walk; use "
-            "'command:' instead, or 'new_window: true')",
+            "'+command:' instead, or '+new_window: true')",
             file=sys.stderr,
         )
         return None

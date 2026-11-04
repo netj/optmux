@@ -71,7 +71,7 @@ KNOWN_SHORTCUT_KEYS = {
 KNOWN_MENU_ITEM_KEYS = {"default", "title", "key"} | (KNOWN_SHORTCUT_KEYS - {"tip"})
 
 
-def _reserved_keys(mapping, allowed, strict, where, source_hint=None, kind="key"):
+def _reserved_keys(mapping, allowed, strict, where, kind="key"):
     """Return `mapping` restricted to the optmux keywords in `allowed`, with the `+` stripped.
 
     optmux's own words are written `+word`; names you pick (shortcut keys, env vars, languages) stay bare.
@@ -121,23 +121,23 @@ def normalize_optmux_section(raw, source, strict=False):
     if isinstance(out.get("find"), dict):
         find = _reserved_keys(out["find"], KNOWN_FIND_KEYS, strict, f"{source}: find")
         if "preview" in find and not isinstance(find["preview"], bool):
-            print(f"optmux: {source}: find.preview: {find['preview']!r} is not true or false", file=sys.stderr)
+            print(f"optmux: {source}: +find: +preview: {find['preview']!r} is not true or false", file=sys.stderr)
         for key in ("ignore_files", "ignore_tags"):
             ignore = find.get(key)
             if ignore is not None and not isinstance(ignore, dict):
-                print(f"optmux: {source}: find.{key}: {ignore!r} is not a mapping of groups to lists of patterns",
+                print(f"optmux: {source}: +find: +{key}: {ignore!r} is not a mapping of groups to lists of patterns",
                       file=sys.stderr)
             for group, patterns in (ignore if isinstance(ignore, dict) else {}).items():
                 if patterns is not None and not (isinstance(patterns, list) and all(isinstance(x, str) for x in patterns)):
-                    print(f"optmux: {source}: find.{key}.{group}: {patterns!r} is not a list of patterns",
+                    print(f"optmux: {source}: +find: +{key}: {group}: {patterns!r} is not a list of patterns",
                           file=sys.stderr)
         if isinstance(find.get("lsp"), dict):
             for lang, cfg in find["lsp"].items():
-                cfg = fields(cfg, KNOWN_LSP_LANGUAGE_KEYS, f"{source}: find.lsp.{lang}")
+                cfg = fields(cfg, KNOWN_LSP_LANGUAGE_KEYS, f"{source}: +find: +lsp: {lang}")
                 find["lsp"][lang] = cfg
                 if isinstance(cfg, dict) and isinstance(cfg.get("servers"), list):
                     cfg["servers"] = [
-                        fields(server, KNOWN_LSP_SERVER_KEYS, f"{source}: find.lsp.{lang}.servers")
+                        fields(server, KNOWN_LSP_SERVER_KEYS, f"{source}: +find: +lsp: {lang}: +servers")
                         for server in cfg["servers"]
                     ]
         out["find"] = find
@@ -173,6 +173,9 @@ def read_optmux_section(data, source):
     if not isinstance(data, dict):
         return {}
     layers = []
+    for key in ("optmux", "+optmux"):
+        if data.get(key) and not isinstance(data[key], dict):
+            print(f"optmux: {source}: `{key}:` is not a mapping of sections ({type(data[key]).__name__})", file=sys.stderr)
     if data.get("optmux"):
         print(
             f"optmux: {source}: bare `optmux:` is deprecated; write `+optmux:` with +-prefixed keywords "
@@ -335,7 +338,7 @@ def _plugin_option_line(name, value):
 
 
 def generate_plugins_conf(plugins):
-    """Generate tmux @plugin declarations from optmux.plugins (plugin -> config lines).
+    """Generate tmux @plugin declarations from +plugins (plugin -> config lines).
 
     A plugin's value may be empty, a string or list of raw tmux config lines, or a
     dict of option -> value (written as `set -g @option "value"`; the `@` is optional,
@@ -412,7 +415,7 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
 
     new_files = {}
 
-    # optmux.plugins → optmux-plugins.conf (sourced by tmux.conf before TPM runs)
+    # +plugins → optmux-plugins.conf (sourced by tmux.conf before TPM runs)
     plugins_content = generate_plugins_conf(optmux.get("plugins") or {})
     if plugins_content:
         new_files[PLUGINS_CONF] = plugins_content.encode()
@@ -424,7 +427,7 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     else:
         (tmux_dir / PLUGINS_TIPS).unlink(missing_ok=True)
 
-    # optmux.shortcuts → tmux.optmux-shortcuts.conf + tips-content.txt
+    # +shortcuts → tmux.optmux-shortcuts.conf + tips-content.txt
     shortcuts = optmux.get("shortcuts") or {}
     if shortcuts:
         lines = []
@@ -445,14 +448,14 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
         else:
             (tmux_dir / "tips-custom.txt").unlink(missing_ok=True)
 
-    # optmux.tmux_config → tmux.optmux-extras.{name}.conf for each entry
+    # +tmux_config → tmux.optmux-extras.{name}.conf for each entry
     tmux_config = optmux.get("tmux_config") or {}
     for conf_name, content in tmux_config.items():
         filename = f"tmux.optmux-extras.{conf_name}.conf"
         new_files[filename] = content.encode()
         (tmux_dir / filename).write_text(content)
 
-    # optmux.menu → tmux.optmux-menu.conf (compiled display-menu bindings)
+    # +menu → tmux.optmux-menu.conf (compiled display-menu bindings)
     menu_cfg = optmux.get("menu") or {}
     if menu_cfg:
         menu_content = menu_compiler.generate_menu_conf(menu_cfg, source="+optmux: +menu")
@@ -532,7 +535,7 @@ def _git_config_parameter(key, value):
 
 
 def generate_git_config_env(git_config):
-    """Turn optmux.git_config into a GIT_CONFIG_PARAMETERS env var (like `git -c key=value`).
+    """Turn +git_config into a GIT_CONFIG_PARAMETERS env var (like `git -c key=value`).
 
     Not GIT_CONFIG_COUNT/KEY_n/VALUE_n: delta reads its settings (delta.*) itself and only
     understands GIT_CONFIG_PARAMETERS. Entries come after any the user already exported, so
@@ -572,7 +575,7 @@ def _user_lazygit_config_files():
 
 
 def generate_lazygit_env(optmux_dir, lazygit):
-    """Write optmux.lazygit as a config file layered on top of the user's via LG_CONFIG_FILE."""
+    """Write +lazygit as a config file layered on top of the user's via LG_CONFIG_FILE."""
     if not lazygit or not shutil.which("lazygit"):
         return {}
     git = lazygit.get("git") or {}

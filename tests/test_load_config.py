@@ -1,6 +1,9 @@
+import re
 from pathlib import Path
 
-from optmux.cli import normalize_optmux_section, load_bundled_defaults, load_optmux_conf
+import yaml
+
+from optmux.cli import load_bundled_defaults, load_optmux_conf, normalize_optmux_section, read_optmux_section
 
 
 def test_load_bundled_defaults():
@@ -48,7 +51,7 @@ def test_load_optmux_conf_warns_on_unknown_top_level_key(tmp_path, capsys):
     assert "shortcuuts" in err
 
 
-def testnormalize_optmux_section_warns_on_unknown_shortcut_key(capsys):
+def test_normalize_optmux_section_warns_on_unknown_shortcut_key(capsys):
     """Unrecognized key inside a shortcut dict prints a warning naming the shortcut."""
     optmux = {"shortcuts": {"C-M-x": {"comand": "htop"}}}
     normalize_optmux_section(optmux, "test-source")
@@ -58,7 +61,7 @@ def testnormalize_optmux_section_warns_on_unknown_shortcut_key(capsys):
     assert "test-source" in err
 
 
-def testnormalize_optmux_section_ignores_underscore_prefixed_keys(capsys):
+def test_normalize_optmux_section_ignores_underscore_prefixed_keys(capsys):
     """Keys starting with '_' (e.g. YAML anchors used as scratch data) are not warned about."""
     optmux = {"_anchors": {"foo": "bar"}, "shortcuts": {"C-M-x": {"_note": "personal reminder", "command": "htop"}}}
     normalize_optmux_section(optmux, "test-source")
@@ -66,7 +69,7 @@ def testnormalize_optmux_section_ignores_underscore_prefixed_keys(capsys):
     assert err == ""
 
 
-def testnormalize_optmux_section_warns_on_unknown_menu_context(capsys):
+def test_normalize_optmux_section_warns_on_unknown_menu_context(capsys):
     """Unrecognized menu: context prints a warning naming the context."""
     optmux = {"menu": {"pane_wrong": ["*"]}}
     normalize_optmux_section(optmux, "test-source")
@@ -75,7 +78,7 @@ def testnormalize_optmux_section_warns_on_unknown_menu_context(capsys):
     assert "test-source" in err
 
 
-def testnormalize_optmux_section_warns_on_unknown_menu_item_key(capsys):
+def test_normalize_optmux_section_warns_on_unknown_menu_item_key(capsys):
     """Unrecognized key inside a menu item dict prints a warning."""
     optmux = {"menu": {"pane": [{"key": "w", "titel": "New Window"}]}}
     normalize_optmux_section(optmux, "test-source")
@@ -84,16 +87,12 @@ def testnormalize_optmux_section_warns_on_unknown_menu_item_key(capsys):
     assert "test-source" in err
 
 
-def testnormalize_optmux_section_accepts_known_menu_config():
+def test_normalize_optmux_section_accepts_known_menu_config():
     optmux = {"menu": {"pane": [{"key": "w", "title": "New Window"}, "*"]}}
     normalize_optmux_section(optmux, "test-source")  # should not raise
 
 
 # --- `+keyword` syntax -------------------------------------------------------------------------------------------
-
-import yaml
-
-from optmux.cli import normalize_optmux_section, read_optmux_section
 
 
 def test_plus_syntax_loads_as_bare_keywords(capsys):
@@ -177,10 +176,8 @@ def test_examples_load_without_warnings(capsys):
     assert capsys.readouterr().err == ""
 
 
-
-def test_example_full_works_with_every_setting_switched_on(capsys, tmp_path):
+def test_transform_example_works_with_every_setting_switched_on(capsys, tmp_path):
     """transform.optmux.yaml is for taking lines from, so each commented-out line must be valid to use."""
-    import re
     from optmux.cli import generate_plugins_conf, generate_shortcut_line, generate_tmux_conf_files, merge_optmux
 
     text = (Path(__file__).parent.parent / "transform.optmux.yaml").read_text()
@@ -200,4 +197,40 @@ def test_example_full_works_with_every_setting_switched_on(capsys, tmp_path):
     tmux_dir.mkdir()
     generate_tmux_conf_files(tmux_dir, merged, load_bundled_defaults()["shortcuts"])
     assert "set -g history-limit 100000" in (tmux_dir / "tmux.optmux-extras.my-settings.conf").read_text()
+    assert capsys.readouterr().err == ""
+
+
+def test_a_plugin_can_carry_a_list_of_tip_urls_and_only_that_keyword(capsys):
+    result = normalize_optmux_section(
+        {"+plugins": {"a/b": {"+tip_url": ["u1", "u2"], "+bogus": 1, "some-option": 2}, "c/d": False, "e/f": None}},
+        "src", strict=True,
+    )
+    assert result["plugins"] == {"a/b": {"_tip_url": ["u1", "u2"], "some-option": 2}, "c/d": False, "e/f": None}
+    assert "'+bogus'" in capsys.readouterr().err
+
+
+def test_plus_keywords_are_accepted_in_the_legacy_section_too(capsys):
+    result = normalize_optmux_section({"+shortcuts": {"C-M-x": {"+command": "htop", "new_window": True}}}, "src")
+    assert result == {"shortcuts": {"C-M-x": {"command": "htop", "new_window": True}}}
+    assert capsys.readouterr().err == ""
+
+
+def test_strict_section_catches_typos_in_shortcuts_menus_and_find(capsys):
+    normalize_optmux_section(
+        {"+shortcuts": {"C-M-x": {"+comand": "htop"}}, "+menu": {"+pane": [{"+titel": "x"}]}, "+find": {"+lspp": {}}},
+        "src", strict=True,
+    )
+    err = capsys.readouterr().err
+    assert "'+comand'" in err and "'+titel'" in err and "'+lspp'" in err
+
+
+def test_a_non_mapping_plus_optmux_is_warned_about(capsys):
+    assert read_optmux_section({"+optmux": ["shortcuts"]}, "my.yaml") == {}
+    assert "`+optmux:` is not a mapping" in capsys.readouterr().err
+    assert read_optmux_section({"+optmux": None}, "my.yaml") == {}
+    assert capsys.readouterr().err == ""
+
+
+def test_bundled_defaults_load_clean_through_the_file_reader(capsys):
+    load_bundled_defaults()
     assert capsys.readouterr().err == ""

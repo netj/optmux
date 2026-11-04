@@ -22,7 +22,8 @@ start_directory: .
     Morantron/tmux-fingers:             # prefix+F: hints on URLs, paths, hashes, IPs, ... to copy
       fingers-skip-wizard: 1
       #fingers-key: f
-      #fingers-jump-key: J               # like F, but moves the cursor to the match in copy mode
+      #fingers-jump-key: j               # like F, but moves the cursor to the match in copy mode
+      # (its default, J, is also pain-control's resize-down: whichever loads last wins)
       #fingers-keyboard-layout: qwerty-homerow  # hint letters from the home row only (also dvorak, colemak, ...)
       #fingers-hint-position: right
       #fingers-hint-style: fg=magenta,bold
@@ -50,8 +51,7 @@ start_directory: .
       resurrect-dir: $OPTMUX_DIR/tmux/resurrect  # saved per project, not one shared directory
       #resurrect-strategy-nvim: session
       #resurrect-processes: ssh psql mysql "~rails server" "~yarn watch"  # programs to start again; ~ matches anywhere
-      #resurrect-save: S                 # rebind the keys (after the prefix)
-      #resurrect-restore: R
+      #resurrect-save: A                 # rebind a key (after the prefix); resurrect-restore does the same for restoring
 
     #tmux-plugins/tmux-continuum:       # off by default: saves in the background, restores on start
     #  continuum-restore: true
@@ -111,11 +111,11 @@ start_directory: .
     #C-M-v:
     #  +send_keys: source .venv/bin/activate   # typed into a fresh shell, so the venv stays active there
     #  +tip: a shell with the venv on
-    #S:                                  # prefix+S toggles typing in every pane of the window at once
+    #Q:                                  # prefix+Q toggles typing in every pane of the window at once
     #  +tmux: |
     #    setw synchronize-panes \; display-message "synchronize-panes #{?pane_synchronized,on,off}"
     #  +tip: type in all panes at once
-    #B: htop                            # prefix+B (taken: h j k l H J K L resize and move panes, F/J fingers)
+    #B: htop                            # prefix+B (taken: h j k l move panes, H J K L resize them, F fingers, R reload)
     #G: lazygit log
 
   # Items in the right-click menus (pane, window, session); "*" keeps tmux's own, in its usual place.

@@ -105,7 +105,7 @@ It renders with delta and opens in less with mouse support and link handling:
 optmux applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
 For anything else, prefix the command with `optmux env`: `optmux env git log -p`, `optmux env git show HEAD`.
 To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
-Tweak the settings with [`git_config:`](README.md#git_config) and [`env:`](README.md#env).
+Tweak the settings with [`+git_config:`](README.md#git_config) and [`+env:`](README.md#env).
 
 ## 4. Keep many going
 

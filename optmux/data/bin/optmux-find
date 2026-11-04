@@ -93,7 +93,7 @@ def reap(proc):
 
 
 def ignore_patterns():
-    """Glob patterns of names to leave out of the file list: every group of `+ignore_files` (under `+find`) (see
+    """Glob patterns of names to leave out of the file list: every group of `+find: +ignore_files` (see
     optmux-defaults.yaml), and always .git."""
     groups = find_config().get("ignore_files")
     return [".git", *(p for g in (groups.values() if isinstance(groups, dict) else ()) if isinstance(g, list)
@@ -101,7 +101,7 @@ def ignore_patterns():
 
 
 def ignore_tag_patterns():
-    """Glob patterns of names to leave out of the tags index: every group of `+ignore_tags` (under `+find`) (see
+    """Glob patterns of names to leave out of the tags index: every group of `+find: +ignore_tags` (see
     optmux-defaults.yaml). Data files and generated code hold hundreds of thousands of "symbols" (every JSON key is one
     to ctags) that bury the real ones and make the tags list take minutes."""
     groups = find_config().get("ignore_tags")
@@ -111,7 +111,7 @@ def ignore_tag_patterns():
 
 def list_files(_query):
     """Every file under the working directory: what git knows first (tracked and untracked, minus ignored), then the
-    ignored ones (scratch scripts, local notes, generated files); minus `+ignore_files` (under `+find`). Outside a repo, all of it."""
+    ignored ones (scratch scripts, local notes, generated files); minus `+find: +ignore_files`. Outside a repo, all of it."""
     known = []
     if repo_root():
         known = run("git", "ls-files", "-co", "--exclude-standard").stdout.splitlines()
@@ -433,7 +433,7 @@ FIELD_SEP = "\x1f"  # between the parts of a row's last field (see row)
 
 @functools.lru_cache(maxsize=1)
 def find_config():
-    """The `find:` section of the optmux config ($OPTMUX_DIR/find.json), {} if there is none."""
+    """The `+find:` section of the optmux config ($OPTMUX_DIR/find.json), {} if there is none."""
     try:
         config = json.loads(Path(os.environ["OPTMUX_DIR"], "find.json").read_text())
     except (KeyError, OSError, ValueError):
@@ -734,7 +734,7 @@ def preview_args(me, mode, compact=False):
 
 
 def preview_enabled():
-    """find.preview (default on), and OPTMUX_FIND_PREVIEW=0 to turn it off."""
+    """+find: +preview (default on), and OPTMUX_FIND_PREVIEW=0 to turn it off."""
     if os.environ.get("OPTMUX_FIND_PREVIEW") == "0":
         return False
     return find_config().get("preview", True) is not False

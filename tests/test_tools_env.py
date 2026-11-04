@@ -91,7 +91,9 @@ def test_merge_lazygit_deep():
 
 
 def test_new_keys_validated_without_warnings(capsys):
-    cli.normalize_optmux_section(load_bundled_defaults(), "bundled")
+    raw = yaml.safe_load((DATA_DIR / "optmux-defaults.yaml").read_text())
+    assert list(raw) == ["+optmux"]  # strict: only +words are optmux's, nothing in the defaults is written bare
+    cli.normalize_optmux_section(raw["+optmux"], "bundled", strict=True)
     assert capsys.readouterr().err == ""
 
 

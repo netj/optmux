@@ -420,7 +420,7 @@ def test_icons_setting_is_known_and_defaulted():
     assert err.getvalue() == ""
     with redirect_stderr(err):
         normalize_optmux_section({"icons": "sparkles", "find": {"preview": "off"}}, "src")
-    assert "sparkles" in err.getvalue() and "emoji" in err.getvalue() and "find.preview: 'off'" in err.getvalue()
+    assert "sparkles" in err.getvalue() and "emoji" in err.getvalue() and "+find: +preview: 'off'" in err.getvalue()
 
 
 def test_without_a_usable_installer_the_row_is_a_note_not_an_install(project, tmp_path):

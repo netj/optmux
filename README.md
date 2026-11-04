@@ -261,7 +261,7 @@ you're usually mid-task in the current window); a **menu** custom item with
 neither set opens a **new window** (a menu click is more often "go start
 this over there"). Set either explicitly to override.
 
-### plugins
+### +plugins
 
 `+plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. optmux installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
 
@@ -287,7 +287,7 @@ A dict entry may also carry `+tip_url` (a string or a list) to showcase a great 
 
 Layers merge by plugin (bundled, then project, then `~/.optmux.yaml`); a later entry replaces that plugin's lines whole (including `+tip_url`). See `optmux/data/optmux-defaults.yaml` for the bundled list.
 
-### tmux_config
+### +tmux_config
 
 Entries under `+tmux_config:` are written as `tmux.optmux-extras.{name}.conf` files and auto-sourced by tmux.
 
@@ -378,7 +378,7 @@ More examples:
 
 A context left out of `+menu:` entirely keeps tmux's untouched default. Supported contexts: `session`, `window`, `pane`.
 
-### env
+### +env
 
 Environment variables for commands run through [`optmux-env`](#optmux-env). `$VAR` expands at launch, and a null value unsets the variable. Layers merge by variable name.
 
@@ -410,7 +410,7 @@ Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` 
 [ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"
 ```
 
-### git_config
+### +git_config
 
 git config for commands run through [`optmux-env`](#optmux-env), passed through `GIT_CONFIG_PARAMETERS` (the env equivalent of `git -c`, which, unlike `GIT_CONFIG_COUNT`, delta also reads for its `delta.*` settings). It takes precedence over `~/.gitconfig` and repo config without modifying either. Keys merge across layers. A pager setting (`core.pager`, `interactive.diffFilter`, `pager.*`) whose command isn't installed is skipped, so a missing delta falls back to your own pager.
 
@@ -422,7 +422,7 @@ git config for commands run through [`optmux-env`](#optmux-env), passed through 
     core.pager:          # null: drop the bundled delta pager
 ```
 
-### lazygit
+### +lazygit
 
 [lazygit config](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md), written to `$OPTMUX_DIR/lazygit/config.yml` and loaded *after* your own lazygit config via `LG_CONFIG_FILE`. Settings optmux doesn't mention keep your values, and the ones it does mention use optmux's. Layers deep-merge (lists replace). A `git.diffRenderers` entry whose command isn't installed is skipped.
 
@@ -539,10 +539,10 @@ Local copying still works, but **copying from a remote optmux session over SSH w
 
 - optmux looks at the files git tracks and picks the languages that have a few of them (python, typescript/javascript, go, rust, c/c++, lua, bash out of the box), then starts the first installed server of each. One hub process per project keeps them running between keystrokes (it exits after 30 idle minutes, `OPTMUX_LSP_IDLE` seconds to change), and logs to `.optmux.d/find/lsp.log`.
 - Scripts without an extension count too: a tracked file whose first line is `#!/usr/bin/env python3` (or `node`, `bash`, `lua`, ...) is told to the server of that language, up to 50 per language. (Servers only look at files with the language's extension, so a script like `bin/tool` would otherwise never show its classes and functions.) Files found not to be scripts are not read again for a day (unless they changed).
-- A language with files but no server installed shows a ⚠️ row with its install command, e.g. `go: no language server installed.  Enter runs: brew install gopls`. **Enter on that row runs the install** in a pane of its own (so you can watch it, answer a prompt), and the servers start within seconds of it finishing. The command offered is the first one whose installer is on the machine: `install` may be a list of alternatives (`brew`, `uv tool`, `npm`, ...). `optmux-lsp install` does the same from a shell (asking first); `optmux-lsp status` shows what runs; `optmux-lsp stop` stops the project's servers. ⏳ rows say a server is still starting, 💬 rows say what went wrong; Enter on those does nothing.
+- A language with files but no server installed shows a ⚠️ row with its install command, e.g. `go: no language server installed.  Enter runs: brew install gopls`. **Enter on that row runs the install** in a pane of its own (so you can watch it, answer a prompt), and the servers start within seconds of it finishing. The command offered is the first one whose installer is on the machine: `+install` may be a list of alternatives (`brew`, `uv tool`, `npm`, ...). `optmux-lsp install` does the same from a shell (asking first); `optmux-lsp status` shows what runs; `optmux-lsp stop` stops the project's servers. ⏳ rows say a server is still starting, 💬 rows say what went wrong; Enter on those does nothing.
 - The first search after a server starts may say it is starting (rust-analyzer and the like take a while to index). Some servers need a project description: clangd needs a `compile_commands.json`, and finds nothing without one.
 
-Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language. `servers` replaces the preference list, the first installed one is used; `command` alone is a one-server shorthand; `enabled: false` turns a language off. `open_first_file: true` opens one file after the server starts, for servers that find their project from it (typescript and c do that by default):
+Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language. `+servers` replaces the preference list, the first installed one is used; `+command` alone is a one-server shorthand; `+enabled: false` turns a language off. `+open_first_file: true` opens one file after the server starts, for servers that find their project from it (typescript and c do that by default):
 
 ```yaml
 +optmux:
@@ -581,9 +581,9 @@ Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language
 
 `+ignore_tags` is the same for the tags index (`C-t`, and the tags in `C-o`): ctags makes a symbol of every key in a JSON file, so a few big data files or generated bindings can mean hundreds of thousands of rows and a list that takes minutes to load. The defaults leave out `*.json`, `*.csv`, lockfiles, `generated` directories and minified files; set a group to `[]` to index them after all. Changing the patterns re-indexes on the next open.
 
-The bundled defaults are under `find.lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
+The bundled defaults are under `+find` → `+lsp` in [`optmux-defaults.yaml`](optmux-defaults.yaml). Omni asks the servers too, but only those already running, within a second, so typing never waits for a server that is still starting.
 
-A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `C-/` (or `^_`, which is what macOS Terminal.app sends for `ctrl-/` and `ctrl--`) toggles it; while it is on, grep's list shows just `path:line` (the preview has the text); it is hidden when the terminal is under about 100 columns wide; `find.preview: false` turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.
+A **preview** of the selected row sits beside the list: the file around the matching line, marked (with [bat](https://github.com/sharkdp/bat), or `batcat` on Debian and Ubuntu, if you have it: it highlights syntax), or what an install row will do. `C-/` (or `^_`, which is what macOS Terminal.app sends for `ctrl-/` and `ctrl--`) toggles it; while it is on, grep's list shows just `path:line` (the preview has the text); it is hidden when the terminal is under about 100 columns wide; `+preview: false` (under `+find:`) turns it off (`OPTMUX_FIND_PREVIEW=0` does so for one run). Long lines are cut, not wrapped, so the marked line stays in view.
 
 **How a row reads.** The same for files, matches, tags and symbols: a dim letter for the source (`F` file, `G` grep match, `T` tag, `L` language-server symbol), an icon for what it is, the name, then where: `file:line`, and the directory in dim parens:
 

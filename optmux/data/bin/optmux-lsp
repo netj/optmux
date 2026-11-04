@@ -18,7 +18,7 @@ override in your optmux.yaml: `+servers` per language, `+extensions`, `+enabled`
 LSP `workspace/symbol` to all running servers and merges the answers. It exits after OPTMUX_LSP_IDLE seconds
 (default 1800) without queries.
 
-The configuration is $OPTMUX_DIR/find.json, which optmux writes at launch from its merged `find:` section.
+The configuration is $OPTMUX_DIR/find.json, which optmux writes at launch from its merged `+find:` section.
 """
 
 import fcntl

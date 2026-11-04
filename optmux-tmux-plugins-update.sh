@@ -29,7 +29,7 @@ if [[ ! -x "$TMUX_PLUGIN_MANAGER_PATH"/$tpm/tpm ]]; then
 fi
 
 # Pre-clone plugins in parallel so TPM's install_plugins finds them already present
-# (parses @plugin entries from the optmux-plugins.conf generated from optmux.plugins in YAML)
+# (parses @plugin entries from the optmux-plugins.conf generated from +plugins in YAML)
 _optmux_preclone() {
     local plugin="$1"
     local dest="$TMUX_PLUGIN_MANAGER_PATH/$plugin"
