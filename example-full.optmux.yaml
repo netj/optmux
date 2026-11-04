@@ -1,82 +1,41 @@
 #!/usr/bin/env optmux
-# A documented tour of the plugins optmux ships with and the options worth knowing about, most of them
-# commented out: uncomment what you want to change. Everything here is also valid in ~/.optmux.yaml.
+# A taste of configuring popular tmux plugins from YAML instead of tmux.conf. Not exhaustive: see each plugin's
+# README for its options, and optmux-defaults.yaml for what optmux sets up out of the box. Uncomment to try.
 #
-# Keeping this file current (it is written by hand, there is no generator):
-#   - the plugin list and the live options are optmux-defaults.yaml's `+plugins:`; when that changes, mirror it here
-#   - the commented options come from each plugin's own README (claritmux: "Customization"); their values are the
-#     plugin's defaults, so check them again when a plugin releases
-#   - tmux plugin options are your names, so they stay bare; only `+` words are optmux's (see the README)
-#   - after editing, run `uv run optmux ./example-full.optmux.yaml` and `uv run pytest tests/test_load_config.py`
+# Maintaining this by hand: it only needs to still load (tests/test_load_config.py checks it), and the commented
+# options should match what the plugins document today (e.g., claritmux's "Customization" section).
 session_name: example-full
 start_directory: .
 
 +optmux:
-  # Plugin entries are merged by plugin name over optmux's defaults: an entry you write replaces that plugin's whole
-  # entry (so repeat the options you want to keep), and `false` turns a plugin off.
+  # A plugin is a name (yours: user/repo) and its options. optmux installs it, and writes each option as
+  # `set -g @option "value"`: `$VAR` expands, YAML booleans work, comments stay next to the setting.
   +plugins:
-    tmux-plugins/tmux-sensible:      # hx limit, mouse, C-n/C-p over awkward n/p
-    tmux-plugins/tmux-pain-control:  # move around panes with j and k, a bit like vim; resize panes like vim
-    Morantron/tmux-fingers:          # prefix+F to highlight and copy URLs/paths/hashes/IPs
-      fingers-skip-wizard: 1
-    netj/tmux-yank:
+    # Options as a mapping, with a note of why next to each.
     tmux-plugins/tmux-resurrect:
       resurrect-strategy-vim: session
       resurrect-capture-pane-contents: true
-      # isolate saved state per optmux session, not shared ~/.local/share/tmux/resurrect
-      resurrect-dir: $OPTMUX_DIR/tmux/resurrect
-    # Off by default: restores the last saved session when tmux starts.
-    #tmux-plugins/tmux-continuum:
-    #  continuum-restore: true
-    netj/claritmux:
-      # What the status line shows (1 shows it, 0 hides it).
-      claritmux_status_workdir: 0
-      claritmux_status_date: 0
-      claritmux_status_time: 0
-      claritmux_status_hostname: 1
-      # Colors, as claritmux ships them (Catppuccin Mocha-like). Uncomment to change one.
-      #claritmux_color_bg: '#1e1e2e'
-      #claritmux_color_fg: '#9399b2'
-      #claritmux_color_separator: '#6c7086'
-      #claritmux_color_inactive: '#6c7086'
-      #claritmux_color_active: '#a6e3a1'
-      #claritmux_color_selection: '#94e2d5'
-      #claritmux_color_bell: '#f38ba8'
-      #claritmux_color_prefix: '#89dceb'
-      #claritmux_color_session: '#585b70'
-      #claritmux_color_path: '#89b4fa'
-      #claritmux_color_message: '#f8a06a'
-      #claritmux_color_date: '#f9e2af'
-      #claritmux_color_day: '#fab387'
-      #claritmux_color_time: '#f38ba8'
-      #claritmux_color_timezone: '#45475a'
-      #claritmux_color_host: '#585b70'
-      # A page or video that shows the plugin off, listed under it on the tips screen (a string or a list).
-      #+tip_url: https://github.com/netj/claritmux
+      resurrect-dir: $OPTMUX_DIR/tmux/resurrect  # saved state per project, not one shared directory
 
-  # Your own shortcuts: the key is yours, the `+` words say what it does.
+    # Colors for the status line, from claritmux's own list. Uncomment one to change it.
+    netj/claritmux:
+      claritmux_status_hostname: 1
+      #claritmux_color_bg: '#1e1e2e'
+      #claritmux_color_active: '#a6e3a1'
+      #claritmux_color_prefix: '#89dceb'
+      #claritmux_color_host: '#585b70'
+
+    # Or hand a plugin raw tmux config lines when an option needs more than a value.
+    #catppuccin/tmux:
+    #- set -g @catppuccin_flavor 'mocha'
+    #- set -gF @claritmux_color_bg '#{@thm_bg}'
+
+    # `false` turns off a plugin optmux enables by default.
+    #Morantron/tmux-fingers: false
+
+  # The same file holds your shortcuts: the key is yours, the `+` words say what it does.
   +shortcuts:
     C-M-b: gh browse .
-    #C-M-e:
-    #  +command: ${VISUAL:-${EDITOR:-vim}} README.md
-    #  +new_window: true
-
-  # Environment for commands run via optmux-env; `$VAR` expands and null unsets.
-  #+env:
-  #  PAGER: less
-
-  # How rows in Find and eXtract say what they are: nerd, emoji, text, or none.
-  #+icons: emoji
-
-  # optmux Find: leave out more files from the file list (^f) or the tags index (^t), in groups of your choosing.
-  #+find:
-  #  +preview: false
-  #  +ignore_files:
-  #    mine:
-  #    - fixtures
-  #  +ignore_tags:
-  #    mine:
-  #    - "*.sql"
 
 windows:
   - window_name: shell

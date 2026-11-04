@@ -135,7 +135,7 @@ Runs the command with optmux's opinionated environment (delta as git's pager, le
 
 ## Example tmuxp YAML
 
-For a tour of the bundled plugins and the options worth changing (the claritmux colors, Find's ignore lists, ...), see [`example-full.optmux.yaml`](example-full.optmux.yaml), mostly commented out for you to uncomment.
+To see how optmux configures popular tmux plugins from YAML (options with comments next to them, colors, raw lines), have a look at [`example-full.optmux.yaml`](example-full.optmux.yaml).
 
 Here's the included [`example.optmux.yaml`](example.optmux.yaml) showing shortcuts, tmux config, and window layout:
 

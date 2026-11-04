@@ -175,10 +175,3 @@ def test_examples_load_without_warnings(capsys):
         read_optmux_section(yaml.safe_load(p.read_text()), p.name)
     assert capsys.readouterr().err == ""
 
-
-def test_example_full_plugins_mirror_the_bundled_defaults():
-    """example-full.optmux.yaml's live plugin entries are optmux-defaults.yaml's; update both together."""
-    from pathlib import Path
-    p = Path(__file__).parent.parent / "example-full.optmux.yaml"
-    mine = read_optmux_section(yaml.safe_load(p.read_text()), p.name)["plugins"]
-    assert mine == load_bundled_defaults()["plugins"]
