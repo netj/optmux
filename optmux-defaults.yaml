@@ -62,7 +62,7 @@
       command: optmux-diff-base
       output: terminal
 
-  # optmux Find's language server source (^l): per language, the file extensions that mean it, and the servers
+  # optmux Find's language server source (C-l): per language, the file extensions that mean it, and the servers
   # to try in order (the first one installed is used). A language is used when it has a few tracked files.
   # Override in your optmux.yaml: `servers` (replaces the list), `extensions`, `enabled: false`, or a one-server
   # shorthand `command:` (+ `install:`). `open_first_file: true` opens one file after start, for servers that
@@ -71,9 +71,9 @@
   # (works everywhere), text (letters), or none.
   +icons: nerd
   +find:
-    # The selected row's file around its line, beside the list (^/ toggles it; hidden on narrow screens).
+    # The selected row's file around its line, beside the list (C-/ toggles it; hidden on narrow screens).
     +preview: true
-    # Files the file list (^f) leaves out even though they are there: glob patterns matched against each name in a
+    # Files the file list (C-f) leaves out even though they are there: glob patterns matched against each name in a
     # path (`node_modules` skips the whole directory, `*.pyc` the files), in groups so you can target one: set
     # a group in your optmux.yaml to replace its list, `[]` (or null) to drop it, or add a group of your own.
     # (.git is always skipped.)
@@ -95,7 +95,7 @@
       - target
       optmux:  # optmux's own state: its plugins, scripts, tags
       - "*.optmux.d"
-    # Files the tags index (^t, and the tags in ^o) leaves out, like ignore_files and with the same rules. ctags makes
+    # Files the tags index (C-t, and the tags in C-o) leaves out, like ignore_files and with the same rules. ctags makes
     # a "symbol" of every key in a JSON file and of every generated binding, so a few big ones can mean hundreds of
     # thousands of rows and a list that takes minutes to load.
     +ignore_tags:
@@ -112,7 +112,9 @@
       - "*.map"
     +lsp:
       python:
-        +extensions: [py, pyi]
+        +extensions:
+        - py
+        - pyi
         +servers:
         - +command: basedpyright-langserver --stdio
           +install:
@@ -124,7 +126,15 @@
         - +command: pylsp
           +install: pip install python-lsp-server
       typescript:
-        +extensions: [ts, tsx, js, jsx, mjs, cjs, mts, cts]
+        +extensions:
+        - ts
+        - tsx
+        - js
+        - jsx
+        - mjs
+        - cjs
+        - mts
+        - cts
         +open_first_file: true
         +servers:
         - +command: typescript-language-server --stdio
@@ -134,32 +144,46 @@
         - +command: vtsls --stdio
           +install: npm install -g @vtsls/language-server
       go:
-        +extensions: [go]
+        +extensions:
+        - go
         +servers:
         - +command: gopls
           +install:
           - brew install gopls
           - go install golang.org/x/tools/gopls@latest
       rust:
-        +extensions: [rs]
+        +extensions:
+        - rs
         +servers:
         - +command: rust-analyzer
           +install:
           - brew install rust-analyzer
           - rustup component add rust-analyzer
       c:
-        +extensions: [c, h, cc, cpp, cxx, hpp, hh, m, mm]
+        +extensions:
+        - c
+        - h
+        - cc
+        - cpp
+        - cxx
+        - hpp
+        - hh
+        - m
+        - mm
         +open_first_file: true  # clangd only finds compile_commands.json from a file it has been told about
         +servers:
         - +command: clangd
           +install: brew install llvm
       lua:
-        +extensions: [lua]
+        +extensions:
+        - lua
         +servers:
         - +command: lua-language-server
           +install: brew install lua-language-server
       bash:
-        +extensions: [sh, bash]
+        +extensions:
+        - sh
+        - bash
         +servers:
         - +command: bash-language-server start
           +install:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""optmux-lsp — language servers as a symbol source for optmux Find (`^l`).
+"""optmux-lsp — language servers as a symbol source for optmux Find (`C-l`).
 
 Usage:
   optmux-lsp query [--fast] QUERY symbols matching QUERY, one per line, in optmux Find's `FILE LINE DISPLAY` format.

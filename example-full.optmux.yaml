@@ -153,7 +153,7 @@ start_directory: .
   #+icons: emoji                         # nerd (default), emoji, text, or none
   #+find:
   #  +preview: false                     # no preview pane beside the list
-  #  # Groups of what to leave out of the file list (^f) and the tags index (^t); the group names are yours.
+  #  # Groups of what to leave out of the file list (C-f) and the tags index (C-t); the group names are yours.
   #  +ignore_files:
   #    mine:
   #    - fixtures
@@ -161,10 +161,11 @@ start_directory: .
   #  +ignore_tags:
   #    mine:
   #    - "*.sql"
-  #  # Language servers (^l), per language: `+servers` replaces the list, the first one installed is used.
+  #  # Language servers (C-l), per language: `+servers` replaces the list, the first one installed is used.
   #  +lsp:
   #    ruby:
-  #      +extensions: [rb]
+  #      +extensions:
+  #      - rb
   #      +command: ruby-lsp
   #      +install: gem install ruby-lsp
   #    lua:

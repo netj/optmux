@@ -6,14 +6,14 @@ Usage: optmux-find [PANE_ID] [--mode SOURCE] [--query TEXT]
 query, as optmux-extract does for a selection)
 
 One picker with five sources, like ctrl-p in vim but remembering where you were:
-  omni   (^o)  tags and file paths ranked together, best match first, each row labeled
-  files  (^f)  git ls-files, then the ignored files find turns up
-  grep   (^g)  git grep, live: the list is re-searched as you type
-  tags   (^t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
-  lsp    (^l)  symbols from the project's language servers, as you type (see optmux-lsp)
+  omni   (C-o)  tags and file paths ranked together, best match first, each row labeled
+  files  (C-f)  git ls-files, then the ignored files find turns up
+  grep   (C-g)  git grep, live: the list is re-searched as you type
+  tags   (C-t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
+  lsp    (C-l)  symbols from the project's language servers, as you type (see optmux-lsp)
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
-afresh resumes the last source with its own last query and the cursor on the entry it was on, `^u` clears the
+afresh resumes the last source with its own last query and the cursor on the entry it was on, `C-u` clears the
 query, and `M-p` (then older ones; `M-n` goes forward) recalls that source's earlier queries (fzf's own history,
 which also records queries you left with Esc or a switch). Enter opens the pick in an editor split next to the
 agent, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
@@ -741,7 +741,7 @@ def preview_enabled():
 
 
 def marker_kind(mode, f):
-    """What a row's FILE field stands for if it is not a file: "install", "wait" or "note". Only ^l has such rows
+    """What a row's FILE field stands for if it is not a file: "install", "wait" or "note". Only C-l has such rows
     (a tracked file may well be named `!x`)."""
     return MARKER_KINDS.get(f.split(":", 1)[0]) if mode == "lsp" else None
 
@@ -924,7 +924,7 @@ def pick(pane, start_mode=None, start_query=None):
                f"--history={history}", "--history-size=200",
                "--bind=ctrl-p:up,ctrl-n:down,alt-p:prev-history,alt-n:next-history",  # (history is on M-p/M-n: C-p/C-n keep moving the cursor)
                f"--expect={','.join([*MODE_KEYS.values(), CYCLE_KEY, 'ctrl-c', 'esc'])}"]
-        if preview_enabled():  # beside the list, the file at the line; ^/ toggles it
+        if preview_enabled():  # beside the list, the file at the line; C-/ toggles it
             fzf += preview_args(me, mode, compact)
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             reap(subprocess.Popen([sys.executable, lsp_exe(), "status"],

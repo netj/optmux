@@ -555,7 +555,8 @@ Choose servers in your `optmux.yaml` (project or `~/.optmux.yaml`), per language
         - +command: basedpyright-langserver --stdio
           +install: brew install basedpyright
       ruby:
-        +extensions: [rb]
+        +extensions:
+        - rb
         +command: ruby-lsp
         +install: gem install ruby-lsp
       bash:

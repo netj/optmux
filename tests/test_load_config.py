@@ -114,7 +114,8 @@ def test_plus_syntax_loads_as_bare_keywords(capsys):
     +preview: false
     +lsp:
       python:
-        +extensions: [py]
+        +extensions:
+        - py
         +servers:
         - +command: pylsp
   +plugins:
