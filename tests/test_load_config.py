@@ -276,3 +276,23 @@ def test_menu_item_keys_and_titles_that_yaml_reads_as_non_text(capsys):
     assert "is not text" in capsys.readouterr().err
     out = menu.generate_menu_conf(mine["menu"], source="src")
     assert "'2024' '1'" in out
+
+
+def test_plugin_names_that_yaml_reads_as_non_text_do_not_crash(capsys):
+    from optmux.cli import generate_plugins_conf
+
+    plugins = read_optmux_section(yaml.safe_load("+optmux:\n  +plugins:\n    1:\n    off:\n    a/b:\n"), "src")["plugins"]
+    assert list(plugins) == ["1", "a/b"]
+    assert "set -g @plugin '1'" in generate_plugins_conf(plugins)
+    assert "plugin False" in capsys.readouterr().err
+
+
+def test_two_spellings_of_one_shortcut_key_are_warned_about(capsys):
+    data = yaml.safe_load("+optmux:\n  +shortcuts:\n    '1': echo a\n    1: echo b\n")
+    assert read_optmux_section(data, "src")["shortcuts"] == {"1": "echo b"}
+    assert "same key as an earlier one" in capsys.readouterr().err
+
+
+def test_float_shortcut_keys_must_be_quoted(capsys):
+    assert read_optmux_section(yaml.safe_load("+optmux:\n  +shortcuts:\n    1.5: echo\n"), "src")["shortcuts"] == {}
+    assert "quote it" in capsys.readouterr().err
