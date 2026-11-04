@@ -105,7 +105,9 @@ bundled_tool() {
 
 # the whole screen except the footer, as lines on stdout
 render_tips() {
-    printf '\noptmux tips\n===========\n\n'
+    local version=""
+    [[ -s "$OPTMUX_DIR/tmux/version.txt" ]] && version=$(<"$OPTMUX_DIR/tmux/version.txt")
+    printf '\noptmux tips%s\n===========%s\n\n' "${version:+ (v$version)}" "${version:+$(printf '%*s' $((${#version} + 4)) '' | tr ' ' '=')}"
     echo "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project."
     echo "The optmux Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
     echo

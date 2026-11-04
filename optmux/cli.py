@@ -417,6 +417,7 @@ def generate_tmux_conf_files(tmux_dir, optmux, bundled_shortcuts=None):
     if plugins_content:
         new_files[PLUGINS_CONF] = plugins_content.encode()
         (tmux_dir / PLUGINS_CONF).write_text(plugins_content)
+    (tmux_dir / "version.txt").write_text(f"{__version__}\n")  # shown atop the tips screen
     plugins_tips = generate_plugins_tips(optmux.get("plugins") or {})
     if plugins_tips:
         (tmux_dir / PLUGINS_TIPS).write_text(plugins_tips)

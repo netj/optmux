@@ -456,7 +456,7 @@ Personal config is merged with per-project config. When both define the same key
 
 - Edit `tmux/tmux.conf` to change tmux settings
 - Drop `tmux/tmux.mysetup.conf` files for additional config (auto-sourced)
-- Run `tmux/plugins-update.sh` from inside tmux to update plugins
+- Press `prefix I` (or `U`) to install/update plugins and reload the config (runs `tmux/plugins-update.sh`; TPM's own `I`/`U` only print DONE)
 - Press `prefix + R` to reload the config
 
 ### Environment variables
