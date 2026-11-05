@@ -4,9 +4,9 @@
 Usage: optmux-extract [PANE_ID]   (meant to run in a tmux popup; the active pane by default)
 
 Unlike extrakto, lines keep their screen order and duplicates (`fi`, `done`, blank lines, ...), so
-a multiline script survives the round trip. `C-M-x` cycles what is listed: lines, spans (runs of text the
-program itself styled: colored, bold, underlined, ...), patterns (URLs, paths, file names, commit
-hashes, versions) and words. Enter types the selection into the pane; `C-y` copies it, by the method
+a multiline script survives the round trip. `C-M-x` switches what is listed: lines, or spans (runs of text the
+program itself styled: colored, bold, underlined, ...) mixed, in screen order, with patterns (URLs, paths, file
+names, commit hashes, PR/issue numbers like #234, quoted text, versions). Enter types the selection into the pane; `C-y` copies it, by the method
 `C-t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
 method are remembered (tmux options on the server) for the next time, and so are each filter's query and the
 item the cursor was on: it opens fresh, and `M-p` steps back through the filter's earlier queries (each with its
@@ -114,7 +114,7 @@ def parse_line(raw):
     return "".join(plain), runs
 
 
-FILTERS = ["lines", "spans", "patterns", "words"]
+FILTERS = ["lines", "spans"]
 COPIERS = ["osc52", "native", "buffer"]
 FILTER_OPTION = "@optmux-extract-filter"
 COPY_OPTION = "@optmux-extract-copy"
@@ -127,12 +127,14 @@ PATTERNS = [
     ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
     ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
     ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
+    ("pr", r"(?<![\w&/#])#\d+\b"),  # PR/issue numbers: #234
     ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not 192.168.1.100)
     ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
+    # quoted text: 'x' "x" `x` and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
+    # recognizable inside (a path, a file) is listed as itself, and an apostrophe (don't) doesn't open one.
+    ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)([^'\n]+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\")(?!\w)"),
 ]
 PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
-WORD = re.compile(r"\w(?:[\w./:@~+=%-]*\w)?")
-MIN_WORD = 3
 TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
 CLOSERS = {")": "(", "]": "[", "}": "{"}
 
@@ -149,11 +151,11 @@ def trim_url(text):
 # How each item is drawn, by `icons` (the same setting as optmux Find, whose glyphs these follow): a pattern by
 # its kind, any other by the filter it is listed by (the same icon on every row, so switching filters keeps the columns).
 PATTERN_ICONS = {
-    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "hash": "#️⃣", "ver": "🏷️", "lines": "📃", "spans": "🎨", "words": "🔤"},
-    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "hash": "\ue729", "ver": "\uf02b",
-             "lines": "\uf0c9", "spans": "\uf1fc", "words": "\uf031"},
-    "none": {kind: "" for kind in ("url", "path", "file", "hash", "ver", "lines", "spans", "words")},
-    "text": {"url": "url ", "path": "path", "file": "file", "hash": "hash", "ver": "ver ", "lines": "line", "spans": "span", "words": "word"},
+    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "quote": "💬", "hash": "#️⃣", "pr": "🔀", "ver": "🏷️", "lines": "📃", "spans": "🎨"},
+    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "quote": "\uf10d", "hash": "\ue729", "pr": "\ue726", "ver": "\uf02b",
+             "lines": "\uf0c9", "spans": "\uf1fc"},
+    "none": {kind: "" for kind in ("url", "path", "file", "quote", "hash", "pr", "ver", "lines", "spans")},
+    "text": {"url": "url ", "path": "path", "file": "file", "quote": "quot", "hash": "hash", "pr": "pr  ", "ver": "ver ", "lines": "line", "spans": "span"},
 }
 
 
@@ -173,8 +175,11 @@ def find_patterns(plain):
     taken, found = [], []
     for label, rx in PATTERNS:
         for m in rx.finditer(plain):
-            text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
-            s, e = m.start(), m.start() + len(text)
+            if label == "quote":
+                text, (s, e) = next(g for g in m.groups() if g is not None), m.span()
+            else:
+                text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
+                s, e = m.start(), m.start() + len(text)
             if text and not any(s < te and ts < e for ts, te in taken):
                 taken.append((s, e))
                 found.append((s, label, text))
@@ -182,10 +187,11 @@ def find_patterns(plain):
 
 
 def span_items(parsed, width):
-    """[(text, style)] for the styled runs on the screen. A run that fills its line right up to the edge and
+    """([(text, style, line, column)], covered) for the styled runs on the screen, `covered` being {line: [(start, end)]}. A run that fills its line right up to the edge and
     continues in the same style at the start of the next line was wrapped by the program: join the two.
     Only an exact fit counts (the next line's first word wouldn't have fitted), so that is precise but misses some."""
-    items = []  # [text, style, line, first, last, line_length] where first/last tell whether it touches the line's start/end
+    items = []  # [text, style, line, first, last, line_length, first_line, column] where first/last tell whether it touches the line's start/end
+    covered = {}
     for i, ((plain, runs), _) in enumerate(parsed):
         body = plain.rstrip()
         for s, e, style in runs:
@@ -195,7 +201,8 @@ def span_items(parsed, width):
                 continue
             end = s + len(plain[s:e].rstrip())
             start = s + len(plain[s:e]) - len(plain[s:e].lstrip())
-            items.append([text, style, i, start == len(plain) - len(plain.lstrip()), end == len(body), len(body)])
+            items.append([text, style, i, start == len(plain) - len(plain.lstrip()), end == len(body), len(body), i, start])
+            covered.setdefault(i, []).append((start, end))
     merged = []
     for item in items:
         prev = merged[-1] if merged else None
@@ -205,7 +212,7 @@ def span_items(parsed, width):
             prev[2], prev[4], prev[5] = item[2], item[4], item[5]
         else:
             merged.append(item)
-    return [(m[0], m[1]) for m in merged]
+    return [(m[0], m[1], m[6], m[7]) for m in merged], covered
 
 
 def choices(capture, mode, width=None):
@@ -217,24 +224,18 @@ def choices(capture, mode, width=None):
         icon = PATTERN_ICONS[icon_style()]["lines"]
         mark = f"\x1b[2m{icon}\x1b[0m " if icon else ""
         return [(plain.rstrip(), mark + OTHER_ESCAPES.sub("", raw).rstrip() + "\x1b[0m") for ((plain, _), raw) in parsed]
-    found = {}  # repeats stay once, at their latest position
     icons = PATTERN_ICONS[icon_style()]
-    mark = f"\x1b[2m{icons.get(mode, '')}\x1b[0m " if icons.get(mode) else ""
-    if mode == "spans":
-        for text, style in span_items(parsed, width):
-            found.pop(text, None)
-            found[text] = f"{mark}{style.sgr()}{text}\x1b[0m"
-    else:
-        for (plain, _), _ in parsed:
-            if mode == "patterns":
-                for _, label, text in find_patterns(plain):
-                    found.pop(text, None)
-                    found[text] = (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text
-            else:
-                for m in WORD.finditer(plain):
-                    if len(m.group()) >= MIN_WORD:
-                        found.pop(m.group(), None)
-                        found[m.group()] = mark + m.group()
+    mark = f"\x1b[2m{icons['spans']}\x1b[0m " if icons["spans"] else ""
+    spans, covered = span_items(parsed, width)
+    entries = [(line, col, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
+    for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
+        for start, label, text in find_patterns(plain):
+            if not any(start < e and s < start + len(text) for s, e in covered.get(line, [])):
+                entries.append((line, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
+    found = {}  # repeats stay once, at their latest position
+    for _, _, text, display in sorted(entries, key=lambda e: e[:2]):
+        found.pop(text, None)
+        found[text] = display
     return list(found.items())
 
 def compose(selection, mode):
