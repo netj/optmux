@@ -119,8 +119,8 @@ optmux pick [--list] [--live] [-1] [QUERY]
 Every project has its own TMUX server, so nothing shows what is running across projects. optmux remembers each project it was started in (`${XDG_STATE_HOME:-~/.local/state}/optmux/projects.tsv`), and `optmux pick` lists them with [fzf](https://github.com/junegunn/fzf) (a numbered menu if fzf is missing): ● has a running session, ○ doesn't; running ones come first, most recently active on top. The preview shows the session's windows and their directories, with a `[bell]` on those that rang.
 
 - `Enter` attaches to the project's session, starting it if needed
-- `ctrl-x` stops the highlighted project's session
-- `ctrl-d` forgets the project (projects whose directory or YAML is gone are dropped automatically)
+- `ctrl-x` stops the highlighted project's session, or forgets the project if it isn't running, after a `y/N` (projects whose directory or YAML is gone are dropped automatically)
+- `Esc` or `ctrl-d` quits
 - `QUERY` pre-filters; `-1` picks without asking when exactly one project matches; `--live` hides projects that aren't running; `--list` prints TSV (`state kind target session socket`) for scripts
 
 `optmux pick` is one action: it returns after you detach or exit (status 0), so a shell wrapper can offer to pick again. Exit status is 130 if you cancelled, and 1 if there was nothing to pick.
@@ -482,7 +482,7 @@ optmux sets these before launching tmux/tmuxp:
 
 optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](optmux-defaults.yaml) under [`env`](#env), [`git_config`](#git_config), and [`lazygit`](#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](#optmux-env). Your dotfiles and your shells are left alone. See [The optmux Way](OPTMUX-WAY.md) for how it fits into working with coding agents.
 
-- **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
+- **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): It opens on files when there are uncommitted changes or the branch has no diff against the default branch yet, and otherwise on the branch's commits. optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
 - **Clickable diff** (`C-M-d`, same as `Ctrl-g` in lazygit): what the branch changes against the default branch, rendered by delta in less, so you can scroll with the mouse and click a line number twice to edit it.
 - **[delta](https://github.com/dandavison/delta)**: becomes git's pager (`core.pager`, `interactive.diffFilter`), with line numbers, `n`/`N` file navigation, moved-code coloring, and hyperlinked line numbers and commit hashes.
 - **less**: mouse mode (`--mouse`) and an [OSC 8](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda) hyperlink handler. Click a link once to select it and again to open it: `file://…#L<n>` opens `$VISUAL`/`$EDITOR` at that line, and `http(s)` links open your browser. Clicking links needs a recent `less` (Homebrew's; the formula depends on it).

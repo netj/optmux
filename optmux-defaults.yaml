@@ -204,10 +204,16 @@
         find a file or a tag (ranked together, omni) or a line (git grep) to edit; C-M-f cycles them and it resumes where you left off
     C-M-g:
       +command: |
-        (sleep 0.5; tmux send-keys Enter '*' Enter) &
-        "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch
-      +tip: |
-        Open lazygit and see the diff of commits of this branch
+        base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=origin/main
+        git diff --quiet "$base"... -- 2>/dev/null
+        if [ $? -eq 1 ] && [ -z "$(git --no-optional-locks status --porcelain 2>/dev/null)" ]; then
+          (sleep 0.5; tmux send-keys Enter '*' Enter) &
+          "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal branch
+        else
+          "$OPTMUX_DIR/bin/optmux-env" lazygit --screen-mode normal
+        fi
+      +tip: >
+        lazygit, opened on files when there are uncommitted changes or the branch has no diff yet, else on this branch's commits
     C-M-d:
       +command: |
         "$OPTMUX_DIR/bin/optmux-env" optmux-diff-base
