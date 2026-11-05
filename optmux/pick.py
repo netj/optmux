@@ -95,6 +95,46 @@ def forget_project(target):
     save_registry([p for p in load_registry() if p.target != target])
 
 
+def confirm(question):
+    """Ask y/N on the terminal, one keystroke; anything but y (Enter, Esc, C-c, C-d) is no."""
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR)
+    except OSError:
+        return False
+    try:
+        os.write(fd, f"{question} [y/N] ".encode())
+        try:
+            import termios
+            saved = termios.tcgetattr(fd)
+            raw = termios.tcgetattr(fd)
+            raw[3] &= ~(termios.ICANON | termios.ECHO | termios.ISIG)
+            termios.tcsetattr(fd, termios.TCSANOW, raw)
+        except (ImportError, OSError):
+            saved = None
+        try:
+            answer = os.read(fd, 1)
+        finally:
+            if saved is not None:
+                termios.tcsetattr(fd, termios.TCSANOW, saved)
+        yes = answer.lower() == b"y"
+        os.write(fd, b"y\n" if yes else b"n\n")
+        return yes
+    finally:
+        os.close(fd)
+
+
+def stop_or_forget(target):
+    """The picker's ctrl-x: stop the project's session if it's running, else forget the project; asks first."""
+    project = next((p for p in load_registry() if p.target == target), None)
+    if project is None:
+        return
+    if probe(project).live:
+        if confirm(f"Stop {project.session} ({tilde(project.target)})?"):
+            subprocess.run([sys.executable, "-c", "from optmux.cli import main; main()", project.target, "stop"])
+    elif confirm(f"Forget {tilde(project.target)}? (it comes back when optmux starts there)"):
+        forget_project(project.target)
+
+
 def probe(project):
     """Fill in the project's live state from its TMUX server; not running leaves it not live."""
     try:
@@ -174,10 +214,10 @@ def choose_with_fzf(projects, title="optmux pick"):
     cmd = [
         "fzf", "--delimiter", "\t", "--with-nth", "4", "--no-sort", "--ansi",
         "--prompt", f"{title}> ",
-        "--header", f"{title}: choose an optmux project to launch\nenter: attach/start   ctrl-x: stop   ctrl-d: forget",
+        "--header", f"{title}: choose an optmux project to launch\nenter: attach/start   ctrl-x: stop (or forget, if stopped)   esc/ctrl-d: quit",
         "--preview", preview, "--preview-window", "right,40%",
-        "--bind", f"ctrl-x:execute-silent({self_command('{1}', 'stop')})+reload({self_command('pick', '--rows')})",
-        "--bind", f"ctrl-d:execute-silent({self_command('pick', '--forget', '{1}')})+reload({self_command('pick', '--rows')})",
+        "--bind", "ctrl-d:abort",  # (like esc: C-d hangs up, never forgets)
+        "--bind", f"ctrl-x:execute({self_command('pick', '--stop-or-forget', '{1}')})+reload({self_command('pick', '--rows')})",
     ]
     result = subprocess.run(cmd, input="\n".join(fzf_rows(projects)) + "\n", stdout=subprocess.PIPE, text=True)
     if result.returncode != 0 or not result.stdout.strip():
@@ -204,7 +244,8 @@ usage: optmux pick [--list] [--live] [-1] [--title TITLE] [QUERY]
   Choose a project optmux has been started in, and attach to (or start) its TMUX session.
   Returns when you detach or exit, so it can be run in a loop.
   ● has a running session, ○ doesn't. Inside the picker:
-  enter attaches or starts, ctrl-x stops the session, ctrl-d forgets the project.
+  enter attaches or starts, ctrl-x stops the session (or forgets the project once stopped)
+  after a y/N, esc or ctrl-d quits.
 
   --list      print projects as TSV (state, kind, target, session, socket) and exit
   --live      only projects with a running session
@@ -222,6 +263,7 @@ def run(argv):
     select = None  # hidden, for tests: pick the Nth project without any UI
     rows = False  # hidden, for the picker's reload
     forget = None
+    stop_or_forget_target = None
     title = None
     args = list(argv)
     while args:
@@ -243,11 +285,16 @@ def run(argv):
             title = args.pop(0)
         elif a == "--forget":
             forget = args.pop(0)
+        elif a == "--stop-or-forget":
+            stop_or_forget_target = args.pop(0)
         else:
             query.append(a)
 
     if forget is not None:
         forget_project(forget)
+        return 0
+    if stop_or_forget_target is not None:
+        stop_or_forget(stop_or_forget_target)
         return 0
 
     projects = pickable()

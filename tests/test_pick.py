@@ -42,6 +42,35 @@ def test_forget(tmp_path):
     assert pick.load_registry() == []
 
 
+@pytest.mark.parametrize("answer, kept", [(False, 1), (True, 0)])
+def test_ctrl_x_forgets_a_stopped_project_only_on_yes(tmp_path, answer, kept):
+    a = make_dir(tmp_path, "a")
+    pick.record_project("dir", a, "a", str(tmp_path / "no.sock"))
+    with patch.object(pick, "confirm", return_value=answer) as asked:
+        assert pick.run(["--stop-or-forget", str(a)]) == 0
+    assert "Forget" in asked.call_args[0][0]
+    assert len(pick.load_registry()) == kept
+
+
+@pytest.mark.parametrize("answer, stops", [(False, 0), (True, 1)])
+def test_ctrl_x_stops_a_live_project_only_on_yes(tmp_path, answer, stops):
+    a = make_dir(tmp_path, "a")
+    pick.record_project("dir", a, "a", "/s/a")
+    live = lambda p: setattr(p, "live", True) or p
+    with patch.object(pick, "probe", side_effect=live), \
+         patch.object(pick, "confirm", return_value=answer) as asked, \
+         patch.object(pick.subprocess, "run") as run:
+        pick.run(["--stop-or-forget", str(a)])
+    assert "Stop" in asked.call_args[0][0]
+    assert run.call_count == stops and (not stops or run.call_args[0][0][-2:] == [str(a), "stop"])
+    assert len(pick.load_registry()) == 1  # (stopping never forgets)
+
+
+def test_confirm_without_a_terminal_is_no():
+    with patch.object(pick.os, "open", side_effect=OSError):
+        assert pick.confirm("Forget?") is False
+
+
 def test_garbage_lines_ignored(state):
     (state / "optmux").mkdir(parents=True)
     (state / "optmux" / "projects.tsv").write_text("junk\nx\tdir\t/a\ts\t/k\n")

@@ -119,8 +119,8 @@ optmux pick [--list] [--live] [-1] [QUERY]
 Every project has its own TMUX server, so nothing shows what is running across projects. optmux remembers each project it was started in (`${XDG_STATE_HOME:-~/.local/state}/optmux/projects.tsv`), and `optmux pick` lists them with [fzf](https://github.com/junegunn/fzf) (a numbered menu if fzf is missing): ● has a running session, ○ doesn't; running ones come first, most recently active on top. The preview shows the session's windows and their directories, with a `[bell]` on those that rang.
 
 - `Enter` attaches to the project's session, starting it if needed
-- `ctrl-x` stops the highlighted project's session
-- `ctrl-d` forgets the project (projects whose directory or YAML is gone are dropped automatically)
+- `ctrl-x` stops the highlighted project's session, or forgets the project if it isn't running, after a `y/N` (projects whose directory or YAML is gone are dropped automatically)
+- `Esc` or `ctrl-d` quits
 - `QUERY` pre-filters; `-1` picks without asking when exactly one project matches; `--live` hides projects that aren't running; `--list` prints TSV (`state kind target session socket`) for scripts
 
 `optmux pick` is one action: it returns after you detach or exit (status 0), so a shell wrapper can offer to pick again. Exit status is 130 if you cancelled, and 1 if there was nothing to pick.
