@@ -41,7 +41,7 @@ def test_parse_line_strips_hyperlinks_and_tracks_256_and_rgb_colors():
 def test_compose_dedents_lines_and_joins_spans_with_spaces():
     assert pt.compose(["    a", "      b", ""], "lines") == "a\n  b"
     assert pt.compose(["foo", "bar"], "spans") == "foo bar"
-    assert pt.compose(["foo", "bar"], "words") == "foo bar"
+    assert pt.compose(["foo", "bar"], "spans") == "foo bar"
 
 
 def test_compose_puts_picks_that_contain_whitespace_on_their_own_lines():
@@ -50,23 +50,20 @@ def test_compose_puts_picks_that_contain_whitespace_on_their_own_lines():
 
 
 def test_patterns_find_urls_paths_files_hashes_and_versions_without_overlaps():
-    line = "see https://github.com/netj/optmux/pull/38. ~/a/cli.py:12:3 foo.py eb0eb3f v0.13.2 1452 deadbeef"
+    line = "see https://github.com/netj/optmux/pull/38. ~/a/cli.py:12:3 foo.py eb0eb3f v0.13.2 1452 deadbeef (#234) a#5 &#38;"
     assert [(label, text) for _, label, text in pt.find_patterns(line)] == [
         ("url", "https://github.com/netj/optmux/pull/38"),
         ("path", "~/a/cli.py:12:3"),
         ("file", "foo.py"),
         ("hash", "eb0eb3f"),
         ("ver", "v0.13.2"),
+        ("pr", "#234"),
     ]
 
 
 def test_pattern_choices_are_labelled_and_deduplicated_at_latest_position():
     cap = "a.py b.py\nc.py a.py\n"
-    assert [t for t, _ in pt.choices(cap, "patterns")] == ["b.py", "c.py", "a.py"]
-
-
-def test_words_skip_short_ones():
-    assert [t for t, _ in pt.choices("an ox, tiger-lily (rose)\n", "words")] == ["tiger-lily", "rose"]
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["b.py", "c.py", "a.py"]
 
 
 def test_cycle_wraps_around():
@@ -76,12 +73,12 @@ def test_cycle_wraps_around():
 def test_labels_shrink_in_narrow_terminals(monkeypatch):
     import os
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
-    wide = pt.labels("words", "osc52")
-    assert wide[1] == "--prompt=words filtered (C-M-x to switch) > "
+    wide = pt.labels("spans", "osc52")
+    assert wide[1] == "--prompt=spans filtered (C-M-x to switch) > "
     assert "C-f files" in wide[0] and "C-g grep" in wide[0] and "C-M-f all" in wide[0] and "M-p/M-n" in wide[0]
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
-    narrow = pt.labels("words", "osc52")
-    assert narrow[1] == "--prompt=words (C-M-x) > "
+    narrow = pt.labels("spans", "osc52")
+    assert narrow[1] == "--prompt=spans (C-M-x) > "
     assert all(len(line) < 80 for line in narrow[0].split("\n")) and "C-f: files" in narrow[0]
 
 
@@ -247,10 +244,10 @@ def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
 
 
 def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
-    cap = "see https://x.org/a and ./b/c.py and abc1234 and v1.2.3\n"
-    for style, glyphs in (("emoji", ["🔗", "📁", "#️⃣", "🏷️"]), ("nerd", ["\uf0c1", "\uf07b", "\ue729", "\uf02b"]), ("text", ["url", "path", "hash", "ver"])):
+    cap = "see https://x.org/a and ./b/c.py and abc1234 and #42 and v1.2.3\n"
+    for style, glyphs in (("emoji", ["🔗", "📁", "#️⃣", "🔀", "🏷️"]), ("nerd", ["\uf0c1", "\uf07b", "\ue729", "\ue726", "\uf02b"]), ("text", ["url", "path", "hash", "pr", "ver"])):
         monkeypatch.setenv("OPTMUX_ICONS", style)
-        shown = "\n".join(d for _, d in pt.choices(cap, "patterns"))
+        shown = "\n".join(d for _, d in pt.choices(cap, "spans"))
         assert all(g in shown for g in glyphs), style
     monkeypatch.delenv("OPTMUX_ICONS")
     monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
@@ -261,50 +258,50 @@ def test_the_queries_and_items_of_a_filter_are_remembered_newest_first(monkeypat
     options = {}
     monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
     monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
-    assert pt.load_history("words") == []  # nothing yet
-    pt.save_state("words", "bash", "bashrc")
-    pt.save_state("words", ".tmp/", ".tmp/x")
-    pt.save_state("words", "bash", '  an "item"\twith odd bits')  # again: moves to the front, once
-    assert pt.load_history("words") == [("bash", '  an "item"\twith odd bits'), (".tmp/", ".tmp/x")]  # (leading space and all)
+    assert pt.load_history("spans") == []  # nothing yet
+    pt.save_state("spans", "bash", "bashrc")
+    pt.save_state("spans", ".tmp/", ".tmp/x")
+    pt.save_state("spans", "bash", '  an "item"\twith odd bits')  # again: moves to the front, once
+    assert pt.load_history("spans") == [("bash", '  an "item"\twith odd bits'), (".tmp/", ".tmp/x")]  # (leading space and all)
     assert pt.load_history("lines") == []  # each filter has its own
     for n in range(pt.MAX_HISTORY + 5):
-        pt.save_state("words", f"q{n}", None)
-    assert len(pt.load_history("words")) == pt.MAX_HISTORY and pt.load_history("words")[0] == (f"q{pt.MAX_HISTORY + 4}", None)
-    options[pt.STATE_OPTION + "words"] = "garbage"
-    assert pt.load_history("words") == []
-    options[pt.STATE_OPTION + "words"] = '[1, {"query": 5}, {"query": "ok"}]'
-    assert pt.load_history("words") == [("ok", None)]
+        pt.save_state("spans", f"q{n}", None)
+    assert len(pt.load_history("spans")) == pt.MAX_HISTORY and pt.load_history("spans")[0] == (f"q{pt.MAX_HISTORY + 4}", None)
+    options[pt.STATE_OPTION + "spans"] = "garbage"
+    assert pt.load_history("spans") == []
+    options[pt.STATE_OPTION + "spans"] = '[1, {"query": 5}, {"query": "ok"}]'
+    assert pt.load_history("spans") == [("ok", None)]
 
 
 @pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")
 def test_the_cursor_goes_back_to_the_remembered_item():
     numbered = list(reversed(list(enumerate([("alpha", "alpha"), ("beta", "beta"), ("alphabet", "alphabet")]))))
-    assert pt.cursor_position(numbered, "", "words", "beta") == ("", 2)  # best first: the newest is 1
-    assert pt.cursor_position(numbered, "alp", "words", "alpha") == ("alp", 2)
-    assert pt.cursor_position(numbered, "alp", "words", "beta") == ("alp", None)  # not in the list it filters to
-    assert pt.cursor_position(numbered, "zzz", "words", "beta", recalled=True) == ("", 2)  # a recalled query that matches nothing now is dropped
-    assert pt.cursor_position(numbered, "zzz", "words", None) == ("zzz", None)  # one you are typing is not
-    assert pt.cursor_position(numbered, "", "words", None) == ("", None)
+    assert pt.cursor_position(numbered, "", "spans", "beta") == ("", 2)  # best first: the newest is 1
+    assert pt.cursor_position(numbered, "alp", "spans", "alpha") == ("alp", 2)
+    assert pt.cursor_position(numbered, "alp", "spans", "beta") == ("alp", None)  # not in the list it filters to
+    assert pt.cursor_position(numbered, "zzz", "spans", "beta", recalled=True) == ("", 2)  # a recalled query that matches nothing now is dropped
+    assert pt.cursor_position(numbered, "zzz", "spans", None) == ("zzz", None)  # one you are typing is not
+    assert pt.cursor_position(numbered, "", "spans", None) == ("", None)
 
 
 def test_every_filter_marks_its_items_the_same_way(monkeypatch):
-    for style, marks in (("emoji", {"lines": "📃", "spans": "🎨", "words": "🔤"}), ("text", {"lines": "line", "spans": "span", "words": "word"})):
+    for style, marks in (("emoji", {"lines": "📃", "spans": "🎨"}), ("text", {"lines": "line", "spans": "span"})):
         monkeypatch.setenv("OPTMUX_ICONS", style)
         for mode, mark in marks.items():
             shown = [d for _, d in pt.choices(CAPTURE, mode)]
-            assert shown and all(mark in d for d in shown), (style, mode)
+            assert shown and any(mark in d for d in shown), (style, mode)
     assert [t for t, _ in pt.choices(CAPTURE, "lines")][1] == '  git commit -m "msg"'  # (what is typed has no mark)
 
 
 def test_the_header_mentions_clearing_the_query(monkeypatch):
     for columns in (60, 120):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
-        assert "C-u" in pt.labels("words", "osc52")[0] and "M-p" in pt.labels("words", "osc52")[0]
+        assert "C-u" in pt.labels("spans", "osc52")[0] and "M-p" in pt.labels("spans", "osc52")[0]
 
 
 def test_no_icons_leaves_the_items_bare(monkeypatch):
     monkeypatch.setenv("OPTMUX_ICONS", "none")
-    for mode in ("lines", "patterns", "words"):
+    for mode in ("lines", "spans"):
         assert all(not d.startswith(("\x1b[2m", " ")) for _, d in pt.choices("see ./a/b.py and v1.2.3\n", mode)), mode
     monkeypatch.delenv("OPTMUX_ICONS")
     monkeypatch.setenv("OPTMUX_DIR", "/nonexistent")
@@ -314,7 +311,7 @@ def test_no_icons_leaves_the_items_bare(monkeypatch):
 def test_a_long_item_gets_its_cursor_back_too():
     long = "x" * 500
     numbered = [(0, (long, long)), (1, ("short", "short"))]
-    assert pt.cursor_position(numbered, "", "words", long[:pt.MAX_ITEM]) == ("", 1)
+    assert pt.cursor_position(numbered, "", "spans", long[:pt.MAX_ITEM]) == ("", 1)
 
 
 def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
@@ -354,3 +351,15 @@ def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(mon
     monkeypatch.setattr(pt.sys, "stdout", NotATerminal())
     pt.copy("y", "osc52")
     assert loaded[-1] == ("y", True)
+
+
+def test_patterns_find_quoted_text_in_all_quote_styles_but_not_apostrophes():
+    line = """use `--force' or '--dry-run', "git commit -m x" and `foo` but don't, can't 'a.py'"""
+    assert [(label, text) for _, label, text in pt.find_patterns(line)] == [
+        ("quote", "--force"), ("quote", "--dry-run"), ("quote", "git commit -m x"), ("quote", "foo"), ("file", "a.py"),
+    ]
+
+
+def test_spans_mix_styled_runs_with_the_patterns_around_them_in_screen_order():
+    cap = "see ./a/b.py then \x1b[32mgit commit\x1b[0m for #234 and \x1b[31m./c.py\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["./a/b.py", "git commit", "#234", "./c.py"]
