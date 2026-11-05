@@ -249,6 +249,19 @@ def test_rerun_replaces_read_only_scripts(tmp_path):
     assert os.access(tmp_path / "bin" / "optmux-env", os.X_OK)
 
 
+def test_setup_skips_directories_in_the_bundled_bin(tmp_path):
+    stray = DATA_DIR.joinpath("bin", "__pycache__")  # what importing a script (tests do) leaves behind
+    existed = stray.is_dir()
+    stray.mkdir(exist_ok=True)
+    try:
+        run_setup(tmp_path)
+    finally:
+        if not existed:
+            stray.rmdir()
+    assert not (tmp_path / "bin" / "__pycache__").exists()
+    assert os.access(tmp_path / "bin" / "optmux-env", os.X_OK)
+
+
 # --- optmux-open-url ----------------------------------------------------------
 
 @pytest.mark.parametrize("editor, uri, expected", [
