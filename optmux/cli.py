@@ -689,6 +689,8 @@ def setup_tools_env(optmux_dir, data_dir, optmux):
         shutil.rmtree(bin_dir)
     bin_dir.mkdir(parents=True)
     for script in (data_dir / "bin").iterdir():
+        if not script.is_file():  # e.g. a __pycache__ left by importing a script
+            continue
         dest = bin_dir / script.name
         dest.write_bytes(script.read_bytes())
         dest.chmod(0o555)  # read+execute for all (not writable), like tips.sh
