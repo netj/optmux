@@ -66,6 +66,60 @@ def test_ctrl_x_stops_a_live_project_only_on_yes(tmp_path, answer, stops):
     assert len(pick.load_registry()) == 1  # (stopping never forgets)
 
 
+def test_ctrl_x_forgets_a_non_canonical_entry(tmp_path):
+    a = make_dir(tmp_path, "a")
+    odd = str(a) + "/."  # (resolves elsewhere, so forget_project wouldn't match it)
+    pick.save_registry([pick.Project(1, "dir", odd, "a", "/nope")])
+    with patch.object(pick, "confirm", return_value=True):
+        pick.run(["--stop-or-forget", odd])
+    assert pick.load_registry() == []
+
+
+def _answer(keys):
+    """confirm() in a child with a pty as its terminal; returns (yes?, what's left unread on the terminal)."""
+    import os, pty, select, time
+    pid, fd = pty.fork()
+    if pid == 0:
+        yes = pick.confirm("Forget?")
+        r, _, _ = select.select([0], [], [], 0.2)
+        os.write(1, b"LEFT:" + (os.read(0, 16) if r else b"") + b"\n")
+        os._exit(0 if yes else 1)
+    out, status, deadline = b"", None, time.time() + 5
+    while b"[y/N]" not in out and time.time() < deadline:  # (keys typed before the prompt are dropped)
+        if select.select([fd], [], [], 0.1)[0]:
+            out += os.read(fd, 1024)
+    os.write(fd, keys)
+    while status is None and time.time() < deadline:
+        if select.select([fd], [], [], 0.1)[0]:
+            try:
+                out += os.read(fd, 1024)
+            except OSError:
+                pass
+        done, st = os.waitpid(pid, os.WNOHANG)
+        status = st if done else None
+    if status is None:
+        os.kill(pid, 9)
+        os.waitpid(pid, 0)
+        pytest.fail(f"confirm() hung on {keys!r}: {out!r}")
+    return os.waitstatus_to_exitcode(status) == 0, out.split(b"LEFT:")[-1].strip()
+
+
+@pytest.mark.parametrize("keys, yes", [(b"y", True), (b"Y", True), (b"\r", False), (b"\x04", False), (b"\x03", False), (b"\x1b[A", False)])
+def test_confirm_takes_one_key_and_leaves_nothing_behind(keys, yes):
+    assert _answer(keys) == (yes, b"")
+
+
+def test_picker_binds_ctrl_d_to_quit_and_ctrl_x_to_ask(tmp_path):
+    pick.record_project("dir", make_dir(tmp_path, "a"), "a", "/nope")
+    with patch.object(pick.subprocess, "run") as run:
+        run.return_value = subprocess.CompletedProcess([], 130, stdout="")
+        pick.choose_with_fzf(pick.pickable())
+    binds = [a for a in run.call_args[0][0] if a.startswith("ctrl-")]
+    assert "ctrl-d:abort" in binds
+    [ctrl_x] = [b for b in binds if b.startswith("ctrl-x:")]
+    assert "--stop-or-forget" in ctrl_x and "execute(" in ctrl_x and "execute-silent" not in ctrl_x
+
+
 def test_confirm_without_a_terminal_is_no():
     with patch.object(pick.os, "open", side_effect=OSError):
         assert pick.confirm("Forget?") is False

@@ -96,29 +96,33 @@ def forget_project(target):
 
 
 def confirm(question):
-    """Ask y/N on the terminal, one keystroke; anything but y (Enter, Esc, C-c, C-d) is no."""
+    """Ask y/N on the terminal, one keystroke; anything but y (Enter, Esc, C-c, C-d, an arrow) is no."""
     try:
         fd = os.open("/dev/tty", os.O_RDWR)
     except OSError:
         return False
     try:
-        os.write(fd, f"{question} [y/N] ".encode())
         try:
             import termios
+            import tty
             saved = termios.tcgetattr(fd)
-            raw = termios.tcgetattr(fd)
-            raw[3] &= ~(termios.ICANON | termios.ECHO | termios.ISIG)
-            termios.tcsetattr(fd, termios.TCSANOW, raw)
+            tty.setcbreak(fd)  # (one key, no echo; drops keys typed ahead, which shouldn't answer this)
+            mode = termios.tcgetattr(fd)
+            mode[3] &= ~termios.ISIG  # (C-c is an answer, not a kill)
+            termios.tcsetattr(fd, termios.TCSANOW, mode)
         except (ImportError, OSError):
             saved = None
+        os.write(fd, f"{question} [y/N] ".encode())
         try:
             answer = os.read(fd, 1)
+            if saved is not None:
+                time.sleep(0.05)  # (let the rest of a multi-byte key arrive, so none of it lands in fzf's query)
+                termios.tcflush(fd, termios.TCIFLUSH)
         finally:
             if saved is not None:
                 termios.tcsetattr(fd, termios.TCSANOW, saved)
-        yes = answer.lower() == b"y"
-        os.write(fd, b"y\n" if yes else b"n\n")
-        return yes
+        os.write(fd, b"\r\033[K")  # (no prompt left behind on the screen fzf returns from)
+        return answer.lower() == b"y"
     finally:
         os.close(fd)
 
@@ -132,7 +136,7 @@ def stop_or_forget(target):
         if confirm(f"Stop {project.session} ({tilde(project.target)})?"):
             subprocess.run([sys.executable, "-c", "from optmux.cli import main; main()", project.target, "stop"])
     elif confirm(f"Forget {tilde(project.target)}? (it comes back when optmux starts there)"):
-        forget_project(project.target)
+        save_registry([p for p in load_registry() if p.target != target])  # (this exact entry, even if not canonical)
 
 
 def probe(project):
