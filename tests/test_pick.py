@@ -120,6 +120,32 @@ def test_picker_binds_ctrl_d_to_quit_and_ctrl_x_to_ask(tmp_path):
     assert "--stop-or-forget" in ctrl_x and "execute(" in ctrl_x and "execute-silent" not in ctrl_x
 
 
+def test_picker_prompt_names_the_host(tmp_path):
+    pick.record_project("dir", make_dir(tmp_path, "a"), "a", "/nope")
+    with patch.object(pick.subprocess, "run") as run:
+        run.return_value = subprocess.CompletedProcess([], 130, stdout="")
+        pick.choose_with_fzf(pick.pickable(), "auto-optmux", "mybox")
+    cmd = run.call_args[0][0]
+    assert cmd[cmd.index("--prompt") + 1] == "auto-optmux@mybox> "
+    assert cmd[cmd.index("--header") + 1].startswith("choose an optmux project")
+
+
+def test_short_hostname_drops_the_domain():
+    with patch.object(pick.socket, "gethostname", return_value="mybox.example.com"):
+        assert pick.short_hostname() == "mybox"
+
+
+@pytest.mark.parametrize("flags, prompt", [([], "auto-optmux@mybox> "), (["--title-without-hostname"], "auto-optmux> ")])
+def test_title_without_hostname_opts_out(tmp_path, monkeypatch, flags, prompt):
+    pick.record_project("dir", make_dir(tmp_path, "a"), "a", "/nope")
+    monkeypatch.setattr(pick.shutil, "which", lambda _: "/usr/bin/fzf")
+    monkeypatch.setattr(pick.sys.stdin, "isatty", lambda: True, raising=False)
+    with patch.object(pick, "short_hostname", return_value="mybox"), patch.object(pick, "choose_with_fzf", return_value=None) as fzf:
+        assert pick.run(["--title", "auto-optmux", *flags]) == pick.EXIT_CANCELLED
+    host = fzf.call_args[0][2]
+    assert (f"auto-optmux@{host}> " if host else "auto-optmux> ") == prompt
+
+
 def test_confirm_without_a_terminal_is_no():
     with patch.object(pick.os, "open", side_effect=OSError):
         assert pick.confirm("Forget?") is False

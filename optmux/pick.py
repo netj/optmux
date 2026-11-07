@@ -8,6 +8,7 @@ tells whether its server is up.
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -128,7 +129,7 @@ def confirm(question):
 
 
 def stop_or_forget(target):
-    """The picker's ctrl-x: stop the project's session if it's running, else forget the project; asks first."""
+    """The picker's C-x: stop the project's session if it's running, else forget the project; asks first."""
     project = next((p for p in load_registry() if p.target == target), None)
     if project is None:
         return
@@ -209,7 +210,12 @@ def fzf_rows(projects):
     ]
 
 
-def choose_with_fzf(projects, title="optmux pick"):
+def short_hostname():
+    """This machine's name without its domain (like `hostname -s`), so the picker says which machine it's on."""
+    return socket.gethostname().split(".")[0] or "localhost"
+
+
+def choose_with_fzf(projects, title="optmux pick", host=None):
     """Run fzf over the projects (already filtered by the query); returns the chosen target, or None when cancelled."""
     preview = (
         f"tmux -S {{2}} list-windows -t {{3}} -F {shlex.quote(LIST_WINDOWS_FORMAT)} 2>/dev/null"
@@ -217,10 +223,10 @@ def choose_with_fzf(projects, title="optmux pick"):
     )
     cmd = [
         "fzf", "--delimiter", "\t", "--with-nth", "4", "--no-sort", "--ansi",
-        "--prompt", f"{title}> ",
-        "--header", f"{title}: choose an optmux project to launch\nenter: attach/start   ctrl-x: stop (or forget, if stopped)   esc/ctrl-d: quit",
+        "--prompt", f"{title}@{host}> " if host else f"{title}> ",
+        "--header", "choose an optmux project to launch\nEnter: attach/start   C-x: stop/forget   Esc/C-d: quit",
         "--preview", preview, "--preview-window", "right,40%",
-        "--bind", "ctrl-d:abort",  # (like esc: C-d hangs up, never forgets)
+        "--bind", "ctrl-d:abort",  # (like Esc: C-d hangs up, never forgets)
         "--bind", f"ctrl-x:execute({self_command('pick', '--stop-or-forget', '{1}')})+reload({self_command('pick', '--rows')})",
     ]
     result = subprocess.run(cmd, input="\n".join(fzf_rows(projects)) + "\n", stdout=subprocess.PIPE, text=True)
@@ -229,12 +235,12 @@ def choose_with_fzf(projects, title="optmux pick"):
     return result.stdout.split("\n")[0].split("\t")[0]
 
 
-def choose_with_menu(projects, title="pick"):
+def choose_with_menu(projects, title="optmux pick", host=None):
     """Numbered-menu fallback when fzf is missing."""
     for i, p in enumerate(projects, 1):
         print(f"{i:3}) {'●' if p.live else '○'} {p.label}  {describe(p)}", file=sys.stderr)
     try:
-        answer = input(f"{title}> ").strip()
+        answer = input(f"{title}@{host}> " if host else f"{title}> ").strip()
     except (EOFError, KeyboardInterrupt):
         return None
     if answer.isdigit() and 1 <= int(answer) <= len(projects):
@@ -243,18 +249,21 @@ def choose_with_menu(projects, title="pick"):
 
 
 USAGE = """\
-usage: optmux pick [--list] [--live] [-1] [--title TITLE] [QUERY]
+usage: optmux pick [--list] [--live] [-1] [--title TITLE] [--title-without-hostname] [QUERY]
 
   Choose a project optmux has been started in, and attach to (or start) its TMUX session.
   Returns when you detach or exit, so it can be run in a loop.
   ● has a running session, ○ doesn't. Inside the picker:
-  enter attaches or starts, ctrl-x stops the session (or forgets the project once stopped)
-  after a y/N, esc or ctrl-d quits.
+  Enter attaches or starts, C-x stops the session (or forgets the project once stopped)
+  after a y/N, Esc or C-d quits.
 
   --list      print projects as TSV (state, kind, target, session, socket) and exit
   --live      only projects with a running session
   -1          if exactly one project matches QUERY, pick it without asking
-  --title T   name the picker (prompt and header) after the caller, e.g. auto-optmux
+  --title T   name the picker (its prompt) after the caller, e.g. auto-optmux;
+              the machine's short hostname follows it (auto-optmux@myhost>)
+  --title-without-hostname
+              leave the hostname out of the prompt (auto-optmux>)
 
 exit status: 0 after attach/detach, 130 cancelled, 1 nothing to pick
 """
@@ -269,6 +278,7 @@ def run(argv):
     forget = None
     stop_or_forget_target = None
     title = None
+    with_hostname = True
     args = list(argv)
     while args:
         a = args.pop(0)
@@ -287,6 +297,8 @@ def run(argv):
             rows = True
         elif a == "--title":
             title = args.pop(0)
+        elif a == "--title-without-hostname":
+            with_hostname = False
         elif a == "--forget":
             forget = args.pop(0)
         elif a == "--stop-or-forget":
@@ -319,14 +331,15 @@ def run(argv):
         print("optmux pick: no projects" + (" match" if needle or live_only else " yet (start optmux in one first)"), file=sys.stderr)
         return EXIT_NOTHING
 
+    host = short_hostname() if with_hostname else None
     if select is not None:
         target = projects[select - 1].target
     elif auto_single and len(projects) == 1:
         target = projects[0].target
     elif shutil.which("fzf") and sys.stdin.isatty():
-        target = choose_with_fzf(projects, title or "optmux pick")
+        target = choose_with_fzf(projects, title or "optmux pick", host)
     else:
-        target = choose_with_menu(projects, title or "pick")
+        target = choose_with_menu(projects, title or "optmux pick", host)
     if target is None:
         return EXIT_CANCELLED
 
