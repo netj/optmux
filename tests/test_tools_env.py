@@ -56,7 +56,7 @@ def git_get(env, key, tmp_path):
     return result.stdout.split("\n")[:-1]
 
 
-def run_setup(tmp_path, optmux=None, tools=("delta", "lazygit"), lazygit_config_dir=None):
+def run_setup(tmp_path, optmux=None, tools=("delta", "lazygit"), lazygit_config_dir=None, data_dir=DATA_DIR):
     """Run setup_tools_env with fake installed tools (and no real subprocesses)."""
     def fake_run(cmd, **kwargs):
         if cmd[:2] == ["lazygit", "--print-config-dir"]:
@@ -67,7 +67,7 @@ def run_setup(tmp_path, optmux=None, tools=("delta", "lazygit"), lazygit_config_
         optmux = load_bundled_defaults()
     with patch.object(cli.shutil, "which", side_effect=which_only(*tools)), \
          patch.object(cli.subprocess, "run", side_effect=fake_run):
-        setup_tools_env(tmp_path, DATA_DIR, optmux)
+        setup_tools_env(tmp_path, data_dir, optmux)
     return env_sh(tmp_path)
 
 
@@ -247,6 +247,16 @@ def test_rerun_replaces_read_only_scripts(tmp_path):
     run_setup(tmp_path)
     run_setup(tmp_path)
     assert os.access(tmp_path / "bin" / "optmux-env", os.X_OK)
+
+
+def test_setup_skips_directories_in_the_bundled_bin(tmp_path):
+    data = tmp_path / "data"
+    shutil.copytree(str(DATA_DIR.joinpath("bin")), data / "bin")
+    (data / "bin" / "__pycache__").mkdir()  # what importing a script (tests do) leaves behind
+    (data / "bin" / "__pycache__" / "x.pyc").write_bytes(b"")
+    run_setup(tmp_path / "out", data_dir=data)
+    assert not (tmp_path / "out" / "bin" / "__pycache__").exists()
+    assert os.access(tmp_path / "out" / "bin" / "optmux-env", os.X_OK)
 
 
 # --- optmux-open-url ----------------------------------------------------------
