@@ -5,6 +5,7 @@ of projects optmux was started in (updated on every start) stands in for it, and
 tells whether its server is up.
 """
 
+import ipaddress
 import os
 import shlex
 import shutil
@@ -211,8 +212,13 @@ def fzf_rows(projects):
 
 
 def short_hostname():
-    """This machine's name without its domain (like `hostname -s`), so the picker says which machine it's on."""
-    return socket.gethostname().split(".")[0] or "localhost"
+    """This machine's name without its domain (like `hostname -s`, but an IP address stays whole), so the picker says which machine it's on."""
+    name = socket.gethostname()
+    try:
+        ipaddress.ip_address(name)
+        return name
+    except ValueError:
+        return name.split(".")[0] or "localhost"
 
 
 def choose_with_fzf(projects, title="optmux pick", host=None):

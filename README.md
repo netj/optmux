@@ -113,7 +113,7 @@ Runs `tmux ARGS...` directly against this project's isolated tmux server — no 
 ### Picking a project
 
 ```bash
-optmux pick [--list] [--live] [-1] [--title-without-hostname] [QUERY]
+optmux pick [--list] [--live] [-1] [--title TITLE] [--title-without-hostname] [QUERY]
 ```
 
 Every project has its own TMUX server, so nothing shows what is running across projects. optmux remembers each project it was started in (`${XDG_STATE_HOME:-~/.local/state}/optmux/projects.tsv`), and `optmux pick` lists them with [fzf](https://github.com/junegunn/fzf) (a numbered menu if fzf is missing): ● has a running session, ○ doesn't; running ones come first, most recently active on top. The preview shows the session's windows and their directories, with a `[bell]` on those that rang. The prompt names the machine (`optmux pick@myhost>`), handy when you ssh or mosh into several (`--title-without-hostname` leaves it out).

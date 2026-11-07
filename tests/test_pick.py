@@ -130,9 +130,19 @@ def test_picker_prompt_names_the_host(tmp_path):
     assert cmd[cmd.index("--header") + 1].startswith("choose an optmux project")
 
 
-def test_short_hostname_drops_the_domain():
-    with patch.object(pick.socket, "gethostname", return_value="mybox.example.com"):
-        assert pick.short_hostname() == "mybox"
+@pytest.mark.parametrize("name, short", [("mybox.example.com", "mybox"), ("mybox", "mybox"), ("192.168.1.5", "192.168.1.5"), ("", "localhost")])
+def test_short_hostname_drops_the_domain(name, short):
+    with patch.object(pick.socket, "gethostname", return_value=name):
+        assert pick.short_hostname() == short
+
+
+@pytest.mark.parametrize("host, prompt", [("mybox", "auto-optmux@mybox> "), (None, "auto-optmux> ")])
+def test_menu_prompt_names_the_host(tmp_path, host, prompt):
+    pick.record_project("dir", make_dir(tmp_path, "a"), "a", "/nope")
+    with patch("builtins.input", return_value="1") as ask:
+        target = pick.choose_with_menu(pick.pickable(), "auto-optmux", host)
+    ask.assert_called_once_with(prompt)
+    assert target == str(tmp_path / "a")
 
 
 @pytest.mark.parametrize("flags, prompt", [([], "auto-optmux@mybox> "), (["--title-without-hostname"], "auto-optmux> ")])
