@@ -20,7 +20,7 @@ optmux .
 ```
 
 That's it. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet, and **`C-M-c`** to start your first task.
-Want the same windows every time, say an agent already running? Write a small YAML file for the project; see [As a shebang](README.md#as-a-shebang).
+Want the same windows every time, say an agent already running? Write a small YAML file for the project; see [As a shebang](docs/usage.md#as-a-shebang).
 
 > **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
@@ -69,7 +69,7 @@ Some lazygit keys optmux adds:
 | `Ctrl-g` | Diff the branch against the default branch (`origin/HEAD`). This is what the PR will contain. |
 | click a line number | Open that line in your `$EDITOR` |
 
-Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `+lazygit:` in `~/.optmux.yaml`; see [lazygit](README.md#lazygit).
+Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `+lazygit:` in `~/.optmux.yaml`; see [lazygit](docs/config.md#lazygit).
 
 ## 3. Teach by example
 
@@ -105,14 +105,14 @@ It renders with delta and opens in less with mouse support and link handling:
 optmux applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
 For anything else, prefix the command with `optmux env`: `optmux env git log -p`, `optmux env git show HEAD`.
 To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
-Tweak the settings with [`+git_config:`](README.md#git_config) and [`+env:`](README.md#env).
+Tweak the settings with [`+git_config:`](docs/config.md#git_config) and [`+env:`](docs/config.md#env).
 
 ## 4. Keep many going
 
 - An urgent bug report, a sudden idea, a chore you keep putting off: none of them has to wait for the current task to finish. **`C-M-c`** spins up the next task in its own worktree and window, while every agent already running carries on in its own: their files, panes, and progress stay untouched. Start one, start five.
 - When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
 - Many projects? `optmux pick` lists every project you've started optmux in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
-- Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](README.md#warp-sessions).
+- Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](docs/usage.md#warp-sessions).
 - **`C-M-w`** opens the current branch's PR on GitHub, or the repo page if there's no PR yet.
 
 A typical rhythm:
@@ -125,5 +125,7 @@ A typical rhythm:
 
 ## Where to go next
 
-- [README](README.md): the full `+optmux:` config reference (shortcuts, menus, plugins), warp sessions, clipboard over SSH
-- Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `+env`, `+git_config`, and `+lazygit` settings for every session. See [Personal config](README.md#personal-config-optmuxyaml).
+- [optmux YAML config](docs/config.md): the full `+optmux:` reference (shortcuts, menus, plugins)
+- [Using optmux](docs/usage.md): warp sessions, `optmux pick`, and the other commands
+- [optmux Find](docs/find.md), [optmux eXtract](docs/extract.md), and [clipboard over SSH](docs/terminal.md)
+- Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `+env`, `+git_config`, and `+lazygit` settings for every session. See [Personal config](docs/config.md#personal-config-optmuxyaml).

@@ -6,10 +6,15 @@
 - Entry point: `optmux/cli.py` → `optmux.cli:main`
 - Build system: `uv_build` (see `pyproject.toml`)
 
+## Docs Layout
+
+- `README.md` is the front door (pitch, key → outcome table, get started, make it yours, docs index); keep it short and put details in `docs/` (`usage.md` CLI, `config.md` `+optmux:` reference, `review.md`, `find.md`, `extract.md`, `terminal.md`, `troubleshooting/`). `OPTMUX-WAY.md` stays at the top level.
+- README is also the PyPI description, so its links use absolute `https://github.com/netj/optmux/blob/main/...` URLs; links within `docs/` stay relative. Its tagline line is read by `tests/test_tips_script.py`.
+
 ## YAML Style
 
 - **`+` marks optmux's own words** (`+optmux:`, `+shortcuts:`, `+command:`, `+find:`, `+tip_url:`); names the user picks (shortcut keys, plugins, env vars, languages, `ignore_files` groups) stay bare, and so does everything under `+lazygit:` (lazygit's schema). Use it in every example, test fixture, and message. The bare `optmux:` form still loads, with a deprecation warning (`read_optmux_section` in `cli.py`); new reserved words go in the `KNOWN_*` sets there.
-- README YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
+- README and `docs/` YAML examples use indentless lists (`yq --indentless` style): the `-` sits at the same indent as its parent key, not nested under it.
 - **Prefer YAML block scalars over quoting** for anything with shell or tmux syntax (`command:`, `tmux:`, `tip:`, in `optmux-defaults.yaml`, README examples, tests). Use the **literal** style `|` (keeps newlines, so a script reads as written) and, for long prose, the **folded** style `>` (joins lines). Quoting (`'...'`, `"..."`) fights with the `$`, quotes, and `\` already in shell commands, and plain scalars choke on `: `, `#`, or a leading quote. Quote only what a block can't hold (e.g. a `"\x10..."` escape).
 
 - `transform.optmux.yaml` is a hand-written showcase ("more than meets the eye") of plugin options, shortcut ideas, and tool settings for users to take to their own config (not exhaustive, no generator; plugin options come from the plugins' READMEs); a test checks that it loads without warnings.
