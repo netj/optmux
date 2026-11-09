@@ -1,15 +1,15 @@
 # The optmux Way
 
-**Are you steering your AI coding tool, or just signing off on what it hands back?** You approve diffs you only skimmed. The code has moved three steps past what you understand. The actual code, data, and files feel several layers removed, seen only through a chat transcript.
+**AI coding tools now change code faster than anyone can read it.** You can't follow every line, and you don't need to. What you can't give up is your sense of reality: knowing the key source code well enough to judge what is changing, whether the work is going where you meant, and where to look closer. Lose that and you approve diffs you only skimmed, while the actual code, data, and files feel several layers removed, seen only through a chat transcript.
 
-The optmux Way is how to stay on top of your work with AI coding tools like Claude Code. optmux sets up a terminal workspace (built on TMUX) where several tasks run side by side, each in its own checkout, and you review, correct, and steer them from the keyboard, with the real files one keystroke away.
+The optmux Way is how to keep that sense while working with AI coding tools like Claude Code at full speed, and to make managing lots of tasks effortless. optmux sets up a terminal workspace (built on TMUX) where many tasks run side by side, each in its own checkout. You don't watch them all: a bell flags the one that needs you, a key takes you there, and everything for judging the work is right beside it. Hands-on when a task needs you, hands-off when it doesn't, like a good manager of a busy team.
 
-**Be the master mechanic, not the customer.** The customer hands over the keys and takes the shop's word for what got fixed. The master mechanic knows what's wrong from the sound of the car pulling in. That sense only comes from keeping your hands in the engine, and no tool can hand it to you. So keep yours in, and lead your brilliant AI agents like an insightful mentor: set bold, challenging goals, then guide the work with a sharp eye for detail until it comes out beautiful. Every task gets its own workdir and its own window. The coding tool runs in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
+**Be the master mechanic, not the customer.** The customer hands over the keys and takes the shop's word for what got fixed. The master mechanic knows what's wrong from the sound of the car pulling in. That sense only comes from time spent in the engine, and no tool can hand it to you. You don't have to touch every bolt, just keep your feel for the parts that matter. So keep yours, and lead your brilliant AI agents like an insightful mentor: set bold, challenging goals, then guide the work with a sharp eye for detail until it comes out beautiful. Every task gets its own workdir and its own window. The coding tool runs in one pane; lazygit, your editor, and a shell are a keystroke away in sibling panes, already in that same workdir. You review its work, step in with a surgical example edit, and start the next task, without leaving the keyboard.
 
 1. **One task, one workdir, one window.** `C-M-c` starts a task: new git worktree, new window, your coding tool running.
 2. **Look over its shoulder.** `C-M-g` lazygit, `C-M-d` the PR diff, `C-M-s` a shell, `C-M-f` your editor. Each opens right beside the tool. A command in its output you want to run? `C-M-x` picks it off the screen and types it in.
 3. **Teach by example.** Fix one spot yourself and tell your coding tool "do it like this".
-4. **Keep many going.** `C-M-c` again starts the next task in a fresh workdir and window while the others keep working, undisturbed. A bell tells you which task needs you; `C-t n` takes you there.
+4. **Keep many going, and go where you're needed.** `C-M-c` again starts the next task in a fresh workdir and window while the others keep working, undisturbed. A bell tells you which task needs you; `C-t n` takes you there, skipping the quiet ones. Review it, nudge it, move on.
 
 ## Setup
 
@@ -108,6 +108,8 @@ To get clickable `git diff`, `git show`, and `git log -p` in every shell inside 
 Tweak the settings with [`+git_config:`](docs/config.md#git_config) and [`+env:`](docs/config.md#env).
 
 ## 4. Keep many going
+
+Once starting a task and switching between tasks are cheap, your job is directing attention: let the tasks that are humming along run, and spend yours on whichever one needs it. Hands-off most of the time; hands-on, with the review tools beside the work, when it matters.
 
 - An urgent bug report, a sudden idea, a chore you keep putting off: none of them has to wait for the current task to finish. **`C-M-c`** spins up the next task in its own worktree and window, while every task already running carries on in its own: their files, panes, and progress stay untouched. Start one, start five.
 - When a task needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)

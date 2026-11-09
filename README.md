@@ -6,13 +6,9 @@
 
 Optimal, opinionated, batteries-included TMUX that's neat and easy for any project.
 
-Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the typing. Run several tasks side by side, each in its own git worktree and window, and review, correct, and steer them without leaving the keyboard.
-
-**New here?** Read **[The optmux Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)**: how to stay on top of your AI coding tools, with your hands and eyes on the real files.
+Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the bulk of code generation and editing. Run dozens of tasks side by side, each in its own git worktree and window. A bell flags the one that needs you, a key takes you there, and the diff, lazygit, a shell, and your editor are right beside the work. Manage them like a good manager: hands-on when a task needs you, hands-off when it doesn't. Learn **[the optmux way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)** to keep a real sense of the code, with your eyes and hands on the key files, even at the incredible pace AI coding tools set.
 
 ## What you can do
-
-Two kinds of keys. The `C-M-` shortcuts below need no prefix: hold Ctrl+Alt, or Control+Option on a Mac. Everything else goes through optmux's TMUX prefix, **`C-t`** (Ctrl+T), not TMUX's usual `C-b`, which stays free for readline: press it, let go, then the key (`C-t z` zooms a pane, `C-t n` jumps to the next window that rang the bell).
 
 | Press | You get |
 |---|---|
@@ -23,10 +19,15 @@ Two kinds of keys. The `C-M-` shortcuts below need no prefix: hold Ctrl+Alt, or 
 | `C-M-x` | **eXtract**: pick a command, path, URL, or hash off the screen and type or copy it ([eXtract](https://github.com/netj/optmux/blob/main/docs/usage-extract.md)) |
 | `C-M-s` | A shell in the same workdir |
 | `C-M-w` | The branch's PR (or the repo) on GitHub |
-| `C-M-z` | Zoom the pane in and out |
+| `C-M-z` | Zoom the pane out and back in; most panes start zoomed |
+| `C-M-o` | Cycle thru panes in the window, w/o losing zoom |
+| `C-t` `n`/`p` | Jump to the next window that rang the bell |
 | `C-M-h` | The tips screen: every key, plugin, and setting in one place |
 | `optmux pick` | Jump to any project you've run optmux in, running or not ([pick](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)) |
 | `optmux warp` | A focused session with only one worktree's windows ([warp](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)) |
+
+Two kinds of keys above. The `C-M-` shortcuts above need no prefix: hold Ctrl+Alt, or Control+Option on a Mac.
+Everything else goes through optmux's TMUX prefix, **`C-t`** (Ctrl+T), not TMUX's usual `C-b`, which stays free for readline: press it, let go, then the key.
 
 And out of the box:
 
