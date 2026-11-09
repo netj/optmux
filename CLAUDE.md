@@ -11,6 +11,12 @@
 - `README.md` is the front door (pitch, key → outcome table, get started, then short paragraphs pointing on); keep it short and put details in `docs/`: `usage.md` (feature overview + CLI reference), `usage-review.md`, `usage-extract.md` (with clipboard/OSC 52), `usage-find.md`, `usage-pick.md` (with tmux-resurrect), `usage-warp.md`, `config.md` (`+optmux:` reference, what optmux generates, environment variables), `development.md`, `troubleshooting/`. `OPTMUX-WAY.md` stays at the top level.
 - README is also the PyPI description, so its links use absolute `https://github.com/netj/optmux/blob/main/...` URLs; links within `docs/` stay relative. Its tagline line is read by `tests/test_tips_script.py`.
 
+## Wording
+
+- **Don't call AI coding tools "agents"** (README, `docs/`, tips, messages, comments). The maintainer avoids personifying AI. Say "AI coding tool" or "coding tool" for the software, "task" when the sentence is really about a window or worktree, and "Claude Code" for a concrete example. The one deliberate exception is the sentence in `OPTMUX-WAY.md` about leading "your brilliant AI agents like an insightful mentor"; keep any other use to a minimum in marketing copy (README, The OPTMUX Way). "ssh-agent" and the like are fine.
+- **Write OPTMUX in capitals in prose**, like TMUX ("The OPTMUX Way", "OPTMUX Find", "OPTMUX's settings"). Commands (`optmux`), file names, paths, URLs, package names, and `optmux-*` scripts stay lowercase.
+- **Say the `C-t` prefix early**: it is not tmux's default `C-b`, and readers should not have to hunt for it.
+
 ## YAML Style
 
 - **`+` marks optmux's own words** (`+optmux:`, `+shortcuts:`, `+command:`, `+find:`, `+tip_url:`); names the user picks (shortcut keys, plugins, env vars, languages, `ignore_files` groups) stay bare, and so does everything under `+lazygit:` (lazygit's schema). Use it in every example, test fixture, and message. The bare `optmux:` form still loads, with a deprecation warning (`read_optmux_section` in `cli.py`); new reserved words go in the `KNOWN_*` sets there.
