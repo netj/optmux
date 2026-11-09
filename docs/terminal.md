@@ -19,4 +19,4 @@ optmux ships [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect):
 - **`C-t C-s`** — save the current session (windows, panes, working directories)
 - **`C-t C-r`** — restore the last saved session
 
-Because each project has its own `.$NAME.optmux.d/tmux/resurrect/` folder (see [Config directory](usage.md#config-directory)), saves never mix between projects. Save project A, then project B — restoring either one brings back only its own layout.
+Because each project has its own `.$NAME.optmux.d/tmux/resurrect/` folder (see [What optmux generates](usage.md#what-optmux-generates)), saves never mix between projects. Save project A, then project B — restoring either one brings back only its own layout.

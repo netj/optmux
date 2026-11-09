@@ -115,23 +115,31 @@ optmux [DIR | YAML] env COMMAND [ARGS...]
 
 Runs the command with optmux's opinionated environment (delta as git's pager, less with the mouse and clickable links, the layered lazygit config, …). It's [`optmux-env`](config.md#optmux-env) as a subcommand, so it works in any shell, even where your rc has rebuilt `PATH`: `optmux env git log -p`, `optmux env lazygit`. Inside an optmux pane it uses that project's settings; elsewhere, give it the DIR or YAML (e.g. `optmux . env git diff`).
 
-## Config directory
+## What optmux generates
 
-Each project gets its own `.$NAME.optmux.d/` directory:
+You configure optmux in your YAML ([`+optmux:`](config.md)), never in a directory. Each launch compiles that YAML, layered over the bundled defaults and `~/.optmux.yaml`, into a `.$NAME.optmux.d/` directory next to the YAML (`.optmux.d/` in a project directory), along with the project's runtime state. It is git-ignored (it seeds its own `.gitignore`), so there is nothing to commit and nothing to edit here: change the YAML and relaunch.
 
-| Path | Purpose |
+**Generated on every launch** (edits are overwritten, and the read-only ones refuse them):
+
+| Path | What it is |
 |---|---|
-| `tmux/tmux.conf` | Main tmux config (editable after creation) |
-| `tmux/tmux.*.conf` | Additional config files you can add |
-| `tmux/tmux.sock` | Tmux server socket (isolates this project) |
-| `tmux/plugins/` | TPM plugin directory |
-| `tmux/plugins-update.sh` | Run manually to update all plugins |
-| `tmux/resurrect/` | Saved session state (tmux-resurrect), isolated per project |
-| `env.sh` | optmux's opinionated environment ([`env`](config.md#env), [`git_config`](config.md#git_config), [`lazygit`](config.md#lazygit)), applied by [`optmux-env`](config.md#optmux-env) |
+| `tmux/tmux.conf` | optmux's tmux config, bundled with optmux and read-only. Your settings reach tmux through the files below |
+| `tmux/tmux.optmux-shortcuts.conf`, `tmux.optmux-menu.conf`, `tmux.optmux-extras.*.conf`, `optmux-plugins.conf` | Compiled from [`+shortcuts:`](config.md#shortcuts), [`+menu:`](config.md#menu), [`+tmux_config:`](config.md#tmux_config) and [`+plugins:`](config.md#plugins), sourced by `tmux.conf` |
+| `tmux/tips.sh`, `tmux/plugins-update.sh` | The tips screen (`C-M-h`) and the plugin installer/updater (`prefix I`) |
+| `env.sh` | optmux's settings from [`+env:`](config.md#env), [`+git_config:`](config.md#git_config) and [`+lazygit:`](config.md#lazygit), applied by [`optmux-env`](config.md#optmux-env) |
+| `lazygit/config.yml` | Compiled from [`+lazygit:`](config.md#lazygit) |
 | `bin/` | Helper scripts (`optmux-*`), on `PATH` for shortcuts (and in shells that source `env.sh`) |
-| `lazygit/config.yml` | Generated from [`+lazygit:`](config.md#lazygit) |
 
-`env.sh`, `bin/`, and `lazygit/` are regenerated on every launch.
+**State that builds up while you work** (kept between launches, per project):
+
+| Path | What it is |
+|---|---|
+| `tmux/tmux.sock` | The project's tmux server socket, which is what isolates it |
+| `tmux/plugins/` | Plugins TPM installed |
+| `tmux/resurrect/` | Saved sessions (tmux-resurrect) |
+| `find/` | [optmux Find](find.md)'s tags index, history, and recent files |
+
+Deleting the directory, once the session is stopped, is harmless: the next launch generates it again and reinstalls the plugins, and only your saved sessions and Find history are lost. Your own `tmux/tmux.NAME.conf` files are sourced too and left alone, but [`+tmux_config:`](config.md#tmux_config) keeps them in your YAML where they belong.
 
 ## Environment variables
 

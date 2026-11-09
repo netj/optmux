@@ -263,9 +263,8 @@ Create `~/.optmux.yaml` to define personal defaults that apply to all optmux ses
 
 Personal config is merged with per-project config. When both define the same key, **personal settings take precedence**.
 
-## Customization
+## Applying changes
 
-- Edit `tmux/tmux.conf` to change tmux settings
-- Drop `tmux/tmux.mysetup.conf` files for additional config (auto-sourced)
+- Change tmux settings with [`+tmux_config:`](#tmux_config), not by editing `tmux/tmux.conf`: it is [generated](usage.md#what-optmux-generates) and read-only
 - Press `prefix I` (or `U`) to install/update plugins and reload the config (runs `tmux/plugins-update.sh`; TPM's own `I`/`U` only print DONE)
 - Press `prefix + R` to reload the config
