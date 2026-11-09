@@ -10,7 +10,7 @@
 #
 # KNOWN ISSUE: a detached split pane drops the window's zoom when the command exits
 # (tmux unzooms whenever any pane dies), so quick commands unzoom you. Use
-# float_window: true — see TROUBLESHOOTING-tmux-floating-panes.md for its caveats.
+# float_window: true — see docs/troubleshooting/tmux-floating-panes.md for its caveats.
 session_name: command-detached
 start_directory: .
 

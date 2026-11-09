@@ -134,7 +134,7 @@ def build_action_parts(opts, label):
         # from within one command list, where new-pane still sees the window as
         # zoomed and quietly makes an ordinary split instead. So pick at press
         # time: while zoomed, fall back to a background window, which leaves the
-        # zoom alone too. See TROUBLESHOOTING-tmux-floating-panes.md.
+        # zoom alone too. See docs/troubleshooting/tmux-floating-panes.md.
         parts.append(
             "if -F '#{window_zoomed_flag}' "
             "{ %s } { %s }" % (open_with("new-window" + detach_flag), open_with(open_cmd))

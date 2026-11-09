@@ -5,7 +5,7 @@
 # Shell stays alive after the command exits, so the pane/window remains open
 # (no remain-on-error semantics for send-keys; use command type for that).
 # float_window is not available here — no tmux target names a floating pane;
-# see TROUBLESHOOTING-tmux-floating-panes.md.
+# see docs/troubleshooting/tmux-floating-panes.md.
 session_name: send-keys-detached
 start_directory: .
 

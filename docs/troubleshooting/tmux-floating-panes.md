@@ -1,7 +1,7 @@
 # Floating panes (`float_window: true`)
 
 tmux 3.7 added floating panes — panes that live outside the window layout, drawn on
-top of it (`prefix + *`, or `new-pane`). optmux exposes them as `float_window: true`,
+top of it (`prefix + *`, or `new-pane`). OPTMUX exposes them as `float_window: true`,
 which is the cleanest fit for `detached: true` shortcuts: opening and closing a
 floating pane neither rearranges the layout nor drops the window's zoom, unlike a
 split pane.
@@ -18,7 +18,7 @@ not exist and the binding fails to load.
 
 ## Known problems in tmux 3.7b
 
-These are upstream tmux bugs, not optmux behavior. They are expected to disappear as
+These are upstream tmux bugs, not OPTMUX behavior. They are expected to disappear as
 tmux stabilizes floating panes; until then, this is what to expect.
 
 ### A float created in a zoomed window crashes the server when it closes
@@ -49,7 +49,7 @@ tmux -S /tmp/x.sock new-pane -d 'date; sleep 2; date'
 sleep 4; tmux -S /tmp/x.sock list-panes   # → no server running
 ```
 
-**optmux works around this**, so `float_window: true` is safe to use meanwhile: the
+**OPTMUX works around this**, so `float_window: true` is safe to use meanwhile: the
 generated binding checks the zoom at press time and opens a background window instead
 of a float while zoomed, which leaves the layout and zoom alone just as well.
 
@@ -72,7 +72,7 @@ window. This is why `float_window` is most useful together with `detached`.
 
 ### `send-keys` cannot target a floating pane
 
-optmux rejects `send_keys:` combined with `float_window:` and tells you so. No tmux
+OPTMUX rejects `send_keys:` combined with `float_window:` and tells you so. No tmux
 target names a floating pane: it is appended past `:.+`, and `{bottom}`, `{top}` and
 friends only walk the layout, which a floating pane is not part of. Targets are not
 format-expanded either, so `:.#{window_panes}` does not work. Use `command:` instead,

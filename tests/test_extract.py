@@ -195,7 +195,7 @@ def test_open_find_closes_this_popup_and_opens_find_in_one_titled_for_it(monkeyp
     command = run_shell[2].replace("##", "#")  # (tmux halves them again)
     first, _, failed = command.split("; ", 1)[1].partition(" || ")
     words = shlex.split(first)
-    assert words[:3] == ["tmux", "display-popup", "-E"] and words[words.index("-T") + 1] == " optmux Find "
+    assert words[:3] == ["tmux", "display-popup", "-E"] and words[words.index("-T") + 1] == " OPTMUX Find "
     assert words[words.index("-d") + 1] == str(tmp_path) and words[words.index("-t") + 1] == "%7"
     find = shlex.split(words[-1])
     assert find[0].endswith("optmux-find") and find[1:3] == ["%7", "--mode=grep"]
