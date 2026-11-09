@@ -1,4 +1,4 @@
-# Using optmux
+# Using OPTMUX
 
 Start with `optmux .` in a project and press **`C-M-h`** for the tips. Keys come in two kinds: `C-M-` shortcuts (Ctrl+Alt, or Control+Option on a Mac) work directly, and the rest go through the TMUX prefix, **`C-t`** (Ctrl+T) rather than TMUX's usual `C-b`: press it, let go, then the key. A few things are worth learning first, since they are what you'll use all day, and each has a page of its own:
 
@@ -8,7 +8,7 @@ Start with `optmux .` in a project and press **`C-M-h`** for the tips. Keys come
 - **[Pick](usage-pick.md)** among projects: `optmux pick` attaches to any project you've run, and tmux-resurrect brings sessions back after a restart.
 - **[Warp](usage-warp.md)** to one workdir: `optmux warp` shows just the windows of a single worktree, and shares them with another terminal or an IDE.
 
-optmux does the setup behind these for you: each launch compiles your YAML (and `~/.optmux.yaml`) into a generated, git-ignored `.optmux.d/` directory, installs the plugins, and starts the project's own tmux server. You change the YAML, never that directory; see [What optmux generates](config.md#what-optmux-generates) if you're curious. To change the shortcuts, plugins, or tool settings, see [optmux YAML config](config.md).
+OPTMUX does the setup behind these for you: each launch compiles your YAML (and `~/.optmux.yaml`) into a generated, git-ignored `.optmux.d/` directory, installs the plugins, and starts the project's own tmux server. You change the YAML, never that directory; see [What OPTMUX generates](config.md#what-optmux-generates) if you're curious. To change the shortcuts, plugins, or tool settings, see [OPTMUX YAML config](config.md).
 
 ## First run
 
@@ -19,7 +19,7 @@ git clone https://github.com/netj/optmux.git && cd optmux
 ./example.optmux.yaml
 ```
 
-On first run, optmux sets up the project, bootstraps the plugin manager (TPM), and starts tmux with an isolated server; the first attach opens a popup that installs/updates all plugins (same as `prefix I`) and then shows the tips (`C-M-h` shows them again).
+On first run, OPTMUX sets up the project, bootstraps the plugin manager (TPM), and starts tmux with an isolated server; the first attach opens a popup that installs/updates all plugins (same as `prefix I`) and then shows the tips (`C-M-h` shows them again).
 
 ## Commands
 
@@ -53,7 +53,7 @@ Prints usage and exits.
 
 ### As a shebang
 
-Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the optmux shebang line and make it executable. This needs `optmux` on your `PATH` (e.g. `brew install netj/tap/optmux`):
+Write a [tmuxp YAML config](https://tmuxp.git-pull.com/configuration/) with the OPTMUX shebang line and make it executable. This needs `optmux` on your `PATH` (e.g. `brew install netj/tap/optmux`):
 
 ```yaml
 #!/usr/bin/env optmux
@@ -89,10 +89,10 @@ optmux [DIR | YAML] tmux ARGS...
 
 Runs `tmux ARGS...` directly against this project's isolated tmux server — no tmuxp bootstrapping, no session creation. Useful for one-off inspection or scripting without hand-rolling the `-S <sock>` path yourself, e.g. `optmux . tmux ls` or `optmux . tmux kill-server`.
 
-### Running a command with optmux's settings
+### Running a command with OPTMUX's settings
 
 ```bash
 optmux [DIR | YAML] env COMMAND [ARGS...]
 ```
 
-Runs the command with optmux's opinionated environment (delta as git's pager, less with the mouse and clickable links, the layered lazygit config, …). It's [`optmux-env`](config.md#optmux-env) as a subcommand, so it works in any shell, even where your rc has rebuilt `PATH`: `optmux env git log -p`, `optmux env lazygit`. Inside an optmux pane it uses that project's settings; elsewhere, give it the DIR or YAML (e.g. `optmux . env git diff`).
+Runs the command with OPTMUX's opinionated environment (delta as git's pager, less with the mouse and clickable links, the layered lazygit config, …). It's [`optmux-env`](config.md#optmux-env) as a subcommand, so it works in any shell, even where your rc has rebuilt `PATH`: `optmux env git log -p`, `optmux env lazygit`. Inside an OPTMUX pane it uses that project's settings; elsewhere, give it the DIR or YAML (e.g. `optmux . env git diff`).

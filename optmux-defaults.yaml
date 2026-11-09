@@ -199,7 +199,7 @@
       +tip: wtcode
     C-M-f:
       +tmux: |
-        display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+        display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' OPTMUX Find ' '"$OPTMUX_DIR/bin/optmux-find"'
       +tip: >
         find a file or a tag (ranked together, omni) or a line (git grep) to edit; C-M-f cycles them and it resumes where you left off
     C-M-g:
@@ -229,11 +229,11 @@
       +tip: open PR (or repo) on GitHub
     C-M-x:
       +tmux: |
-        display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+        display-popup -E -w 100% -h 60% -b rounded -T ' OPTMUX eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       +tip: same as C-t X, without the prefix (optmux eXtract)
     C-M-h:
       +tmux: |
-        display-popup -E -w 90% -h 90% -b rounded -T ' optmux tips ' 'bash "$OPTMUX_DIR/tmux/tips.sh" --force --popup'
+        display-popup -E -w 90% -h 90% -b rounded -T ' OPTMUX tips ' 'bash "$OPTMUX_DIR/tmux/tips.sh" --force --popup'
       +tip: tips (this screen)
 
     # Quick access (raw tmux actions)
@@ -274,7 +274,7 @@
       +tip: tmux-fingers (copy URLs/paths/hashes)
     X:
       +tmux: |
-        display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+        display-popup -E -w 100% -h 60% -b rounded -T ' OPTMUX eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       +tip: >
         optmux eXtract: lines, or colored spans mixed with URLs/paths/hashes/PR numbers/versions,
         to type or copy (C-M-x switches, C-y copies, C-f/C-g find or grep it in the project)
@@ -294,11 +294,11 @@
       - +key: f
         +title: Find (C-M-f)
         +tmux: |
-          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' OPTMUX Find ' '"$OPTMUX_DIR/bin/optmux-find"'
       - +key: x
         +title: eXtract (C-M-x)
         +tmux: |
-          display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+          display-popup -E -w 100% -h 60% -b rounded -T ' OPTMUX eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       - separator
       - "*"
     +window:
@@ -312,10 +312,10 @@
       - +key: f
         +title: Find (C-M-f)
         +tmux: |
-          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' optmux Find ' '"$OPTMUX_DIR/bin/optmux-find"'
+          display-popup -E -d '#{pane_current_path}' -w 100% -h 60% -b rounded -T ' OPTMUX Find ' '"$OPTMUX_DIR/bin/optmux-find"'
       - +key: x
         +title: eXtract (C-M-x)
         +tmux: |
-          display-popup -E -w 100% -h 60% -b rounded -T ' optmux eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
+          display-popup -E -w 100% -h 60% -b rounded -T ' OPTMUX eXtract ' '"$OPTMUX_DIR/bin/optmux-extract"'
       - separator
       - "*"

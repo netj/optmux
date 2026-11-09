@@ -1,12 +1,12 @@
-# optmux YAML config
+# OPTMUX YAML config
 
 Add an `+optmux:` section to configure shortcuts, plugins, menus, and tool settings. Put it in `~/.optmux.yaml` to apply it to every project (most settings are personal, and a session lasts for days or weeks), or in a project's own YAML, where it merges with yours. A project YAML is also a [tmuxp config](https://tmuxp.git-pull.com/configuration/), so it can additionally say which windows and panes to start with: see [As a shebang](usage.md#as-a-shebang).
 
 For ideas to copy, see [`transform.optmux.yaml`](../transform.optmux.yaml): options for tmux-fingers, tmux-yank, tmux-resurrect and claritmux, shortcut ideas, and tool settings, mostly commented out.
 
-A leading `+` marks a word optmux defines (`+optmux:`, `+shortcuts:`, `+command:`); names you choose (a shortcut's key, a plugin, an environment variable, a language) stay bare. Everything outside `+optmux:` is plain tmuxp. The same sections work in `~/.optmux.yaml`.
+A leading `+` marks a word OPTMUX defines (`+optmux:`, `+shortcuts:`, `+command:`); names you choose (a shortcut's key, a plugin, an environment variable, a language) stay bare. Everything outside `+optmux:` is plain tmuxp. The same sections work in `~/.optmux.yaml`.
 
-> **Upgrading from 0.14 and earlier:** the bare `optmux:` with `shortcuts:`, `command:`, ... still loads, with a deprecation warning. To upgrade, put a `+` before each of optmux's words (`optmux:` → `+optmux:`, `shortcuts:` → `+shortcuts:`, `command:` → `+command:`, `_tip_url:` → `+tip_url:`, and so on). Your own names and everything under `+lazygit:`, which is lazygit's own config, stay as they are.
+> **Upgrading from 0.14 and earlier:** the bare `optmux:` with `shortcuts:`, `command:`, ... still loads, with a deprecation warning. To upgrade, put a `+` before each of OPTMUX's words (`optmux:` → `+optmux:`, `shortcuts:` → `+shortcuts:`, `command:` → `+command:`, `_tip_url:` → `+tip_url:`, and so on). Your own names and everything under `+lazygit:`, which is lazygit's own config, stay as they are.
 
 ```yaml
 +optmux:
@@ -76,7 +76,7 @@ this over there"). Set either explicitly to override.
 
 ## +plugins
 
-`+plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. optmux installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
+`+plugins:` maps each [TPM](https://github.com/tmux-plugins/tpm) plugin to its options: a dict of option → value (rendered as `set -g @option "value"`; `@` optional, `$VAR` expands, YAML `on`/`off` booleans are written as `on`/`off`), or a list of raw tmux config lines. Leave it empty for none. OPTMUX installs them on launch and writes `optmux-plugins.conf`, sourced before TPM runs:
 
 ```yaml
 +optmux:
@@ -108,7 +108,7 @@ Entries under `+tmux_config:` are written as `tmux.optmux-extras.{name}.conf` fi
 
 tmux has no API for editing its built-in right-click menus (session, window,
 pane) — the only way to change one is to redefine it whole. `+menu:` lets you
-do that from YAML: list the items you want, in order, and optmux compiles a
+do that from YAML: list the items you want, in order, and OPTMUX compiles a
 static `bind`/`display-menu` config for you. A bare `"*"` pulls in the rest
 of tmux's own default items for that menu, unchanged, so you only spell out
 what you're adding or reordering:
@@ -205,9 +205,9 @@ Environment variables for commands run through [`optmux-env`](#optmux-env). `$VA
 
 ## optmux-env
 
-`env`, `git_config`, and `lazygit` are all written to `$OPTMUX_DIR/env.sh`. **They apply only to commands started through `optmux-env`**, and to everything those commands start in turn. Your shells inside optmux behave exactly as they do outside it.
+`env`, `git_config`, and `lazygit` are all written to `$OPTMUX_DIR/env.sh`. **They apply only to commands started through `optmux-env`**, and to everything those commands start in turn. Your shells inside OPTMUX behave exactly as they do outside it.
 
-The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`), since your shell startup files may rebuild `PATH`: `C-M-g` runs lazygit and `C-M-d` runs the PR diff through it. Inside those, optmux's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with optmux's settings. Use it in your own shortcuts the same way:
+The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`), since your shell startup files may rebuild `PATH`: `C-M-g` runs lazygit and `C-M-d` runs the PR diff through it. Inside those, OPTMUX's settings override yours: lazygit runs git, git runs delta as its pager, delta runs less, and less runs the link handler, all with OPTMUX's settings. Use it in your own shortcuts the same way:
 
 ```yaml
 +optmux:
@@ -217,7 +217,7 @@ The bundled shortcuts use it, by absolute path (`"$OPTMUX_DIR/bin/optmux-env"`),
         "$OPTMUX_DIR/bin/optmux-env" git log -p
 ```
 
-Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` always works. To use optmux's settings in every shell inside optmux, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:
+Your shell rc may rebuild `PATH` and drop `optmux-env`; `optmux env COMMAND...` always works. To use OPTMUX's settings in every shell inside OPTMUX, add this to your shell rc. It also puts the `optmux-*` helpers back on `PATH` if your rc reorders it:
 
 ```bash
 [ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"
@@ -237,7 +237,7 @@ git config for commands run through [`optmux-env`](#optmux-env), passed through 
 
 ## +lazygit
 
-[lazygit config](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md), written to `$OPTMUX_DIR/lazygit/config.yml` and loaded *after* your own lazygit config via `LG_CONFIG_FILE`. Settings optmux doesn't mention keep your values, and the ones it does mention use optmux's. Layers deep-merge (lists replace). A `git.diffRenderers` entry whose command isn't installed is skipped.
+[lazygit config](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md), written to `$OPTMUX_DIR/lazygit/config.yml` and loaded *after* your own lazygit config via `LG_CONFIG_FILE`. Settings OPTMUX doesn't mention keep your values, and the ones it does mention use OPTMUX's. Layers deep-merge (lists replace). A `git.diffRenderers` entry whose command isn't installed is skipped.
 
 ```yaml
 +optmux:
@@ -252,7 +252,7 @@ git config for commands run through [`optmux-env`](#optmux-env), passed through 
 
 ## Personal config (`~/.optmux.yaml`)
 
-Create `~/.optmux.yaml` to define personal defaults that apply to all optmux sessions:
+Create `~/.optmux.yaml` to define personal defaults that apply to all OPTMUX sessions:
 
 ```yaml
 +optmux:
@@ -271,18 +271,18 @@ Personal config is merged with per-project config. When both define the same key
 - Press `prefix I` (or `U`) to install/update plugins and reload the config (runs `tmux/plugins-update.sh`; TPM's own `I`/`U` only print DONE)
 - Press `prefix + R` to reload the config
 
-## What optmux generates
+## What OPTMUX generates
 
-You configure optmux in your YAML ([`+optmux:`](#optmux-yaml-config)), never in a directory. Each launch compiles that YAML, layered over the bundled defaults and `~/.optmux.yaml`, into a `.$NAME.optmux.d/` directory next to the YAML (`.optmux.d/` in a project directory), along with the project's runtime state. It is git-ignored (it seeds its own `.gitignore`), so there is nothing to commit and nothing to edit here: change the YAML and relaunch.
+You configure OPTMUX in your YAML ([`+optmux:`](#optmux-yaml-config)), never in a directory. Each launch compiles that YAML, layered over the bundled defaults and `~/.optmux.yaml`, into a `.$NAME.optmux.d/` directory next to the YAML (`.optmux.d/` in a project directory), along with the project's runtime state. It is git-ignored (it seeds its own `.gitignore`), so there is nothing to commit and nothing to edit here: change the YAML and relaunch.
 
 **Generated on every launch** (edits are overwritten, and the read-only ones refuse them):
 
 | Path | What it is |
 |---|---|
-| `tmux/tmux.conf` | optmux's tmux config, bundled with optmux and read-only. Your settings reach tmux through the files below |
+| `tmux/tmux.conf` | OPTMUX's tmux config, bundled with OPTMUX and read-only. Your settings reach tmux through the files below |
 | `tmux/tmux.optmux-shortcuts.conf`, `tmux.optmux-menu.conf`, `tmux.optmux-extras.*.conf`, `optmux-plugins.conf` | Compiled from [`+shortcuts:`](#shortcuts), [`+menu:`](#menu), [`+tmux_config:`](#tmux_config) and [`+plugins:`](#plugins), sourced by `tmux.conf` |
 | `tmux/tips.sh`, `tmux/plugins-update.sh` | The tips screen (`C-M-h`) and the plugin installer/updater (`prefix I`) |
-| `env.sh` | optmux's settings from [`+env:`](#env), [`+git_config:`](#git_config) and [`+lazygit:`](#lazygit), applied by [`optmux-env`](#optmux-env) |
+| `env.sh` | OPTMUX's settings from [`+env:`](#env), [`+git_config:`](#git_config) and [`+lazygit:`](#lazygit), applied by [`optmux-env`](#optmux-env) |
 | `lazygit/config.yml` | Compiled from [`+lazygit:`](#lazygit) |
 | `bin/` | Helper scripts (`optmux-*`), on `PATH` for shortcuts (and in shells that source `env.sh`) |
 
@@ -293,13 +293,13 @@ You configure optmux in your YAML ([`+optmux:`](#optmux-yaml-config)), never in 
 | `tmux/tmux.sock` | The project's tmux server socket, which is what isolates it |
 | `tmux/plugins/` | Plugins TPM installed |
 | `tmux/resurrect/` | Saved sessions (tmux-resurrect) |
-| `find/` | [optmux Find](usage-find.md)'s tags index, history, and recent files |
+| `find/` | [OPTMUX Find](usage-find.md)'s tags index, history, and recent files |
 
 Deleting the directory, once the session is stopped, is harmless: the next launch generates it again and reinstalls the plugins, and only your saved sessions and Find history are lost. Your own `tmux/tmux.NAME.conf` files are sourced too and left alone, but [`+tmux_config:`](#tmux_config) keeps them in your YAML where they belong.
 
 ## Environment variables
 
-optmux sets these before launching tmux/tmuxp:
+OPTMUX sets these before launching tmux/tmuxp:
 
 | Variable | Value |
 |---|---|
@@ -314,4 +314,4 @@ optmux sets these before launching tmux/tmuxp:
 |---|---|
 | anything under [`+env:`](#env) | e.g. `PAGER`, `LESS`, `LESS_OSC8_OPEN_ANY` by default |
 | `GIT_CONFIG_PARAMETERS` | from [`+git_config:`](#git_config) |
-| `LG_CONFIG_FILE` | your own lazygit config, then optmux's from [`+lazygit:`](#lazygit) |
+| `LG_CONFIG_FILE` | your own lazygit config, then OPTMUX's from [`+lazygit:`](#lazygit) |

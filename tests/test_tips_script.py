@@ -97,8 +97,8 @@ def test_sections_in_order_with_underlined_headings(tmp_path):
     headings = ["Keyboard Shortcuts", "Mouse", "Bundled Tools", "TMUX Plugins", "Good to Know"]
     positions = [out.index(f"\n{h}\n{'=' * len(h)}\n") for h in headings]
     assert positions == sorted(positions)  # shortcuts come first
-    assert "\noptmux tips\n===========\n" in out
-    assert out.index("optmux tips") < out.index("Keyboard Shortcuts")
+    assert "\nOPTMUX tips\n===========\n" in out
+    assert out.index("OPTMUX tips") < out.index("Keyboard Shortcuts")
 
 
 def test_bundled_tools_flag_missing_with_brew_hint(tmp_path):
@@ -300,7 +300,7 @@ def test_mouse_section_and_consistent_tmux_name(tmp_path):
 
 def test_quick_start_linked_right_under_the_tagline(tmp_path):
     out = run_tips(tmp_path, TERM="xterm-256color")
-    link = "The optmux Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
+    link = "The OPTMUX Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
     assert link in out
     lines = out.splitlines()
     tagline = next(i for i, l in enumerate(lines) if l.startswith("Optimal, opinionated"))

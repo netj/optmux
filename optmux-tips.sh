@@ -109,9 +109,9 @@ bundled_tool() {
 render_tips() {
     local version=""
     [[ -s "$OPTMUX_DIR/tmux/version.txt" ]] && version=$(<"$OPTMUX_DIR/tmux/version.txt")
-    printf '\noptmux tips%s\n===========%s\n\n' "${version:+ (v$version)}" "${version:+$(printf '%*s' $((${#version} + 4)) '' | tr ' ' '=')}"
+    printf '\nOPTMUX tips%s\n===========%s\n\n' "${version:+ (v$version)}" "${version:+$(printf '%*s' $((${#version} + 4)) '' | tr ' ' '=')}"
     echo "Optimal, opinionated, batteries-included TMUX that's neat and easy for any project."
-    echo "The optmux Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
+    echo "The OPTMUX Way: https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md"
     echo
     echo "TMUX runs many shells in one terminal, and keeps them alive when you detach."
     echo "New to TMUX? https://github.com/tmux/tmux/wiki/Getting-Started"
@@ -148,7 +148,7 @@ MOUSE
     bundled_tool delta "syntax-highlighted, clickable diffs" https://github.com/dandavison/delta git-delta
     bundled_tool less "mouse and clickable links in pagers" https://greenwoodsoftware.com/less
     bundled_tool fzf "fuzzy finder (C-M-f)" https://github.com/junegunn/fzf
-    bundled_tool ctags "tags for optmux Find (C-M-f)" https://ctags.io universal-ctags
+    bundled_tool ctags "tags for OPTMUX Find (C-M-f)" https://ctags.io universal-ctags
     bundled_tool gh "GitHub CLI (C-M-w)" https://cli.github.com
 
     local plugins_tips="$OPTMUX_DIR/tmux/tips-plugins.txt"
@@ -163,7 +163,7 @@ MOUSE
   (.) One task = one worktree = one window. C-M-s/g/d/f open a shell/lazygit/diff/editor pane in its workdir
   (.) A window blinking red rang the bell (a task wants you): C-t n / C-t p jump to the next / previous one
   (.) optmux pick  chooses among your projects (● running) and attaches; it returns when you detach
-  (.) optmux env CMD...  runs CMD with optmux's delta/less/lazygit setup, e.g. optmux env git log -p
+  (.) optmux env CMD...  runs CMD with OPTMUX's delta/less/lazygit setup, e.g. optmux env git log -p
   (.) In a diff, click a line number twice to open that line in $EDITOR
   (.) copy-mode yank auto-copies to the system clipboard (OSC 52)
 EOF

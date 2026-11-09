@@ -1,12 +1,12 @@
-# optmux
+# OPTMUX
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/netj/optmux/main/optmux.svg" width="192" alt="optmux logo">
+  <img src="https://raw.githubusercontent.com/netj/optmux/main/optmux.svg" width="192" alt="OPTMUX logo">
 </p>
 
 Optimal, opinionated, batteries-included TMUX that's neat and easy for any project.
 
-Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the bulk of code generation and editing. Run dozens of tasks side by side, each in its own git worktree and window. A bell flags the one that needs you, a key takes you there, and the diff, lazygit, a shell, and your editor are right beside the work. Manage them like a good manager: hands-on when a task needs you, hands-off when it doesn't. Learn **[the optmux way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)** to keep a real sense of the code, with your eyes and hands on the key files, even at the incredible pace AI coding tools set.
+Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the bulk of code generation and editing. Run dozens of tasks side by side, each in its own git worktree and window. A bell flags the one that needs you, a key takes you there, and the diff, lazygit, a shell, and your editor are right beside the work. Manage them like a good manager: hands-on when a task needs you, hands-off when it doesn't. Learn **[the OPTMUX Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)** to keep a real sense of the code, with your eyes and hands on the key files, even at the incredible pace AI coding tools set.
 
 ## What you can do
 
@@ -23,18 +23,18 @@ Run `optmux .` in any project and get its own TMUX, already set up: plugins inst
 | `C-M-o` | Cycle thru panes in the window, w/o losing zoom |
 | `C-t` `n`/`p` | Jump to the next window that rang the bell |
 | `C-M-h` | The tips screen: every key, plugin, and setting in one place |
-| `optmux pick` | Jump to any project you've run optmux in, running or not ([pick](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)) |
+| `optmux pick` | Jump to any project you've run OPTMUX in, running or not ([pick](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)) |
 | `optmux warp` | A focused session with only one worktree's windows ([warp](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)) |
 
 Two kinds of keys above. The `C-M-` shortcuts above need no prefix: hold Ctrl+Alt, or Control+Option on a Mac.
-Everything else goes through optmux's TMUX prefix, **`C-t`** (Ctrl+T), not TMUX's usual `C-b`, which stays free for readline: press it, let go, then the key.
+Everything else goes through OPTMUX's TMUX prefix, **`C-t`** (Ctrl+T), not TMUX's usual `C-b`, which stays free for readline: press it, let go, then the key.
 
 And out of the box:
 
 - **Every project is isolated**: its own TMUX server, config, plugins, and saved layouts, so nothing leaks between projects.
 - **Mouse everywhere**: click panes, drag borders, scroll in TMUX, less, and lazygit.
 - **Copy reaches your clipboard, even over SSH** (OSC 52).
-- **Your dotfiles stay yours**: optmux's git, delta, and lazygit settings apply only to what its shortcuts start.
+- **Your dotfiles stay yours**: OPTMUX's git, delta, and lazygit settings apply only to what its shortcuts start.
 
 ## Get started
 
@@ -50,7 +50,7 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
 
 ## Where to next
 
-**[Using optmux](https://github.com/netj/optmux/blob/main/docs/usage.md)** is the guide to the features above, and the reference for the `optmux` command. optmux compiles the YAML you give it into a generated directory next to it, so there is nothing to maintain by hand.
+**[Using OPTMUX](https://github.com/netj/optmux/blob/main/docs/usage.md)** is the guide to the features above, and the reference for the `optmux` command. OPTMUX compiles the YAML you give it into a generated directory next to it, so there is nothing to maintain by hand.
 
 **[Review changes](https://github.com/netj/optmux/blob/main/docs/usage-review.md)** across many tasks with ease: lazygit, the branch diff, and the PR open in the worktree you're in; diffs render in delta, and line numbers and commit hashes are links that open your editor or GitHub.
 
@@ -58,7 +58,7 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
 
 **[Find and open](https://github.com/netj/optmux/blob/main/docs/usage-find.md)** files, lines, tags, and symbols in your editor, beside your coding tool, ranked together and remembering where you left off.
 
-**[Pick among many projects](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)** with `optmux pick`, the one command to remember on a host with several optmux projects, and bring sessions back after a restart with tmux-resurrect.
+**[Pick among many projects](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)** with `optmux pick`, the one command to remember on a host with several OPTMUX projects, and bring sessions back after a restart with tmux-resurrect.
 
 **[Focus on one workdir](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)** with `optmux warp`: a session that links in only the windows of a single worktree, so an IDE or another terminal such as [cmux](https://cmux.com) can share a task's window.
 
@@ -74,9 +74,9 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
     EDITOR: nvim
 ```
 
-[`transform.optmux.yaml`](https://github.com/netj/optmux/blob/main/transform.optmux.yaml) shows what optmux's plugins and tools can transform into: delete the `#` in front of the ones you like. A project's YAML is also a [tmuxp](https://tmuxp.git-pull.com/configuration/) config, if you'd rather start every session with the same windows and panes.
+[`transform.optmux.yaml`](https://github.com/netj/optmux/blob/main/transform.optmux.yaml) shows what OPTMUX's plugins and tools can transform into: delete the `#` in front of the ones you like. A project's YAML is also a [tmuxp](https://tmuxp.git-pull.com/configuration/) config, if you'd rather start every session with the same windows and panes.
 
-**Troubleshooting**: [tmux-fingers](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-fingers.md) and [floating panes](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-floating-panes.md). Hacking on optmux itself? See [developing optmux](https://github.com/netj/optmux/blob/main/docs/development.md).
+**Troubleshooting**: [tmux-fingers](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-fingers.md) and [floating panes](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-floating-panes.md). Hacking on OPTMUX itself? See [developing OPTMUX](https://github.com/netj/optmux/blob/main/docs/development.md).
 
 ## License
 

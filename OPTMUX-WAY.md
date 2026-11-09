@@ -1,8 +1,8 @@
-# The optmux Way
+# The OPTMUX Way
 
 **AI coding tools now change code faster than anyone can read it.** You can't follow every line, and you don't need to. What you can't give up is your sense of reality: knowing the key source code well enough to judge what is changing, whether the work is going where you meant, and where to look closer. Lose that and you approve diffs you only skimmed, while the actual code, data, and files feel several layers removed, seen only through a chat transcript.
 
-The optmux Way is how to keep that sense while working with AI coding tools like Claude Code at full speed, and to make managing lots of tasks effortless. optmux sets up a terminal workspace (built on TMUX) where many tasks run side by side, each in its own checkout. You don't watch them all: a bell flags the one that needs you, a key takes you there, and everything for judging the work is right beside it. Hands-on when a task needs you, hands-off when it doesn't.
+The OPTMUX Way is how to keep that sense while working with AI coding tools like Claude Code at full speed, and to make managing lots of tasks effortless. OPTMUX sets up a terminal workspace (built on TMUX) where many tasks run side by side, each in its own checkout. You don't watch them all: a bell flags the one that needs you, a key takes you there, and everything for judging the work is right beside it. Hands-on when a task needs you, hands-off when it doesn't.
 
 **Be a manager who knows the work, not one who only reads status reports.** The report-reader takes everyone's word for how it's going, and hears about trouble when it's late. The manager who knows the work senses what's off from a glance at the right place: a key file, a diff, a failing test. That sense comes from staying close to the real thing, and no tool can hand it to you. You don't have to read every line (that is micromanaging, and at this pace impossible); keep your feel for the parts that matter, and lead your brilliant AI agents like an insightful mentor: set bold, challenging goals, then guide the work with a sharp eye for detail until it comes out beautiful.
 
@@ -16,7 +16,7 @@ Every task gets its own workdir and its own window. The coding tool runs in one 
 ## Setup
 
 ```bash
-brew install netj/tap/optmux   # optmux + tmux, wtcode, lazygit, delta, less, fzf, gh
+brew install netj/tap/optmux   # OPTMUX + tmux, wtcode, lazygit, delta, less, fzf, gh
 cd myproject
 optmux .
 ```
@@ -24,7 +24,7 @@ optmux .
 That's it. Press **`C-M-h`** (Ctrl+Alt+h, or Control+Option+h on a Mac) any time for the cheatsheet, and **`C-M-c`** to start your first task.
 Want the same windows every time, say Claude Code already running? Write a small YAML file for the project; see [As a shebang](docs/usage.md#as-a-shebang).
 
-> **Mouse:** optmux turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
+> **Mouse:** OPTMUX turns on mouse mode everywhere: in TMUX (click panes, drag borders, scroll), in `less` (scroll and click links), and in lazygit.
 > Keyboard works too, but clicking is often the fastest way to review.
 
 ## 1. One task, one workdir, one window
@@ -55,7 +55,7 @@ Press **`C-M-g`** in the coding tool's pane: [lazygit](https://github.com/jessed
 **`C-M-o`** or **`C-M-\`** flips back to the coding tool and zooms it, so you can go between *the tool* and *its changes* with one key.
 
 While the tool works, lazygit refreshes by itself.
-optmux sets lazygit up to render diffs with [delta](https://github.com/dandavison/delta), so you get syntax highlighting, word-level changes, and line numbers.
+OPTMUX sets lazygit up to render diffs with [delta](https://github.com/dandavison/delta), so you get syntax highlighting, word-level changes, and line numbers.
 
 **Use the staging area as a checkpoint.** This is the habit that pays off most:
 
@@ -64,14 +64,14 @@ optmux sets lazygit up to render diffs with [delta](https://github.com/dandaviso
 - Didn't like a hunk? **Discard just that hunk** (`d` in the hunk view) and tell the tool why. Its other edits stay put.
 - Happy with the whole thing? Commit from lazygit (`c`), or ask the tool to commit what's staged.
 
-Some lazygit keys optmux adds:
+Some lazygit keys OPTMUX adds:
 
 | Key | Action |
 |---|---|
 | `Ctrl-g` | Diff the branch against the default branch (`origin/HEAD`). This is what the PR will contain. |
 | click a line number | Open that line in your `$EDITOR` |
 
-Your own lazygit config still loads, with optmux's settings on top. Change optmux's under `+lazygit:` in `~/.optmux.yaml`; see [lazygit](docs/config.md#lazygit).
+Your own lazygit config still loads, with OPTMUX's settings on top. Change OPTMUX's under `+lazygit:` in `~/.optmux.yaml`; see [lazygit](docs/config.md#lazygit).
 
 ## 3. Teach by example
 
@@ -102,11 +102,11 @@ It renders with delta and opens in less with mouse support and link handling:
 - **Click a line number** to select the link, **click again** to open that file at that line in `$EDITOR`. Quit the editor and you're back in the diff, where you left it.
 - **Click a commit hash** to open it on GitHub.
 
-`$EDITOR` can be vim, nvim, emacs, nano, helix, or VS Code-style editors (`code`, `cursor`, …); optmux passes the line number the way each one expects.
+`$EDITOR` can be vim, nvim, emacs, nano, helix, or VS Code-style editors (`code`, `cursor`, …); OPTMUX passes the line number the way each one expects.
 
-optmux applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
+OPTMUX applies these settings only to what its shortcuts start, so your own shells and `~/.gitconfig` behave as usual.
 For anything else, prefix the command with `optmux env`: `optmux env git log -p`, `optmux env git show HEAD`.
-To get clickable `git diff`, `git show`, and `git log -p` in every shell inside optmux without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
+To get clickable `git diff`, `git show`, and `git log -p` in every shell inside OPTMUX without the prefix, add `[ -n "$OPTMUX_DIR" ] && . "$OPTMUX_DIR/env.sh"` to your shell rc.
 Tweak the settings with [`+git_config:`](docs/config.md#git_config) and [`+env:`](docs/config.md#env).
 
 ## 4. Keep many going
@@ -115,7 +115,7 @@ Once starting a task and switching between tasks are cheap, your job is directin
 
 - An urgent bug report, a sudden idea, a chore you keep putting off: none of them has to wait for the current task to finish. **`C-M-c`** spins up the next task in its own worktree and window, while every task already running carries on in its own: their files, panes, and progress stay untouched. Start one, start five.
 - When a task needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
-- Many projects? `optmux pick` lists every project you've started optmux in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
+- Many projects? `optmux pick` lists every project you've started OPTMUX in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
 - Too many windows? `optmux ~/myproject warp .` from inside a worktree opens a focused session with only that worktree's windows, which you can also open from an IDE's terminal. See [Warp sessions](docs/usage-warp.md).
 - **`C-M-w`** opens the current branch's PR on GitHub, or the repo page if there's no PR yet.
 
@@ -129,7 +129,7 @@ A typical rhythm:
 
 ## Where to go next
 
-- [optmux YAML config](docs/config.md): the full `+optmux:` reference (shortcuts, menus, plugins)
-- [Using optmux](docs/usage.md), [`optmux pick`](docs/usage-pick.md), and [`optmux warp`](docs/usage-warp.md)
-- [optmux Find](docs/usage-find.md), [optmux eXtract](docs/usage-extract.md), and [clipboard over SSH](docs/usage-extract.md#clipboard-and-osc-52)
+- [OPTMUX YAML config](docs/config.md): the full `+optmux:` reference (shortcuts, menus, plugins)
+- [Using OPTMUX](docs/usage.md), [`optmux pick`](docs/usage-pick.md), and [`optmux warp`](docs/usage-warp.md)
+- [OPTMUX Find](docs/usage-find.md), [OPTMUX eXtract](docs/usage-extract.md), and [clipboard over SSH](docs/usage-extract.md#clipboard-and-osc-52)
 - Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `+env`, `+git_config`, and `+lazygit` settings for every session. See [Personal config](docs/config.md#personal-config-optmuxyaml).

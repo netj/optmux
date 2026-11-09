@@ -30,9 +30,9 @@ That creates (or updates) a secondary session, named `<main-session>//<workdir-n
 - The status line labels warp sessions `⚡warp`, so you can tell them apart from the main session.
 - The main session must be running: start it first with `optmux ~/myproject`, and `optmux warp` tells you if it isn't.
 
-## Sharing a window outside optmux
+## Sharing a window outside OPTMUX
 
-A warp session is an ordinary session on the project's tmux server, so any terminal can attach to it, not only the one running your main optmux session. Run the warp from a [cmux](https://cmux.com) workspace, an IDE's integrated terminal, or another terminal tab, and it gets the task's window live, while your main session keeps its full view:
+A warp session is an ordinary session on the project's tmux server, so any terminal can attach to it, not only the one running your main OPTMUX session. Run the warp from a [cmux](https://cmux.com) workspace, an IDE's integrated terminal, or another terminal tab, and it gets the task's window live, while your main session keeps its full view:
 
 ```bash
 # in the integrated terminal of an editor opened on the worktree
@@ -41,5 +41,5 @@ optmux ~/myproject warp .
 
 - **Shared, not mirrored.** It is the same window in both places: type in either, and nothing is restarted or duplicated. Detaching (`C-t d`) closes only that terminal's view; the task keeps running in the main session.
 - **A terminal per workdir.** Give each worktree its own tab or workspace running `optmux ~/myproject warp .` from that worktree, and each one shows only that task's windows: the coding tool, plus the lazygit, shell and editor panes you opened beside it.
-- **Same optmux.** The warp session is still optmux, so reviewing, [Find](usage-find.md), and [eXtract](usage-extract.md) work the same inside an IDE terminal, except that some IDEs claim Ctrl+Alt combinations for themselves, so a `C-M-` key may need rebinding on one side.
+- **Same OPTMUX.** The warp session is still OPTMUX, so reviewing, [Find](usage-find.md), and [eXtract](usage-extract.md) work the same inside an IDE terminal, except that some IDEs claim Ctrl+Alt combinations for themselves, so a `C-M-` key may need rebinding on one side.
 - **Remote too.** Over ssh or mosh, run it on the host: it attaches to that host's session.

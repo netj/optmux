@@ -1,6 +1,6 @@
-# Developing optmux
+# Developing OPTMUX
 
-For people hacking on optmux itself; if you only use it, you can skip this.
+For people hacking on OPTMUX itself; if you only use it, you can skip this.
 
 ```bash
 # install the latest main branch

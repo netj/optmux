@@ -29,7 +29,7 @@ The binary would fail with the "Library not loaded" error because Homebrew doesn
 
 **Option 1: Auto-fix (recommended)**
 
-The latest optmux now auto-detects and installs missing dependencies. Just run:
+The latest OPTMUX now auto-detects and installs missing dependencies. Just run:
 ```bash
 ./your-project.optmux.yaml
 ```
@@ -57,14 +57,14 @@ rm -f ~/.optmux.d/tmux/plugins/Morantron/tmux-fingers/bin/tmux-fingers
 
 ### Prevention
 
-The optmux `plugins-update.sh` script now includes a dependency check that:
+The OPTMUX `plugins-update.sh` script now includes a dependency check that:
 1. Detects if tmux-fingers binary is dynamically linked (`otool -L` check)
 2. Tests if the binary can run
 3. Auto-installs missing dependencies via Homebrew
 
 ### Configuration
 
-To skip the install wizard on subsequent launches, optmux now sets:
+To skip the install wizard on subsequent launches, OPTMUX now sets:
 ```tmux
 set -g @fingers-skip-wizard '1'
 ```
