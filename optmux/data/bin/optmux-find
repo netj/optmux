@@ -9,7 +9,7 @@ One picker with five sources, like ctrl-p in vim but remembering where you were:
   omni   (C-o)  tags and file paths ranked together, best match first, each row labeled
   files  (C-f)  git ls-files, then the ignored files find turns up
   grep   (C-g)  git grep, live: the list is re-searched as you type
-  tags   (C-t)  a ctags `tags` file; without one, ctags builds it on first use and keeps it fresh
+  tags   (C-t)  a ctags `tags` file; without one, ctags builds it in the background on first use (an ⏳ row at the bottom, then the list fills in) and keeps it fresh
   lsp    (C-l)  symbols from the project's language servers, as you type (see optmux-lsp)
 `C-M-f` (the key that opened the picker) cycles them, and their keys jump straight to one. Switching carries
 the typed text along (try the omni search as grep, then as tags). Each source keeps its own record: opening
@@ -273,27 +273,37 @@ def tags_file(check=None):
         failed, lock = out.with_suffix(".failed"), out.with_suffix(".lock")
         recently_failed = failed.exists() and time.time() - failed.stat().st_mtime < RETRY_AFTER
         if not recently_failed:
-            if not out.is_file():
-                if take_lock(lock):
-                    print("optmux-find: indexing tags...", file=sys.stderr, flush=True)
-                    build_locked(root, out)
-            else:
+            try:  # (none yet: the first build is no different, the list shows a wait row until it is done)
+                stale = not out.is_file() or out.with_suffix(".stamp").read_text() != tags_stamp(root)
+            except OSError:
+                stale = True
+            if stale and take_lock(lock):
                 try:
-                    stale = out.with_suffix(".stamp").read_text() != tags_stamp(root)
+                    refresh_tags(root)
                 except OSError:
-                    stale = True
-                if stale and take_lock(lock):
-                    try:
-                        refresh_tags(root)
-                    except OSError:
-                        lock.unlink(missing_ok=True)
+                    lock.unlink(missing_ok=True)
     return out if out.is_file() else None
+
+
+def tags_building():
+    """Whether tags are being built for the first time (nothing to list yet, but something is coming)."""
+    root = repo_root()
+    if not root:
+        return False
+    out = tags_cache(root)
+    try:
+        return not out.is_file() and time.time() - out.with_suffix(".lock").stat().st_mtime < LOCK_TTL
+    except OSError:
+        return False
 
 
 def tags_for_editors():
     """Path of tags an editor can use from anywhere, or None. Ours name files relative to the project root, but an
     editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths."""
     found = tags_file()
+    while not found and tags_building():  # (an editor wants tags now: wait for the first build)
+        time.sleep(0.2)
+        found = tags_file(check=False)
     root = repo_root()
     if not found or not root:
         return found
@@ -347,7 +357,9 @@ def tag_line(root, path, excmd):
 def list_tags(_query, warn=True):
     tags = tags_file()
     if not tags:
-        if warn:
+        if tags_building():
+            PENDING.append(("tags",))
+        elif warn:
             print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
         return
     root = repo_root() or os.getcwd()
@@ -566,15 +578,131 @@ def lsp_query(args, timeout):
     return lsp_finish(lsp_start(args), timeout)
 
 
+# ---- slow sources: answer now, fill in later -----------------------------------------------------------
+# A source that needs a while (a first ctags run, language servers thinking) never holds the list up. It leaves
+# what it is waiting for in PENDING, and the list ends with a row for each (an ⏳ one, always last, so it is not
+# taken for a result, nor its absence for "nothing found"). While anything is pending, fzf polls (see `--poll`)
+# and reloads the list once something is done.
+
+PENDING = []        # ("tags",) or ("lsp", KIND, QUERY): what the lists made in this process are waiting for
+WAIT_FETCH = 20     # seconds a background fetch may take before it is presumed dead
+WAIT_LABELS = {"tags": "indexing the project with ctags...", "lsp": "waiting for language servers..."}
+
+
+def waiting_marker():
+    return state_dir() / "waiting"
+
+
+def lsp_paths(kind, query):
+    """(answer file, running file) of a background question to the language servers."""
+    directory = state_dir() / "lspcache"
+    directory.mkdir(exist_ok=True)
+    key = hashlib.sha1(f"{kind}\0{query}".encode()).hexdigest()[:16]
+    return directory / f"{key}.json", directory / f"{key}.run"
+
+
+def lsp_rows(kind, query):
+    """The language servers' rows for `query` (kind: "omni" asks what is quick, "lsp" everything), or None while they
+    are being asked in the background. An answer is kept for a while, so the reload that follows it finds it."""
+    done, running = lsp_paths(kind, query)
+    try:
+        answer = json.loads(done.read_text())
+        if time.time() - answer["t"] < answer["ttl"]:
+            return answer["rows"]
+    except (OSError, ValueError, KeyError):
+        pass
+    try:
+        asking = time.time() - running.stat().st_mtime < WAIT_FETCH
+    except OSError:
+        asking = False
+    if not asking:
+        for old in done.parent.iterdir():  # (the answers of earlier queries)
+            if time.time() - old.stat().st_mtime > 300:
+                old.unlink(missing_ok=True)
+        running.touch()
+        try:
+            reap(subprocess.Popen([sys.executable, os.path.abspath(sys.argv[0]), "--lsp-fetch", kind, query],
+                                  start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL))
+        except OSError:
+            running.unlink(missing_ok=True)
+            return []
+    PENDING.append(("lsp", kind, query))
+    return None
+
+
+def lsp_fetch(kind, query):
+    """The background half of lsp_rows: ask, then leave the answer for the next listing."""
+    done, running = lsp_paths(kind, query)
+    try:
+        rows = lsp_query(["--fast", query], 3) if kind == "omni" else lsp_query([query], 8)
+        ttl = 2 if any(r.startswith("!wait") for r in rows) else 30 if rows else 3  # (servers still starting: ask again soon)
+        temp = done.with_suffix(f".{os.getpid()}")
+        temp.write_text(json.dumps({"t": time.time(), "ttl": ttl, "rows": rows}))
+        os.replace(temp, done)
+    finally:
+        running.unlink(missing_ok=True)
+
+
+def wait_rows():
+    """One row per kind of thing pending, to go last in the list (FILE `!wait:KIND`, see marker_kind)."""
+    for kind in dict.fromkeys(item[0] for item in PENDING):
+        yield f"!wait:{kind}\t0\t{with_icon('wait', WAIT_LABELS[kind])}"
+
+
+def pending_done(item):
+    if item[0] == "tags":
+        return not tags_building()
+    try:
+        return time.time() - lsp_paths(item[1], item[2])[1].stat().st_mtime >= WAIT_FETCH
+    except OSError:
+        return True  # (the fetch removed its file: it is done)
+
+
+def candidates(mode, query):
+    """The list of a source as the picker shows it: its rows (recent ones first for files and tags), then the wait
+    rows. Notes what is pending for `poll`."""
+    PENDING.clear()
+    rows = list(LISTERS[mode](query))
+    if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
+        rows = by_recency(rows, lambda e: e.split("\t", 1)[0], load_recent())
+    elif mode == "tags":
+        rows = by_recency(rows, lambda e: tag_key(what_of(e)[2], e.split("\t", 1)[0]), load_recent())
+    waits = list(wait_rows())
+    try:
+        if PENDING:
+            waiting_marker().write_text(json.dumps(PENDING))
+        else:
+            waiting_marker().unlink(missing_ok=True)
+    except OSError:
+        pass
+    return rows + waits
+
+
+def poll(me, mode):
+    """fzf's `every` tick, run when something is pending: the action that reloads the list if any of it is done,
+    else nothing."""
+    try:
+        pending = json.loads(waiting_marker().read_text())
+    except (OSError, ValueError):
+        return ""
+    if not any(pending_done(item) for item in pending):
+        return ""
+    waiting_marker().unlink(missing_ok=True)  # (the listing makes it again if anything is left)
+    again = f'reload({shlex.quote(sys.executable)} {shlex.quote(me)} --list {mode} "$FZF_QUERY")'
+    # a source fzf filters itself was started with the search off (the list was only the wait row): on now
+    return ("enable-search+" if mode not in LIVE else "") + again
+
+
 def list_omni(query):
     """Tags, language-server symbols and file paths in one list, the stronger matches higher whichever source they
     come from. A tag or symbol is matched on its name (its path is the file's row), a file on its path; the
     letter and icon say which is which. A symbol the servers know replaces the tag for the same name in the same
     file. What you opened lately is pulled up (see boost); with no query, it comes first."""
-    asking = lsp_start(["--fast", query]) if query.strip() else None  # servers think while tags and files load
     tags = list(list_tags("", warn=False))
     files = list(list_files(""))
-    symbols = list(render_lsp(r for r in lsp_finish(asking, 3) if not r.startswith("!"))) if asking else []  # (never a marker row)
+    asked = (lsp_rows("omni", query) or []) if query.strip() else []  # (None: still asking, the wait row says so)
+    symbols = list(render_lsp(r for r in asked if not r.startswith("!")))  # (never a marker row)
     # ctags and servers often disagree on the line: one of the two for a name in a file
     defined = {(e.split("\t", 1)[0], what_of(e)[2]) for e in symbols}
     rows = []  # (what is matched, recency key, entry)
@@ -741,8 +869,10 @@ def preview_enabled():
 
 
 def marker_kind(mode, f):
-    """What a row's FILE field stands for if it is not a file: "install", "wait" or "note". Only C-l has such rows
-    (a tracked file may well be named `!x`)."""
+    """What a row's FILE field stands for if it is not a file: "install", "wait" or "note". Only C-l has such rows,
+    besides the `!wait:KIND` of a source still at work (a tracked file may well be named `!x`)."""
+    if f.startswith("!wait:"):
+        return "wait" if f[6:] in WAIT_LABELS else None
     return MARKER_KINDS.get(f.split(":", 1)[0]) if mode == "lsp" else None
 
 
@@ -764,7 +894,7 @@ def list_lsp(query):
     that say why, each with an icon of its own: one to install a missing server (Enter), others to wait or read."""
     if not query.strip():
         return
-    yield from render_lsp(lsp_query([query], 8))
+    yield from render_lsp(lsp_rows("lsp", query) or [])
 
 
 LISTERS = {"omni": list_omni, "files": list_files, "grep": list_grep, "tags": list_tags, "lsp": list_lsp}
@@ -932,12 +1062,8 @@ def pick(pane, start_mode=None, start_query=None):
         if mode in ("lsp", "omni"):  # start the hub (and so the servers) now; they boot while the user types
             reap(subprocess.Popen([sys.executable, lsp_exe(), "status"],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-        candidates = list(LISTERS[mode](query))
-        if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
-            candidates = by_recency(candidates, lambda e: e.split("\t", 1)[0], load_recent())
-        elif mode == "tags":
-            candidates = by_recency(candidates, lambda e: tag_key(what_of(e)[2], e.split("\t", 1)[0]), load_recent())
-        pos = cursor_position(candidates, query, entry, filtered=mode not in LIVE)
+        rows = candidates(mode, query)
+        pos = cursor_position(rows, query, entry, filtered=mode not in LIVE)
         # The list goes in on stdin for every source. Once loaded, move the cursor and stop watching `load`
         # (later changes, from typing, are not ours to steer). The live sources (grep, omni): fzf matches nothing itself and each
         # keystroke re-runs the search, debounced by the sleep (fzf kills a pending reload on the next key).
@@ -950,8 +1076,14 @@ def pick(pane, start_mode=None, start_query=None):
                     f"--bind=change:reload(sleep 0.1; {shlex.quote(me)} --list {mode} {{q}})"]
         else:
             fzf += [f"--bind=load:{first_load}"]
-        stdin = "\n".join(candidates) + "\n"
+            if PENDING:  # only a wait row so far, which a query must not filter away: search is off until the poll turns it on
+                fzf += ["--disabled"]
+        # while anything is pending, look every half second whether it is done (`[ -e ]` is all it costs otherwise)
+        fzf += [f"--bind=every(0.5):transform([ -e {shlex.quote(str(waiting_marker()))} ] && "
+                f"{shlex.quote(sys.executable)} {shlex.quote(me)} --poll {mode} || true)"]
+        stdin = "\n".join(rows) + "\n"
         proc = subprocess.run(fzf, input=stdin, stdout=subprocess.PIPE, text=True)
+        waiting_marker().unlink(missing_ok=True)
         if proc.returncode not in (0, 1, 130):
             input(f"[optmux-find] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
             return proc.returncode
@@ -995,10 +1127,18 @@ if __name__ == "__main__":
     if sys.argv[1:2] == ["--preview"]:  # fzf's preview command: MODE FILE LINE DISPLAY WHAT, see preview()
         args = (sys.argv[2:] + ["", "", "", "", ""])[:5]
         sys.exit(preview(*args, int(os.environ.get("FZF_PREVIEW_LINES") or 30)))
+    if sys.argv[1:2] == ["--lsp-fetch"]:  # the background half of lsp_rows: KIND QUERY
+        lsp_fetch(sys.argv[2], sys.argv[3])
+        sys.exit(0)
+    if sys.argv[1:2] == ["--poll"]:  # fzf's every(): MODE; prints the action to take, if any
+        enter_project_root()
+        print(poll(os.path.abspath(sys.argv[0]), sys.argv[2]))
+        sys.exit(0)
     if sys.argv[1:2] == ["--list"]:
         CHECK_TAGS = False  # a reload per keystroke: read the tags, leave building and checking to the picker
         mode, query = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
-        sys.stdout.write("".join(f"{line}\n" for line in LISTERS[mode](query)))
+        enter_project_root()
+        sys.stdout.write("".join(f"{line}\n" for line in candidates(mode, query)))
         sys.exit(0)
     args, options = parse_args(sys.argv[1:])
     pane = args[0] if args else tmux("display-message", "-p", "#{pane_id}", capture_output=True, text=True).stdout.strip()
