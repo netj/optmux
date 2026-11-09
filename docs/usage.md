@@ -6,7 +6,7 @@ Start with `optmux .` in a project and press **`C-M-h`** for the tips. A few thi
 - **[Extract](usage-extract.md)** what you see: `C-M-x` picks a command, path, URL, hash, or PR number off the screen and types or copies it, over SSH too.
 - **[Find](usage-find.md)** and open files: `C-M-f` searches files, live grep, tags, and language-server symbols in one picker.
 - **[Pick](usage-pick.md)** among projects: `optmux pick` attaches to any project you've run, and tmux-resurrect brings sessions back after a restart.
-- **[Warp](usage-warp.md)** to one workdir: `optmux warp` shows just the windows of a single worktree.
+- **[Warp](usage-warp.md)** to one workdir: `optmux warp` shows just the windows of a single worktree, and shares them with another terminal or an IDE.
 
 optmux does the setup behind these for you: each launch compiles your YAML (and `~/.optmux.yaml`) into a generated, git-ignored `.optmux.d/` directory, installs the plugins, and starts the project's own tmux server. You change the YAML, never that directory; see [What optmux generates](config.md#what-optmux-generates) if you're curious. To change the shortcuts, plugins, or tool settings, see [optmux YAML config](config.md).
 

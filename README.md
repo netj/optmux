@@ -59,7 +59,7 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
 
 **[Pick among many projects](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)** with `optmux pick`, the one command to remember on a host with several optmux projects, and bring sessions back after a restart with tmux-resurrect.
 
-**[Focus on one workdir](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)** with `optmux warp`: a session that links in only the windows of a single worktree.
+**[Focus on one workdir](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)** with `optmux warp`: a session that links in only the windows of a single worktree, so an IDE or another terminal such as [cmux](https://cmux.com) can share an agent's window.
 
 **[Configure](https://github.com/netj/optmux/blob/main/docs/config.md)** shortcuts, menus, plugins, and tool settings in the YAML under `+optmux:`, for one project or for all of them in `~/.optmux.yaml`:
 
