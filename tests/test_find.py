@@ -290,6 +290,8 @@ def fake_ctags(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
     monkeypatch.setenv("FAKE_CTAGS_LOG", str(outside / "ctags.log"))
     monkeypatch.setenv("OPTMUX_DIR", str(outside / "od"))
+    # the real thing builds detached, and the list shows a wait row meanwhile; here, build before returning
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: fd.build_locked(root, fd.tags_cache(root)))
     return outside / "ctags.log"
 
 
@@ -506,26 +508,25 @@ def test_omni_blends_language_server_symbols_replacing_the_tag_of_the_same_name_
     symbols = [f"app.py\t3\tHello{S}function{S}mod", f"sub/notes.md\t1\tHelloNotes{S}class{S}",
                "!note\t0\tno language server configuration"]
     asked = []
-    monkeypatch.setattr(fd, "lsp_start", lambda args: asked.append(args) or "proc")
-    monkeypatch.setattr(fd, "lsp_finish", lambda proc, timeout: symbols)
+    monkeypatch.setattr(fd, "lsp_rows", lambda kind, query: asked.append((kind, query)) or symbols)
     rows = [(fd.what_of(r)[0], plain(r), r.split("\t")[:2]) for r in fd.list_omni("hello")]
     assert [src for src, _, _ in rows].count("tags") == 0  # symbols took the tag's place; the marker row is no symbol
     assert rows[0][1].startswith("L⚡️ Hello  app.py:3") and rows[0][2] == ["app.py", "3"]  # best match, and the server's richer row
     assert rows[1][1].startswith("L🧩 HelloNotes")  # (a class)
     assert all(not f.startswith("!") for _, _, (f, _) in rows)
-    assert asked == [["--fast", "hello"]]
+    assert asked == [("omni", "hello")]
 
 
 @skip_no_fzf
 def test_omni_asks_no_servers_without_a_query(repo, monkeypatch):
-    monkeypatch.setattr(fd, "lsp_start", lambda *a: pytest.fail("no query, nothing to ask"))
+    monkeypatch.setattr(fd, "lsp_rows", lambda *a: pytest.fail("no query, nothing to ask"))
     assert list(fd.list_omni(""))
 
 
 def test_lsp_source_rows_get_icons_and_hint_rows_their_own(monkeypatch):
     rows = [f"a.py\t3\trun{fd.FIELD_SEP}function{fd.FIELD_SEP}", "!install:go\t0\tgo: no language server installed.  Enter runs: brew install gopls",
             "!wait\t0\tpython: language server starting, try again in a moment", "!note\t0\tpython: language server exited"]
-    monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: rows)
+    monkeypatch.setattr(fd, "lsp_rows", lambda kind, query: rows)
     got = [(r.split("\t")[0], plain(r).split(" ")[0]) for r in fd.list_lsp("x")]
     assert got == [("a.py", "L⚡️"), ("!install:go", "⚠️"), ("!wait", "⏳"), ("!note", "💬")]
     assert list(fd.list_lsp("  ")) == []
@@ -824,3 +825,92 @@ def test_the_preview_header_without_icons_has_no_stray_space(monkeypatch, capsys
     lines = capsys.readouterr().out.split("\n")
     assert lines[2] == "Gui"  # the module line: no icon, no indent, no empty escape pair
     assert all("\x1b[2m\x1b[0m" not in l for l in lines)
+
+
+def test_the_first_tags_build_is_in_the_background_and_the_list_says_so(repo, fake_ctags, monkeypatch):
+    started = []
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: started.append(root))  # (a build that takes a while)
+    fd.PENDING.clear()
+    assert list(fd.list_tags("")) == [] and started == [str(repo)]
+    assert fd.PENDING == [("tags",)]
+    rows = fd.candidates("tags", "")
+    assert [fd.marker_kind(m, r.split("\t")[0]) for m in ("tags", "omni") for r in rows] == ["wait", "wait"]
+    assert plain(rows[-1]).startswith("⏳") and rows[-1].startswith("!wait:tags\t")
+    assert fd.waiting_marker().exists()
+    assert fd.poll("me", "tags") == ""  # still building (the lock is held): nothing to do
+    fd.build_locked(str(repo), fd.tags_cache(str(repo)))  # done
+    fd.waiting_marker().write_text('[["tags"]]')
+    action = fd.poll("me", "tags")
+    assert action.startswith("enable-search+reload(") and "--list tags" in action and not fd.waiting_marker().exists()
+    assert [r for r in fd.candidates("tags", "") if r.startswith("!wait")] == []  # and no wait row any more
+    assert not fd.waiting_marker().exists()
+
+
+def test_wait_rows_come_last_in_omni_and_hold_the_place_of_the_servers(repo, put_tags, monkeypatch):
+    put_tags('Hello\tapp.py\t/^def Hello():$/;"\tf\tline:2\n')
+    def asking(kind, query):
+        fd.PENDING.append(("lsp", kind, query))
+        return None
+    monkeypatch.setattr(fd, "lsp_rows", asking)
+    rows = fd.candidates("omni", "hello")
+    assert rows[-1].startswith("!wait:lsp\t") and not any(r.startswith("!") for r in rows[:-1])
+    assert fd.what_of(rows[0])[0] == "tags"  # the quick sources are not held up
+
+
+def test_a_language_server_answer_is_fetched_in_the_background_and_kept_a_little(repo, monkeypatch):
+    spawned = []
+    real = fd.subprocess.Popen
+    fake = type("P", (), {"wait": lambda self: 0, "pid": 2 ** 22 + 1})  # (a pid nobody has)
+    monkeypatch.setattr(fd.subprocess, "Popen", lambda argv, **kw: spawned.append(argv) or fake() if "--lsp-fetch" in argv else real(argv, **kw))
+    fd.PENDING.clear()
+    assert fd.lsp_rows("lsp", "run") is None and fd.PENDING == [("lsp", "lsp", "run")]
+    assert fd.lsp_rows("lsp", "run") is None and len(spawned) == 1  # asked once, not once per listing
+    assert spawned[0][-3:] == ["--lsp-fetch", "lsp", "run"] and not fd.pending_done(("lsp", "lsp", "run"))
+    monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: ["a.py\t3\trun"])
+    fd.lsp_fetch("lsp", "run")
+    assert fd.pending_done(("lsp", "lsp", "run")) and fd.lsp_rows("lsp", "run") == ["a.py\t3\trun"]
+
+
+def test_drawn_tag_rows_are_kept_beside_the_tags_and_redrawn_when_the_style_changes(repo, fake_ctags, monkeypatch):
+    entries = list(fd.tag_entries())
+    assert [k for k, _ in entries] == ["sym_app\tapp.py", "sym_notes.md\tsub/notes.md"]
+    rows = fd.tags_file().with_suffix(".rows")
+    assert rows.read_text().startswith("rows1 ") and rows.exists()
+    with monkeypatch.context() as m:
+        m.setattr(fd, "render_tags", lambda tags: pytest.fail("the kept rows are read, not drawn again"))
+        assert list(fd.tag_entries()) == entries
+    rows.write_text("rows1 some-other-style\nbogus\n")  # drawn in another style: drawn again
+    assert [k for k, _ in fd.tag_entries()] == [k for k, _ in entries]
+
+
+def test_recent_first_moves_only_what_was_opened(monkeypatch):
+    pairs = [("a", 1), ("b", 2), ("c", 3), ("d", 4)]
+    assert fd.recent_first(pairs, ["c", "x", "a"]) == [("c", 3), ("a", 1), ("b", 2), ("d", 4)]
+
+
+def test_markers_are_per_picker_and_a_new_question_supersedes_the_old_of_its_kind(repo, monkeypatch):
+    monkeypatch.setenv("OPTMUX_FIND_MARKER", str(fd.state_dir() / "waiting.1"))
+    assert fd.waiting_marker().name == "waiting.1"
+    spawned = []
+    real = fd.subprocess.Popen
+    fake = type("P", (), {"wait": lambda self: 0, "pid": 2 ** 22 + 1})
+    monkeypatch.setattr(fd.subprocess, "Popen", lambda argv, **kw: spawned.append(argv) or fake() if "--lsp-fetch" in argv else real(argv, **kw))
+    fd.lsp_rows("omni", "he")
+    first = fd.lsp_paths("omni", "he")[1]
+    other = fd.lsp_paths("lsp", "he")[1]
+    other.write_text("1"); fd.PENDING.clear()
+    fd.lsp_rows("omni", "hel")
+    assert not first.exists() and other.exists()  # (only the omni question before it went, not the ^l one)
+    assert fd.lsp_paths("omni", "x")[0] != fd.lsp_paths("lsp", "x")[0]
+
+
+def test_rows_not_yet_drawn_while_a_build_is_on_are_waited_for_not_drawn_twice(repo, fake_ctags, monkeypatch):
+    list(fd.tag_entries())  # built, with rows
+    tags = fd.tags_file()
+    tags.touch()  # a rebuild just replaced the tags; its rows are still to come
+    fd.tags_cache(str(repo)).with_suffix(".lock").touch()
+    monkeypatch.setattr(fd, "render_tags", lambda t: pytest.fail("the builder is drawing them"))
+    fd.PENDING.clear()
+    assert [k for k, _ in fd.tag_entries()]  # the old rows serve meanwhile
+    fd.tags_cache(str(repo)).with_suffix(".rows").unlink()
+    assert list(fd.tag_entries()) == [] and fd.PENDING == [("tags",)]
