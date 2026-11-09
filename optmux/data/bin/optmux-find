@@ -16,7 +16,7 @@ the typed text along (try the omni search as grep, then as tags). Each source ke
 afresh resumes the last source with its own last query and the cursor on the entry it was on, `C-u` clears the
 query, and `M-p` (then older ones; `M-n` goes forward) recalls that source's earlier queries (fzf's own history,
 which also records queries you left with Esc or a switch). Enter opens the pick in an editor split next to the
-agent, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
+coding tool, at the matching line. The source is a tmux option on the server (`@optmux-find-mode`); the rest is in
 $OPTMUX_DIR/find/ (per project): SOURCE.{last,history}, and recent.json, what you opened, which pulls
 those files and tags up the lists (to the top with no query; in omni, up to 20 places).
 

@@ -1,17 +1,17 @@
 # Reviewing changes
 
-With an agent per worktree, most of your time goes to reading what they did. optmux puts the review tools one key from any agent's pane, each opening in that pane's worktree:
+With a task per worktree, most of your time goes to reading what the tools changed. optmux puts the review tools one key from any task's pane, each opening in that pane's worktree:
 
 - **`C-M-g`** lazygit, to skim the working tree, stage what you accept, and discard what you don't
 - **`C-M-d`** the diff of the whole branch against the default branch, which is what the PR will contain
 - **`C-M-w`** the branch's PR on GitHub, or the repo page if there is no PR yet
 - **`C-M-f`** and **`C-M-x`** to jump to a file or pick text from the screen: [Find](usage-find.md) and [eXtract](usage-extract.md)
 
-[The optmux Way](../OPTMUX-WAY.md#2-look-over-its-shoulder-watch-and-steer) shows how to turn these into a rhythm (the staging area as a checkpoint, a bell when an agent needs you). The rest of this page is what optmux sets up behind them.
+[The optmux Way](../OPTMUX-WAY.md#2-look-over-its-shoulder-watch-and-steer) shows how to turn these into a rhythm (the staging area as a checkpoint, a bell when a task needs you). The rest of this page is what optmux sets up behind them.
 
 ## What it sets up
 
-optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](../optmux-defaults.yaml) under [`env`](config.md#env), [`git_config`](config.md#git_config), and [`lazygit`](config.md#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](config.md#optmux-env). Your dotfiles and your shells are left alone. See [The optmux Way](../OPTMUX-WAY.md) for how it fits into working with coding agents.
+optmux's shortcuts open git review tools with an opinionated setup. It's configured in [`optmux-defaults.yaml`](../optmux-defaults.yaml) under [`env`](config.md#env), [`git_config`](config.md#git_config), and [`lazygit`](config.md#lazygit), and applied only to what the shortcuts start, through [`optmux-env`](config.md#optmux-env). Your dotfiles and your shells are left alone. See [The optmux Way](../OPTMUX-WAY.md) for how it fits into working with AI coding tools.
 
 - **[lazygit](https://github.com/jesseduffield/lazygit)** (`C-M-g`): It opens on files when there are uncommitted changes or the branch has no diff against the default branch yet, and otherwise on the branch's commits. optmux's config is layered on top of yours. It adds `Ctrl-g` to diff against the default branch (`origin/HEAD`). Diffs render with delta, and clicking a line number opens it in your editor.
 - **Clickable diff** (`C-M-d`, same as `Ctrl-g` in lazygit): what the branch changes against the default branch, rendered by delta in less, so you can scroll with the mouse and click a line number twice to edit it.

@@ -1,6 +1,6 @@
 # Using optmux
 
-Start with `optmux .` in a project and press **`C-M-h`** for the tips. A few things are worth learning first, since they are what you'll use all day, and each has a page of its own:
+Start with `optmux .` in a project and press **`C-M-h`** for the tips. Keys come in two kinds: `C-M-` shortcuts (Ctrl+Alt, or Control+Option on a Mac) work directly, and the rest go through the TMUX prefix, **`C-t`** (Ctrl+T) rather than TMUX's usual `C-b`: press it, let go, then the key. A few things are worth learning first, since they are what you'll use all day, and each has a page of its own:
 
 - **[Review changes](usage-review.md)**: `C-M-g` lazygit and `C-M-d` the PR diff, in whichever worktree you're in, with diffs rendered by delta and line numbers you can click to edit.
 - **[Extract](usage-extract.md)** what you see: `C-M-x` picks a command, path, URL, hash, or PR number off the screen and types or copies it, over SSH too.

@@ -6,18 +6,18 @@
 
 Optimal, opinionated, batteries-included TMUX that's neat and easy for any project.
 
-Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding agents like Claude Code do the typing. Run several agents side by side, each in its own git worktree and window, and review, correct, and steer them without leaving the keyboard.
+Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the typing. Run several tasks side by side, each in its own git worktree and window, and review, correct, and steer them without leaving the keyboard.
 
-**New here?** Read **[The optmux Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)**: how to stay the master mechanic, not the customer, when working with coding agents.
+**New here?** Read **[The optmux Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)**: how to stay on top of your AI coding tools, with your hands on the real files.
 
 ## What you can do
 
-No prefix needed for the `C-M-` keys: Ctrl+Alt, or Control+Option on a Mac.
+Two kinds of keys. The `C-M-` shortcuts below need no prefix: hold Ctrl+Alt, or Control+Option on a Mac. Everything else goes through optmux's TMUX prefix, **`C-t`** (Ctrl+T), not TMUX's usual `C-b`, which stays free for readline: press it, let go, then the key (`C-t z` zooms a pane, `C-t n` jumps to the next window that rang the bell).
 
 | Press | You get |
 |---|---|
-| `C-M-c` | A new task: a fresh git worktree, a new window, your agent running in it ([wtcode](https://github.com/netj/wtcode)) |
-| `C-M-g` | [lazygit](https://github.com/jesseduffield/lazygit) beside the agent, on its uncommitted files or its branch's commits ([review](https://github.com/netj/optmux/blob/main/docs/usage-review.md)) |
+| `C-M-c` | A new task: a fresh git worktree, a new window, your coding tool running in it ([wtcode](https://github.com/netj/wtcode)) |
+| `C-M-g` | [lazygit](https://github.com/jesseduffield/lazygit) beside your coding tool, on its uncommitted files or its branch's commits ([review](https://github.com/netj/optmux/blob/main/docs/usage-review.md)) |
 | `C-M-d` | The PR diff against the default branch, in delta: scroll with the mouse, click a line number to edit it ([review](https://github.com/netj/optmux/blob/main/docs/usage-review.md)) |
 | `C-M-f` | **Find**: files, live grep, tags, and language-server symbols in one picker, opened in your editor at the line ([Find](https://github.com/netj/optmux/blob/main/docs/usage-find.md)) |
 | `C-M-x` | **eXtract**: pick a command, path, URL, or hash off the screen and type or copy it ([eXtract](https://github.com/netj/optmux/blob/main/docs/usage-extract.md)) |
@@ -51,15 +51,15 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
 
 **[Using optmux](https://github.com/netj/optmux/blob/main/docs/usage.md)** is the guide to the features above, and the reference for the `optmux` command. optmux compiles the YAML you give it into a generated directory next to it, so there is nothing to maintain by hand.
 
-**[Review changes](https://github.com/netj/optmux/blob/main/docs/usage-review.md)** from many agents with ease: lazygit, the branch diff, and the PR open in the worktree you're in; diffs render in delta, and line numbers and commit hashes are links that open your editor or GitHub.
+**[Review changes](https://github.com/netj/optmux/blob/main/docs/usage-review.md)** across many tasks with ease: lazygit, the branch diff, and the PR open in the worktree you're in; diffs render in delta, and line numbers and commit hashes are links that open your editor or GitHub.
 
-**[Extract what you see](https://github.com/netj/optmux/blob/main/docs/usage-extract.md)** to repeat or copy it. A command in the agent's output, a path in an error, a URL: pick it from the screen and type it into a pane or copy it to your clipboard, locally or over SSH. It also covers which terminals support copying over SSH.
+**[Extract what you see](https://github.com/netj/optmux/blob/main/docs/usage-extract.md)** to repeat or copy it. A command in the tool's output, a path in an error, a URL: pick it from the screen and type it into a pane or copy it to your clipboard, locally or over SSH. It also covers which terminals support copying over SSH.
 
-**[Find and open](https://github.com/netj/optmux/blob/main/docs/usage-find.md)** files, lines, tags, and symbols in your editor, beside the agent, ranked together and remembering where you left off.
+**[Find and open](https://github.com/netj/optmux/blob/main/docs/usage-find.md)** files, lines, tags, and symbols in your editor, beside your coding tool, ranked together and remembering where you left off.
 
 **[Pick among many projects](https://github.com/netj/optmux/blob/main/docs/usage-pick.md)** with `optmux pick`, the one command to remember on a host with several optmux projects, and bring sessions back after a restart with tmux-resurrect.
 
-**[Focus on one workdir](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)** with `optmux warp`: a session that links in only the windows of a single worktree, so an IDE or another terminal such as [cmux](https://cmux.com) can share an agent's window.
+**[Focus on one workdir](https://github.com/netj/optmux/blob/main/docs/usage-warp.md)** with `optmux warp`: a session that links in only the windows of a single worktree, so an IDE or another terminal such as [cmux](https://cmux.com) can share a task's window.
 
 **[Configure](https://github.com/netj/optmux/blob/main/docs/config.md)** shortcuts, menus, plugins, and tool settings in the YAML under `+optmux:`, for one project or for all of them in `~/.optmux.yaml`:
 

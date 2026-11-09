@@ -1,6 +1,6 @@
 # optmux Find: open a file, line or tag
 
-`C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside the agent, at the matching line:
+`C-M-f` opens a picker over the project with five sources, and opens the pick in your editor (`$VISUAL`, `$EDITOR`, else `vim`) in a split beside your coding tool, at the matching line:
 
 - **`C-o` omni** (the default): tags, language-server symbols and file paths in one list, ranked together, so the stronger match is higher whichever it is (a file named for your query outranks a tag that only loosely contains it; a tag or symbol is matched on its name, a file on its path). A symbol the servers know replaces the tag for the same line. Rows are drawn alike in every source (see below); the best 100 are shown. Grep stays on its own key, `C-g`.
 - **`C-f` files**: `git ls-files` (tracked and untracked) first, then every other file `find` turns up, ignored ones included (scratch scripts, local notes), minus what `+find` → `+ignore_files` names (`node_modules`, `.venv`, caches, optmux's own `.optmux.d`; see below). Just `find` outside a repo.
