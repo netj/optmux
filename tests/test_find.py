@@ -859,7 +859,9 @@ def test_wait_rows_come_last_in_omni_and_hold_the_place_of_the_servers(repo, put
 
 def test_a_language_server_answer_is_fetched_in_the_background_and_kept_a_little(repo, monkeypatch):
     spawned = []
-    monkeypatch.setattr(fd.subprocess, "Popen", lambda argv, **kw: spawned.append(argv) or type("P", (), {"wait": lambda self: 0})())
+    real = fd.subprocess.Popen
+    fake = type("P", (), {"wait": lambda self: 0, "pid": 2 ** 22 + 1})  # (a pid nobody has)
+    monkeypatch.setattr(fd.subprocess, "Popen", lambda argv, **kw: spawned.append(argv) or fake() if "--lsp-fetch" in argv else real(argv, **kw))
     fd.PENDING.clear()
     assert fd.lsp_rows("lsp", "run") is None and fd.PENDING == [("lsp", "lsp", "run")]
     assert fd.lsp_rows("lsp", "run") is None and len(spawned) == 1  # asked once, not once per listing
@@ -884,3 +886,31 @@ def test_drawn_tag_rows_are_kept_beside_the_tags_and_redrawn_when_the_style_chan
 def test_recent_first_moves_only_what_was_opened(monkeypatch):
     pairs = [("a", 1), ("b", 2), ("c", 3), ("d", 4)]
     assert fd.recent_first(pairs, ["c", "x", "a"]) == [("c", 3), ("a", 1), ("b", 2), ("d", 4)]
+
+
+def test_markers_are_per_picker_and_a_new_question_supersedes_the_old_of_its_kind(repo, monkeypatch):
+    monkeypatch.setenv("OPTMUX_FIND_MARKER", str(fd.state_dir() / "waiting.1"))
+    assert fd.waiting_marker().name == "waiting.1"
+    spawned = []
+    real = fd.subprocess.Popen
+    fake = type("P", (), {"wait": lambda self: 0, "pid": 2 ** 22 + 1})
+    monkeypatch.setattr(fd.subprocess, "Popen", lambda argv, **kw: spawned.append(argv) or fake() if "--lsp-fetch" in argv else real(argv, **kw))
+    fd.lsp_rows("omni", "he")
+    first = fd.lsp_paths("omni", "he")[1]
+    other = fd.lsp_paths("lsp", "he")[1]
+    other.write_text("1"); fd.PENDING.clear()
+    fd.lsp_rows("omni", "hel")
+    assert not first.exists() and other.exists()  # (only the omni question before it went, not the ^l one)
+    assert fd.lsp_paths("omni", "x")[0] != fd.lsp_paths("lsp", "x")[0]
+
+
+def test_rows_not_yet_drawn_while_a_build_is_on_are_waited_for_not_drawn_twice(repo, fake_ctags, monkeypatch):
+    list(fd.tag_entries())  # built, with rows
+    tags = fd.tags_file()
+    tags.touch()  # a rebuild just replaced the tags; its rows are still to come
+    fd.tags_cache(str(repo)).with_suffix(".lock").touch()
+    monkeypatch.setattr(fd, "render_tags", lambda t: pytest.fail("the builder is drawing them"))
+    fd.PENDING.clear()
+    assert [k for k, _ in fd.tag_entries()]  # the old rows serve meanwhile
+    fd.tags_cache(str(repo)).with_suffix(".rows").unlink()
+    assert list(fd.tag_entries()) == [] and fd.PENDING == [("tags",)]
