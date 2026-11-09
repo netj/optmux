@@ -13,7 +13,7 @@
 
 ## Wording
 
-- **Don't call AI coding tools "agents"** (README, `docs/`, tips, messages, comments). The maintainer avoids personifying AI. Say "AI coding tool" or "coding tool" for the software, "task" when the sentence is really about a window or worktree, and "Claude Code" for a concrete example. The one deliberate exception is the sentence in `OPTMUX-WAY.md` about leading "your brilliant AI agents like an insightful mentor"; keep any other use to a minimum in marketing copy (README, The OPTMUX Way). "ssh-agent" and the like are fine.
+- **Don't call AI coding tools "agents"** (README, `docs/`, tips, messages, comments). The maintainer avoids personifying AI, following Jaron Lanier's framing of AI as a new way for people to collaborate at massive scale rather than as a being of its own. Say "AI coding tool" or "coding tool" for the software, "task" when the sentence is really about a window or worktree, and "Claude Code" for a concrete example. The one deliberate exception is the sentence in `OPTMUX-WAY.md` about leading "your brilliant AI agents like an insightful mentor"; keep any other use to a minimum in marketing copy (README, The OPTMUX Way). "ssh-agent" and the like are fine.
 - **Write OPTMUX in capitals in prose**, like TMUX ("The OPTMUX Way", "OPTMUX Find", "OPTMUX's settings"). Commands (`optmux`), file names, paths, URLs, package names, and `optmux-*` scripts stay lowercase.
 - **Say the `C-t` prefix early**: it is not tmux's default `C-b`, and readers should not have to hunt for it.
 
