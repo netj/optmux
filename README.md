@@ -76,7 +76,7 @@ No Homebrew? `uvx optmux .` runs it straight from PyPI (bring your own tmux and 
 
 [`transform.optmux.yaml`](https://github.com/netj/optmux/blob/main/transform.optmux.yaml) shows what OPTMUX's plugins and tools can transform into: delete the `#` in front of the ones you like, or try the file as is with `./transform.optmux.yaml`. A project's YAML is also a [tmuxp](https://tmuxp.git-pull.com/configuration/) config, if you'd rather start every session with the same windows and panes.
 
-**Troubleshooting**: [tmux-fingers](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-fingers.md) and [floating panes](https://github.com/netj/optmux/blob/main/docs/troubleshooting/tmux-floating-panes.md). Hacking on OPTMUX itself? See [developing OPTMUX](https://github.com/netj/optmux/blob/main/docs/development.md).
+Something off? See [troubleshooting](https://github.com/netj/optmux/tree/main/docs/troubleshooting). Hacking on OPTMUX itself? See [developing OPTMUX](https://github.com/netj/optmux/blob/main/docs/development.md).
 
 ## License
 
