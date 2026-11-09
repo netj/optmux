@@ -399,7 +399,7 @@ def open_find(pane, source, query):
         directory = ["-d", path.replace("#", "##")] if path and os.path.isdir(path) else []
         popup = ["tmux", "display-popup", "-E", "-t", pane, *directory, "-w", "100%", "-h", "60%",
                  "-b", "rounded", "-T", " OPTMUX Find ", shlex.join(argv)]
-        failed = shlex.join(["tmux", "display-message", "-d", "3000", "optmux-extract: could not open optmux Find; the text is in the tmux buffer"])
+        failed = shlex.join(["tmux", "display-message", "-d", "3000", "optmux-extract: could not open OPTMUX Find; the text is in the tmux buffer"])
         # in the background and a moment later: this popup has to be gone first, or the new one opens over it
         tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(popup)} || {failed}".replace("#", "##"))
         return 0
@@ -409,7 +409,7 @@ def open_find(pane, source, query):
                 os.unlink(query_file)
             except OSError:
                 pass
-        tmux("display-message", "-d", "3000", f"optmux-extract: could not start optmux Find ({e}); the text is in the tmux buffer")
+        tmux("display-message", "-d", "3000", f"optmux-extract: could not start OPTMUX Find ({e}); the text is in the tmux buffer")
         return 1
 
 

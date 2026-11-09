@@ -281,7 +281,8 @@ You configure OPTMUX in your YAML ([`+optmux:`](#optmux-yaml-config)), never in 
 |---|---|
 | `tmux/tmux.conf` | OPTMUX's tmux config, bundled with OPTMUX and read-only. Your settings reach tmux through the files below |
 | `tmux/tmux.optmux-shortcuts.conf`, `tmux.optmux-menu.conf`, `tmux.optmux-extras.*.conf`, `optmux-plugins.conf` | Compiled from [`+shortcuts:`](#shortcuts), [`+menu:`](#menu), [`+tmux_config:`](#tmux_config) and [`+plugins:`](#plugins), sourced by `tmux.conf` |
-| `tmux/tips.sh`, `tmux/plugins-update.sh` | The tips screen (`C-M-h`) and the plugin installer/updater (`prefix I`) |
+| `tmux/tips.sh`, `tmux/plugins-update.sh` | The tips screen (`C-M-h`) and the plugin installer/updater (`prefix I`), with the text files the tips screen shows (`tips-content.txt`, `tips-plugins.txt`, `version.txt`) |
+| `find.json` | Compiled from [`+find:`](usage-find.md) and `+icons:`, read by OPTMUX Find and eXtract |
 | `env.sh` | OPTMUX's settings from [`+env:`](#env), [`+git_config:`](#git_config) and [`+lazygit:`](#lazygit), applied by [`optmux-env`](#optmux-env) |
 | `lazygit/config.yml` | Compiled from [`+lazygit:`](#lazygit) |
 | `bin/` | Helper scripts (`optmux-*`), on `PATH` for shortcuts (and in shells that source `env.sh`) |
@@ -290,12 +291,12 @@ You configure OPTMUX in your YAML ([`+optmux:`](#optmux-yaml-config)), never in 
 
 | Path | What it is |
 |---|---|
-| `tmux/tmux.sock` | The project's tmux server socket, which is what isolates it |
+| `tmux/tmux.sock` | The project's tmux server socket, which is what isolates it (a symlink to a socket under the system temp directory when the path would be too long) |
 | `tmux/plugins/` | Plugins TPM installed |
 | `tmux/resurrect/` | Saved sessions (tmux-resurrect) |
 | `find/` | [OPTMUX Find](usage-find.md)'s tags index, history, and recent files |
 
-Deleting the directory, once the session is stopped, is harmless: the next launch generates it again and reinstalls the plugins, and only your saved sessions and Find history are lost. Your own `tmux/tmux.NAME.conf` files are sourced too and left alone, but [`+tmux_config:`](#tmux_config) keeps them in your YAML where they belong.
+Deleting the directory, once the session is stopped, is harmless: the next launch generates it again and reinstalls the plugins, and only your saved sessions and Find history are lost, plus any `tmux/tmux.NAME.conf` files you added there. Those are sourced too and left alone on relaunch, but [`+tmux_config:`](#tmux_config) keeps them in your YAML where they belong.
 
 ## Environment variables
 

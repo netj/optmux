@@ -1111,7 +1111,7 @@ def enter_project_root():
 
 def parse_args(argv):
     """([pane id], {mode, query}) of optmux-find's command line."""
-    parser = argparse.ArgumentParser(prog="optmux-find", description="optmux Find: a file, a line or a symbol, opened in your editor.")
+    parser = argparse.ArgumentParser(prog="optmux-find", description="OPTMUX Find: a file, a line or a symbol, opened in your editor.")
     parser.add_argument("pane", nargs="?", help="the tmux pane to work on (the active one by default)")
     parser.add_argument("--mode", choices=MODES, help="start in this source")
     parser.add_argument("--query", help="start with this query")

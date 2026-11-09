@@ -12,7 +12,7 @@ OPTMUX does the setup behind these for you: each launch compiles your YAML (and 
 
 ## First run
 
-Try the included example:
+Try the included example, which shows shortcuts, tmux config, and window layout:
 
 ```bash
 git clone https://github.com/netj/optmux.git && cd optmux
