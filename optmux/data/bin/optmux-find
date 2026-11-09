@@ -27,6 +27,7 @@ import argparse
 import fnmatch
 import functools
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -247,7 +248,9 @@ def take_lock(lock):
 def build_locked(root, out):
     """Build, remembering a failure so the next opens leave a broken ctags alone for a while. Lock held."""
     try:
-        if not build_tags(root, out):
+        if build_tags(root, out):
+            write_tag_rows(out)
+        else:
             out.with_suffix(".failed").touch()
     finally:
         out.with_suffix(".lock").unlink(missing_ok=True)
@@ -354,14 +357,9 @@ def tag_line(root, path, excmd):
     return "1"
 
 
-def list_tags(_query, warn=True):
-    tags = tags_file()
-    if not tags:
-        if tags_building():
-            PENDING.append(("tags",))
-        elif warn:
-            print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
-        return
+def render_tags(tags):
+    """(name, row) of every tag in a tags file, rows as `row` draws them. Slow on a big project (hundreds of
+    thousands of tags: seconds), so tag_entries keeps the result."""
     root = repo_root() or os.getcwd()
     for raw in tags.read_text(errors="replace").splitlines():
         if raw.startswith("!_TAG_"):
@@ -371,7 +369,56 @@ def list_tags(_query, warn=True):
         fields = dict(f.split(":", 1) for f in ext.split("\t") if ":" in f)
         kind = fields.get("kind") or (ext.split("\t")[1] if len(ext.split("\t")) > 1 and ":" not in ext.split("\t")[1] else "")
         line = fields.get("line") or tag_line(root, path, excmd)
-        yield row("tags", kind, name, path, line)
+        entry = row("tags", kind, name, path, line)
+        yield what_of(entry)[2], entry
+
+
+ROWS_FORMAT = "rows1"  # changes when what a row looks like does (the icon style is part of the head, too)
+
+
+def write_tag_rows(tags):
+    """Keep the drawn rows of `tags` beside it (`NAME \t ROW` per line), so opening the picker reads a file
+    instead of parsing and drawing every tag again. Made by the background build; made on the spot if missing."""
+    rows = tags.with_suffix(".rows")
+    temp = rows.with_suffix(f".{os.getpid()}")
+    with open(temp, "w") as f:
+        f.write(f"{ROWS_FORMAT} {icon_style()}\n")
+        for name, entry in render_tags(tags):
+            f.write(f"{name}\t{entry}\n")
+    os.replace(temp, rows)
+    return rows
+
+
+def tag_entries():
+    """(key, row) of every tag, the key being what recency remembers (tag_key). Rows are not parsed here: they
+    come from the file write_tag_rows keeps. Leaves PENDING a note while the first build is on."""
+    tags = tags_file()
+    if not tags:
+        if tags_building():
+            PENDING.append(("tags",))
+        return
+    rows = tags.with_suffix(".rows")
+    head = f"{ROWS_FORMAT} {icon_style()}\n"
+    for _ in range(2):
+        try:
+            with open(rows) as f:
+                if f.readline() == head and rows.stat().st_mtime >= tags.stat().st_mtime:
+                    for line in f:
+                        name, _, entry = line[:-1].partition("\t")
+                        yield f"{name}\t{entry.partition(chr(9))[0]}", entry
+                    return
+        except OSError:
+            pass
+        write_tag_rows(tags)
+
+
+def list_tags(_query, warn=True):
+    found = False
+    for _, entry in tag_entries():
+        found = True
+        yield entry
+    if not found and warn and not PENDING and not tags_building():
+        print("no tags: needs a ctags that reads a file list, like universal-ctags (brew install universal-ctags); macOS's own does not", file=sys.stderr)
 
 
 RECENT_KEEP = 300   # entries remembered
@@ -405,6 +452,16 @@ def by_recency(entries, key_of, recent):
     """Entries with the recently opened first (most recent first), the rest in their order."""
     where = {k: i for i, k in enumerate(recent)}
     return sorted(entries, key=lambda e: where.get(key_of(e), len(recent)))
+
+
+def recent_first(pairs, recent):
+    """(key, row) pairs with the recently opened ones first (most recent first), the rest in their order: one pass."""
+    where = {k: i for i, k in enumerate(recent)}
+    picked, rest = [], []
+    for pair in pairs:
+        (picked if pair[0] in where else rest).append(pair)
+    picked.sort(key=lambda pair: where[pair[0]])
+    return picked + rest
 
 
 def boost(keys, recent):
@@ -663,11 +720,11 @@ def candidates(mode, query):
     """The list of a source as the picker shows it: its rows (recent ones first for files and tags), then the wait
     rows. Notes what is pending for `poll`."""
     PENDING.clear()
-    rows = list(LISTERS[mode](query))
+    rows = list(LISTERS[mode](query)) if mode != "tags" else []
     if mode == "files":  # fzf breaks ties by list order: put what was opened lately first
         rows = by_recency(rows, lambda e: e.split("\t", 1)[0], load_recent())
     elif mode == "tags":
-        rows = by_recency(rows, lambda e: tag_key(what_of(e)[2], e.split("\t", 1)[0]), load_recent())
+        rows = [entry for _, entry in recent_first(tag_entries(), load_recent())]
     waits = list(wait_rows())
     try:
         if PENDING:
@@ -699,30 +756,37 @@ def list_omni(query):
     come from. A tag or symbol is matched on its name (its path is the file's row), a file on its path; the
     letter and icon say which is which. A symbol the servers know replaces the tag for the same name in the same
     file. What you opened lately is pulled up (see boost); with no query, it comes first."""
-    tags = list(list_tags("", warn=False))
     files = list(list_files(""))
     asked = (lsp_rows("omni", query) or []) if query.strip() else []  # (None: still asking, the wait row says so)
     symbols = list(render_lsp(r for r in asked if not r.startswith("!")))  # (never a marker row)
     # ctags and servers often disagree on the line: one of the two for a name in a file
     defined = {(e.split("\t", 1)[0], what_of(e)[2]) for e in symbols}
+    recent = load_recent()
+    if not query:  # nothing to rank: the recent ones, then the first of the list. Not all of a huge project's tags drawn
+        where = {k: i for i, k in enumerate(recent)}
+        picked, rest = [], []
+        for key, entry in itertools.chain(tag_entries(), ((e.split("\t", 1)[0], e) for e in files)):
+            if key in where:
+                picked.append((where[key], entry))
+            elif len(rest) < OMNI_LIMIT:
+                rest.append(entry)
+        picked.sort(key=lambda p: p[0])
+        yield from [e for _, e in picked][:OMNI_LIMIT]
+        yield from rest[:max(0, OMNI_LIMIT - len(picked))]
+        return
     rows = []  # (what is matched, recency key, entry)
     for e in symbols:
         f, name = e.split("\t", 1)[0], what_of(e)[2]
         rows.append((name, tag_key(name, f), e))
-    for e in tags:
-        f, name = e.split("\t", 1)[0], what_of(e)[2]
+    for key, e in tag_entries():
+        name, _, f = key.partition("\t")
         if (f, name) not in defined:
-            rows.append((name, tag_key(name, f), e))
+            rows.append((name, key, e))
     for e in files:
         f = e.split("\t", 1)[0]
         rows.append((f, f, e))
-    recent = load_recent()
-    if query:
-        order = rank([m for m, _, _ in rows], query)
-        order = [order[p] for p in boost([rows[i][1] for i in order], recent)]
-    else:
-        where = {k: i for i, k in enumerate(recent)}
-        order = sorted(range(len(rows)), key=lambda i: where.get(rows[i][1], len(recent)))
+    order = rank([m for m, _, _ in rows], query)
+    order = [order[p] for p in boost([rows[i][1] for i in order], recent)]
     for i in order[:OMNI_LIMIT]:
         yield rows[i][2]
 

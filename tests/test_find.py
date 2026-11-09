@@ -867,3 +867,20 @@ def test_a_language_server_answer_is_fetched_in_the_background_and_kept_a_little
     monkeypatch.setattr(fd, "lsp_query", lambda args, timeout: ["a.py\t3\trun"])
     fd.lsp_fetch("lsp", "run")
     assert fd.pending_done(("lsp", "lsp", "run")) and fd.lsp_rows("lsp", "run") == ["a.py\t3\trun"]
+
+
+def test_drawn_tag_rows_are_kept_beside_the_tags_and_redrawn_when_the_style_changes(repo, fake_ctags, monkeypatch):
+    entries = list(fd.tag_entries())
+    assert [k for k, _ in entries] == ["sym_app\tapp.py", "sym_notes.md\tsub/notes.md"]
+    rows = fd.tags_file().with_suffix(".rows")
+    assert rows.read_text().startswith("rows1 ") and rows.exists()
+    with monkeypatch.context() as m:
+        m.setattr(fd, "render_tags", lambda tags: pytest.fail("the kept rows are read, not drawn again"))
+        assert list(fd.tag_entries()) == entries
+    rows.write_text("rows1 some-other-style\nbogus\n")  # drawn in another style: drawn again
+    assert [k for k, _ in fd.tag_entries()] == [k for k, _ in entries]
+
+
+def test_recent_first_moves_only_what_was_opened(monkeypatch):
+    pairs = [("a", 1), ("b", 2), ("c", 3), ("d", 4)]
+    assert fd.recent_first(pairs, ["c", "x", "a"]) == [("c", 3), ("a", 1), ("b", 2), ("d", 4)]
