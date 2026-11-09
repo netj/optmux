@@ -112,7 +112,7 @@ Tweak the settings with [`+git_config:`](docs/config.md#git_config) and [`+env:`
 - An urgent bug report, a sudden idea, a chore you keep putting off: none of them has to wait for the current task to finish. **`C-M-c`** spins up the next task in its own worktree and window, while every agent already running carries on in its own: their files, panes, and progress stay untouched. Start one, start five.
 - When an agent needs you, the bell flags its window. **`C-t n`** / **`C-t p`** jumps to the next or previous window *with a bell*, skipping the quiet ones. (In Claude Code, set `/config` → notifications to *terminal bell*.)
 - Many projects? `optmux pick` lists every project you've started optmux in (● running) and drops you into the one you choose. Handy from a phone: it's the one command to remember.
-- Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](docs/usage.md#warp-sessions).
+- Too many windows? `optmux warp` from inside a worktree opens a focused session with only that worktree's windows. See [Warp sessions](docs/usage-warp.md).
 - **`C-M-w`** opens the current branch's PR on GitHub, or the repo page if there's no PR yet.
 
 A typical rhythm:
@@ -126,6 +126,6 @@ A typical rhythm:
 ## Where to go next
 
 - [optmux YAML config](docs/config.md): the full `+optmux:` reference (shortcuts, menus, plugins)
-- [Using optmux](docs/usage.md): warp sessions, `optmux pick`, and the other commands
-- [optmux Find](docs/find.md), [optmux eXtract](docs/extract.md), and [clipboard over SSH](docs/terminal.md)
+- [Using optmux](docs/usage.md), [`optmux pick`](docs/usage-pick.md), and [`optmux warp`](docs/usage-warp.md)
+- [optmux Find](docs/usage-find.md), [optmux eXtract](docs/usage-extract.md), and [clipboard over SSH](docs/usage-extract.md#clipboard-and-osc-52)
 - Make it yours with `~/.optmux.yaml`: personal shortcuts, plugins, `+env`, `+git_config`, and `+lazygit` settings for every session. See [Personal config](docs/config.md#personal-config-optmuxyaml).

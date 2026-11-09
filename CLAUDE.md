@@ -8,7 +8,7 @@
 
 ## Docs Layout
 
-- `README.md` is the front door (pitch, key → outcome table, get started, make it yours, docs index); keep it short and put details in `docs/` (`usage.md` CLI, `config.md` `+optmux:` reference, `review.md`, `find.md`, `extract.md`, `terminal.md`, `troubleshooting/`). `OPTMUX-WAY.md` stays at the top level.
+- `README.md` is the front door (pitch, key → outcome table, get started, then short paragraphs pointing on); keep it short and put details in `docs/`: `usage.md` (feature overview + CLI reference), `usage-review.md`, `usage-extract.md` (with clipboard/OSC 52), `usage-find.md`, `usage-pick.md` (with tmux-resurrect), `usage-warp.md`, `config.md` (`+optmux:` reference, what optmux generates, environment variables), `development.md`, `troubleshooting/`. `OPTMUX-WAY.md` stays at the top level.
 - README is also the PyPI description, so its links use absolute `https://github.com/netj/optmux/blob/main/...` URLs; links within `docs/` stay relative. Its tagline line is read by `tests/test_tips_script.py`.
 
 ## YAML Style
