@@ -8,7 +8,7 @@ Optimal, opinionated, batteries-included TMUX that's neat and easy for any proje
 
 Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the typing. Run several tasks side by side, each in its own git worktree and window, and review, correct, and steer them without leaving the keyboard.
 
-**New here?** Read **[The optmux Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)**: how to stay on top of your AI coding tools, with your hands on the real files.
+**New here?** Read **[The optmux Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)**: how to stay on top of your AI coding tools, with your hands and eyes on the real files.
 
 ## What you can do
 
