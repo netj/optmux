@@ -6,7 +6,7 @@
 
 Optimal, opinionated, batteries-included TMUX that's neat and easy for any project.
 
-Run `optmux .` in any project and get its own TMUX, already set up: plugins installed, mouse on everywhere, and one-key shortcuts for the tools you reach for while AI coding tools like Claude Code do the bulk of code generation and editing. Run dozens of tasks side by side, each in its own git worktree and window. A bell flags the one that needs you, a key takes you there, and the diff, lazygit, a shell, and your editor are right beside the work. Manage them like a good manager: hands-on when a task needs you, hands-off when it doesn't. Learn **[the OPTMUX Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)** to keep a real sense of the code, with your eyes and hands on the key files, even at the incredible pace AI coding tools set.
+Run `optmux .` in any project and get its own, fully loaded TMUX: plugins installed, mouse support everywhere, and keyboard shortcuts for review tools at your fingertips while AI coding tools like Claude Code do the bulk of code generation and editing. Run dozens of tasks side by side, each in its own git worktree and window. A bell flags the one that needs you, a key takes you there, and the diff, lazygit, a shell, and your editor are right beside the work: hands-on when a task needs you, hands-off when it doesn't. Learn **[the OPTMUX Way](https://github.com/netj/optmux/blob/main/OPTMUX-WAY.md)** to keep a real sense of the code, with your eyes and hands on the key files, even at the incredible pace AI coding tools set.
 
 ## What you can do
 
