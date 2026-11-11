@@ -116,7 +116,7 @@
     # is for the rest. Keep it dumb: add a line when something keeps showing up, drop it when it stops. (A pattern ending in `:` is written `[:]`, or YAML reads a key.)
     +ignore_spans:
       claude_code:
-      - \W*(auto|plan|accept edits|bypass permissions) (mode )?on
+      - \W*(auto-?)?(accept edits|plan|auto|bypass permissions)( mode)? on.*
       - Jump to bottom.*
       - Not logged in.*
       - recap[:]

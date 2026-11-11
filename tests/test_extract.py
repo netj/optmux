@@ -415,3 +415,13 @@ def test_the_query_it_opens_on_is_kept_even_if_it_matches_nothing():
     numbered = [(0, ("alpha", "alpha"))]
     assert pt.cursor_position(numbered, "zzz", "lines", None, recalled=False)[0] == "zzz"
     assert pt.cursor_position(numbered, "zzz", "lines", None, recalled=True)[0] == ""
+
+
+def test_white_is_text_not_grey_and_the_mode_line_hint_is_covered():
+    cap = "\x1b[97mwhite text\x1b[0m \x1b[38;2;255;255;255mrgb white\x1b[0m \x1b[37mansi white\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["white text", "rgb white", "ansi white"]
+    import re
+    import yaml
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
+    assert any(re.fullmatch(p, "⏵⏵ accept edits on (shift+tab to cycle)", re.I) for p in patterns)

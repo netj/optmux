@@ -9,7 +9,7 @@ program itself styled: colored, bold, underlined, ...) mixed, in screen order, w
 names, commit hashes, PR/issue numbers like #234, quoted text, versions). Enter types the selection into the pane; `C-y` copies it, by the method
 `C-t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
 method are remembered (tmux options on the server) for the next time, and so are each filter's query and the
-item the cursor was on: it opens on the last query, and `M-p` steps back through the filter's earlier queries (each with its
+item the cursor was on: it opens on the query you left, and `M-p` steps back through the filter's earlier queries (each with its
 cursor), `M-n` forward again to a fresh start (`C-u` clears the query). `icons` (emoji, nerd or
 text, as in optmux Find) says how a pattern's kind is drawn.
 
@@ -57,15 +57,16 @@ class Style:
 
 
 def is_grey(fg):
-    """Whether a foreground is a grey: bright black, a 256-color grey (the ramp 232-255, or 8/7/15), or an RGB
-    with nearly equal channels. Programs draw their chrome and de-emphasized text in these."""
-    if fg in ((90,), (37,)):
+    """Whether a foreground is a mid grey: bright black, a 256-color grey (8, 59, 102, 145, or the ramp 232-250), or an
+    RGB with nearly equal channels, neither near-white nor near-black. Programs draw their chrome and de-emphasized
+    text in these; white (37, 7, 15, 255) is ordinary text, set explicitly."""
+    if fg == (90,):
         return True
     if len(fg) == 3 and fg[:2] == (38, 5):
-        return fg[2] in (7, 8, 59, 102, 145, 188) or 232 <= fg[2] <= 255
+        return fg[2] in (8, 59, 102, 145) or 232 <= fg[2] <= 250
     if len(fg) == 5 and fg[:2] == (38, 2):
         r, g, b = fg[2:]
-        return max(r, g, b) - min(r, g, b) <= 16
+        return max(r, g, b) - min(r, g, b) <= 16 and 50 <= min(r, g, b) and max(r, g, b) <= 210
     return False
 
 
@@ -540,7 +541,8 @@ def pick(pane):
                 recalled = True
             continue
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
-        save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
+        if key != "ctrl-t":  # (switching the copy method stays in the same session, and would shift the M-p index)
+            save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
             if not text:
