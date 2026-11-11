@@ -13,6 +13,10 @@ item the cursor was on: it opens on the query you left, and `M-p` steps back thr
 cursor), `M-n` forward again to a fresh start (`C-u` clears the query). `icons` (emoji, nerd or
 text, as in optmux Find) says how a pattern's kind is drawn.
 
+`C-e` edits the selection in `$EDITOR` in a new pane (files at their `:line:col`, anything else through a temp file), `C-o`
+opens it (files revealed in Finder, URLs in the browser, `#234` and commit hashes on GitHub), and `C-r` cycles how
+paths are typed and copied: as shown, relative to the project, or absolute.
+
 The selection can also be looked up in the project instead: `C-f` finds it among the files, `C-g` greps for it
 and `C-M-f` searches everything (optmux Find, started in this same popup with the text as its query).
 """
@@ -132,6 +136,8 @@ FILTERS = ["lines", "spans"]
 COPIERS = ["osc52", "native", "buffer"]
 FILTER_OPTION = "@optmux-extract-filter"
 COPY_OPTION = "@optmux-extract-copy"
+PATH_STYLES = ["shown", "relative", "absolute"]
+PATH_OPTION = "@optmux-extract-paths"
 
 # Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
 # is not listed again, and nothing overlaps within a line.
@@ -423,14 +429,15 @@ FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
 MAX_QUERY = 200  # characters of selection handed to Find
 
 
-def labels(filter_name, copier):
+def labels(filter_name, copier, paths="shown"):
     """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
     do what."""
     if shutil.get_terminal_size().columns < NARROW:
-        return [f"--header=Up/Down;  Tab: multi;  Enter: insert;  C-y: copy ({copier}; C-t)\nC-u: clear;  M-p: older;  C-f: files;  C-g: grep;  C-M-f: all",
+        return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
+                f"C-r: paths {paths}; C-u: clear; M-p: older; C-f: files; C-g: grep; C-M-f: all",
                 f"--prompt={filter_name} (C-M-x) > "]
-    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch)\n"
-            "M-p/M-n: older/newer query;  C-u: clear;  in the project:  C-f files;  C-g grep;  C-M-f all",
+    return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
+            f"C-r: paths {paths};  M-p/M-n: older/newer query;  C-u: clear;  in the project:  C-f files;  C-g grep;  C-M-f all",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
 
 
@@ -481,6 +488,161 @@ def open_find(pane, source, query):
         return 1
 
 
+def classify(pick):
+    """What a pick is as a whole: url, path, file, hash, pr, or other (anything that is not exactly one pattern)."""
+    pick = pick.strip()
+    found = find_patterns(pick)
+    if len(found) == 1 and found[0][0] == 0 and found[0][2] == pick and found[0][1] in ("url", "path", "file", "hash", "pr"):
+        return found[0][1]
+    return "other"
+
+
+POSITION = re.compile(r"^(.*?)(?::(\d+))?(?::(\d+))?$")
+
+
+def split_position(pick):
+    """(path, line, col) for `path[:line[:col]]`; line and col are None when absent."""
+    path, line, col = POSITION.match(pick.strip()).groups()
+    return path, line and int(line), col and int(col)
+
+
+def resolve(path, cwd):
+    return os.path.normpath(os.path.join(cwd, os.path.expanduser(path)))
+
+
+def project_root(cwd):
+    """The repository's top level, else `cwd` itself."""
+    out = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+    return out if out and os.path.isdir(out) else cwd
+
+
+def restyle(picks, style, cwd):
+    """The picks with the paths among them (that exist) written relative to the project root or absolute; `shown` leaves them."""
+    if style == "shown" or not any(classify(p) in ("path", "file") for p in picks):
+        return picks
+    root = project_root(cwd)
+    out = []
+    for pick in picks:
+        path, line, col = split_position(pick) if classify(pick) in ("path", "file") else (None, None, None)
+        full = resolve(path, cwd) if path else None
+        if not full or not os.path.exists(full):
+            out.append(pick)
+            continue
+        text = full if style == "absolute" else os.path.relpath(full, root)
+        out.append(text + "".join(f":{n}" for n in (line, col) if n is not None))
+    return out
+
+
+def editor_argv(editor, targets):
+    """argv to edit [(path, line, col)] with the editor command `editor`: Helix and VS Code take `path:line:col`,
+    anything else (vim, nano, emacs) `+LINE` ahead of the files."""
+    argv = shlex.split(editor) if editor and editor.strip() else ["vi"]
+    name = os.path.basename(argv[0])
+    where = lambda p, l, c: p + "".join(f":{n}" for n in (l, c) if n is not None) if l else p
+    if name in ("hx", "helix"):
+        return argv + [where(*t) for t in targets]
+    if name in ("code", "codium", "cursor"):
+        return argv + [a for t in targets for a in (("-g", where(*t)) if t[1] else (t[0],))]
+    return argv + ([f"+{targets[0][1]}"] if targets and targets[0][1] else []) + [t[0] for t in targets]
+
+
+def notify(message):
+    tmux("display-message", "-d", "2500", ("optmux-extract: " + message).replace("#", "##"))
+
+
+def pane_directory(pane):
+    path = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}", capture_output=True, text=True).stdout.strip()
+    return path if os.path.isdir(path) else os.getcwd()
+
+
+def edit_plan(chosen, mode, cwd):
+    """(targets, text, message): what to edit. Files that exist (with their position) when every pick is a path or
+    URL; else the whole selection as text, for a temp file."""
+    kinds = [classify(p) for p in chosen]
+    if any(k not in ("path", "file", "url") for k in kinds):
+        return [], compose(chosen, mode), None
+    targets, missing = [], []
+    for pick, kind in zip(chosen, kinds):
+        if kind == "url":
+            continue
+        path, line, col = split_position(pick)
+        full = resolve(path, cwd)
+        if os.path.exists(full):
+            targets.append((full, line, col))
+        else:
+            missing.append(path)
+    if targets:
+        return targets, None, None
+    return [], None, f"no such file: {missing[0]}" if missing else "URLs are opened with C-o, not edited"
+
+
+def edit(pane, chosen, mode):
+    cwd = pane_directory(pane)
+    targets, text, message = edit_plan(chosen, mode, cwd)
+    if message:
+        notify(message)
+        return 1
+    temp = None
+    if text is not None:
+        if not text.strip():
+            return 0
+        with tempfile.NamedTemporaryFile("w", prefix="optmux-extract-", suffix=".txt", delete=False) as f:  # (private: mode 600)
+            f.write(text + "\n")
+        temp = f.name
+        targets = [(temp, None, None)]
+    command = shlex.join(editor_argv(os.environ.get("EDITOR"), targets)) + (f"; rm -f {shlex.quote(temp)}" if temp else "")
+    tmux("split-window", "-t", pane, "-c", cwd.replace("#", "##"), command)
+    return 0
+
+
+def open_command(pick, cwd, system=None):
+    """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, a hash or PR/issue
+    number on GitHub. argv is None when it cannot be opened, and the message says why."""
+    system, pick = system or sys.platform, pick.strip()
+    kind = classify(pick)
+    opener = ["open"] if system == "darwin" else ["xdg-open"]
+    if kind == "url":
+        return opener + [pick], None
+    if kind in ("path", "file"):
+        full = resolve(split_position(pick)[0], cwd)
+        if not os.path.exists(full):
+            return None, f"no such path: {pick}"
+        return opener + ([] if os.path.isdir(full) or system != "darwin" else ["-R"]) + [full], None
+    if kind in ("hash", "pr"):
+        if not shutil.which("gh"):
+            return None, f"{pick}: needs the gh command to open on GitHub"
+        if subprocess.run(["git", "-C", cwd, "rev-parse", "--git-dir"], capture_output=True).returncode != 0:
+            return None, f"{pick}: not in a git repository"
+        return ["gh", "browse", pick.lstrip("#")], None
+    return None, f"can't open: {pick[:40]}"
+
+
+def run_open(argv, cwd):
+    """Start the command; the error to show when it fails at once, else None (a long-lived opener is left running)."""
+    try:
+        proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, start_new_session=True, text=True)
+        try:
+            code = proc.wait(5)
+        except subprocess.TimeoutExpired:
+            return None
+        return None if code == 0 else f"{argv[0]} failed: {proc.stderr.read().strip()[:80]}"
+    except OSError as e:
+        return f"{argv[0]}: {e}"
+
+
+def open_items(pane, chosen):
+    cwd = pane_directory(pane)
+    problems = []
+    for pick in chosen:
+        argv, message = open_command(pick, cwd)
+        message = message or run_open(argv, cwd)
+        if message:
+            problems.append(message)
+    if problems:
+        notify("; ".join(problems))
+    return 0
+
+
 def parse_fzf_output(stdout):
     """(query, key, texts) from `fzf --print-query --expect=...`; texts in screen order, not pick order."""
     query, key, *picked = stdout.split("\n")[:-1] or ["", "esc"]
@@ -496,6 +658,7 @@ def pick(pane):
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
     mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
+    paths = get_option(PATH_OPTION, PATH_STYLES, PATH_STYLES[0])
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
     earlier = load_history(mode)
     query, remembered = earlier[0] if earlier else ("", None)
@@ -522,8 +685,8 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
-                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
-                *labels(shown, copier),
+                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,ctrl-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
+                *labels(shown, copier, paths),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -541,7 +704,7 @@ def pick(pane):
                 recalled = True
             continue
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
-        if key != "ctrl-t":  # (switching the copy method stays in the same session, and would shift the M-p index)
+        if key not in ("ctrl-t", "ctrl-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
             save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
@@ -554,9 +717,18 @@ def pick(pane):
         elif key == "ctrl-t":
             copier = cycle(COPIERS, copier)
             tmux("set-option", "-g", COPY_OPTION, copier)
+        elif key == "ctrl-r":
+            paths = cycle(PATH_STYLES, paths)
+            tmux("set-option", "-g", PATH_OPTION, paths)
         elif key in ("ctrl-c", "esc") or not chosen:
             return 0
+        elif key == "ctrl-e":
+            return edit(pane, chosen, shown)
+        elif key == "ctrl-o":
+            return open_items(pane, chosen)
         else:
+            if paths != "shown":
+                chosen = restyle(chosen, paths, pane_directory(pane))
             text = compose(chosen, shown)
             if not text.strip():  # only blank lines picked: there is nothing to type or copy
                 return 0
