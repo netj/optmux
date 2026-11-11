@@ -434,10 +434,10 @@ def labels(filter_name, copier, paths="shown"):
     do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"M-r: paths {paths}; C-u: clear; M-p: older; C-f: files; C-g: grep; C-M-f: all",
+                f"C-u: clear; M-p: older; C-f: files; C-g: grep; C-M-f: all; M-r: paths {paths}",
                 f"--prompt={filter_name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
-            f"M-r: paths {paths};  M-p/M-n: older/newer query;  C-u: clear;  in the project:  C-f files;  C-g grep;  C-M-f all",
+            f"C-u: clear;  M-p/M-n: older/newer query;  find selection in:  C-f files;  C-g grep;  C-M-f all;  M-r: paths {paths}",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
 
 
