@@ -425,3 +425,12 @@ def test_white_is_text_not_grey_and_the_mode_line_hint_is_covered():
     defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
     patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
     assert any(re.fullmatch(p, "⏵⏵ accept edits on (shift+tab to cycle)", re.I) for p in patterns)
+
+
+def test_the_stoplist_covers_jump_to_bottom_and_new_messages():
+    import re
+    import yaml
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
+    for chrome in ("Jump to bottom (click) ↓", "3 new messages (click) ↓", "1 new message (click)"):
+        assert any(re.fullmatch(p, chrome, re.I) for p in patterns), chrome

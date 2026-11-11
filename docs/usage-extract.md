@@ -24,7 +24,7 @@ Local copying still works, but **copying from a remote OPTMUX session over SSH w
 
 ## Leaving out the chrome
 
-The spans filter skips plain grey text, and what a coding tool draws on every screen in color (Claude Code's mode line, its always-listed `/` commands, "Jump to bottom"). `+ignore_spans` under `+find:` is that list: groups of regular expressions, each matched against a whole span or pattern match (case-insensitive). The defaults live in `optmux-defaults.yaml`; as with `+ignore_files`, setting a group replaces its list, `[]` drops it, and a new group adds to the rest:
+The spans filter skips plain grey text, and what a coding tool draws on every screen in color (Claude Code's mode line, its always-listed `/` commands, "Jump to bottom" and "N new messages"). `+ignore_spans` under `+find:` is that list: groups of regular expressions, each matched against a whole span or pattern match (case-insensitive). The defaults live in `optmux-defaults.yaml`; as with `+ignore_files`, setting a group replaces its list, `[]` drops it, and a new group adds to the rest:
 
 ```yaml
 +optmux:
