@@ -914,3 +914,15 @@ def test_rows_not_yet_drawn_while_a_build_is_on_are_waited_for_not_drawn_twice(r
     assert [k for k, _ in fd.tag_entries()]  # the old rows serve meanwhile
     fd.tags_cache(str(repo)).with_suffix(".rows").unlink()
     assert list(fd.tag_entries()) == [] and fd.PENDING == [("tags",)]
+
+
+def test_tags_path_does_not_wait_for_the_first_build(repo, monkeypatch, tmp_path_factory):
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path_factory.mktemp("od4")))
+    monkeypatch.setattr(fd, "find_ctags", lambda: "/bin/ctags")
+    monkeypatch.setattr(fd, "refresh_tags", lambda root: None)  # (a build that takes its time)
+    path = fd.tags_for_editors()
+    assert path.name.endswith(".abs.tags") and path.read_bytes() == b""  # at once, empty for now
+    out = fd.tags_cache(str(repo))
+    out.write_text('foo\ta.py\t1;"\tf\n')
+    fd.write_abs_tags(str(repo), out)  # what the build does when done
+    assert path.read_text() == f'foo\t{repo}/a.py\t1;"\tf\n'

@@ -250,6 +250,7 @@ def build_locked(root, out):
     try:
         if build_tags(root, out):
             write_tag_rows(out)
+            write_abs_tags(root, out)  # (editors that were pointed at the path early now see the tags)
         else:
             out.with_suffix(".failed").touch()
     finally:
@@ -306,29 +307,38 @@ def tags_building():
     return lock_live(out) and not (out.is_file() and out.with_suffix(".rows").is_file())
 
 
+def write_abs_tags(root, found):
+    """Write the copy of tags `found` that an editor can use from anywhere (see tags_for_editors), replacing the
+    old one only once complete (an editor never reads half of it)."""
+    absolute = found.with_suffix(".abs.tags")
+    prefix = os.path.join(root, "").encode()
+    lines = []
+    for line in found.read_bytes().split(b"\n"):  # (bytes, split on newlines only: patterns may hold form feeds and the like)
+        name, tab, rest = line.partition(b"\t")
+        if tab and not name.startswith(b"!_"):
+            line = name + tab + prefix + rest if not rest.startswith(b"/") else line
+        lines.append(line)
+    temp = absolute.with_suffix(f".{os.getpid()}")
+    temp.write_bytes(b"\n".join(lines))
+    os.replace(temp, absolute)
+    return absolute
+
+
 def tags_for_editors():
     """Path of tags an editor can use from anywhere, or None. Ours name files relative to the project root, but an
-    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths."""
+    editor reads them relative to the tags file (vim), which lives elsewhere: this copy has absolute paths.
+    Never waits for the first build: the path is the same from the start, an empty file until the background
+    build (see build_locked) fills it in, and an editor reads it afresh at each lookup."""
     found = tags_file()
-    deadline = time.time() + 120
-    while not found and tags_building() and time.time() < deadline:  # (an editor wants tags now: wait for the first build)
-        time.sleep(0.2)
-        found = tags_file(check=False)
     root = repo_root()
-    if not found or not root:
-        return found
-    absolute = found.with_suffix(".abs.tags")
-    if not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime:
-        prefix = os.path.join(root, "").encode()
-        lines = []
-        for line in found.read_bytes().split(b"\n"):  # (bytes, split on newlines only: patterns may hold form feeds and the like)
-            name, tab, rest = line.partition(b"\t")
-            if tab and not name.startswith(b"!_"):
-                line = name + tab + prefix + rest if not rest.startswith(b"/") else line
-            lines.append(line)
-        temp = absolute.with_suffix(f".{os.getpid()}")
-        temp.write_bytes(b"\n".join(lines))
-        os.replace(temp, absolute)  # (an editor never reads half of it)
+    if not root or not (found or find_ctags()):
+        return None
+    absolute = tags_cache(root).with_suffix(".abs.tags")
+    if found and (not absolute.is_file() or absolute.stat().st_mtime < found.stat().st_mtime):
+        write_abs_tags(root, found)
+    elif not absolute.is_file():
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.touch()  # (a placeholder: the first build is under way)
     return absolute
 
 
@@ -1210,7 +1220,7 @@ if __name__ == "__main__":
         os.chdir(sys.argv[2])
         build_locked(sys.argv[2], tags_cache(sys.argv[2]))
         sys.exit(0)
-    if sys.argv[1:2] == ["--tags-path"]:  # for an editor: `set tags+=$(optmux-find --tags-path)`; builds them if need be
+    if sys.argv[1:2] == ["--tags-path"]:  # for an editor: `set tags+=$(optmux-find --tags-path)`; starts building them if need be, never waits
         found = tags_for_editors()
         if found:
             print(found)
