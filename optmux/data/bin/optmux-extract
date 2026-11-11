@@ -520,7 +520,7 @@ def restyle(picks, style, cwd):
     """The picks with the paths among them (that exist) written relative to the project root or absolute; `shown` leaves them."""
     if style == "shown" or not any(classify(p) in ("path", "file") for p in picks):
         return picks
-    root = project_root(cwd)
+    root = os.path.realpath(project_root(cwd))  # (git's top level is symlink-free, so is the path compared to it)
     out = []
     for pick in picks:
         path, line, col = split_position(pick) if classify(pick) in ("path", "file") else (None, None, None)
@@ -528,7 +528,7 @@ def restyle(picks, style, cwd):
         if not full or not os.path.exists(full):
             out.append(pick)
             continue
-        text = full if style == "absolute" else os.path.relpath(full, root)
+        text = full if style == "absolute" else os.path.relpath(os.path.realpath(full), root)
         out.append(text + "".join(f":{n}" for n in (line, col) if n is not None))
     return out
 
@@ -536,7 +536,11 @@ def restyle(picks, style, cwd):
 def editor_argv(editor, targets):
     """argv to edit [(path, line, col)] with the editor command `editor`: Helix and VS Code take `path:line:col`,
     anything else (vim, nano, emacs) `+LINE` ahead of the files."""
-    argv = shlex.split(editor) if editor and editor.strip() else ["vi"]
+    try:
+        argv = shlex.split(editor) if editor and editor.strip() else []
+    except ValueError:  # (unbalanced quotes)
+        argv = []
+    argv = argv or ["vi"]
     name = os.path.basename(argv[0])
     where = lambda p, l, c: p + "".join(f":{n}" for n in (l, c) if n is not None) if l else p
     if name in ("hx", "helix"):

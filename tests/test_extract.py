@@ -509,7 +509,11 @@ def test_restyle_paths_relative_to_the_project_or_absolute(tmp_path):
     picks = ["a.py:3", "gone.py", "echo hi"]
     assert pt.restyle(picks, "shown", cwd) == picks
     assert pt.restyle(picks, "relative", cwd) == ["src/a.py:3", "gone.py", "echo hi"]
-    assert pt.restyle(picks, "absolute", cwd)[0] == f"{(tmp_path / 'src' / 'a.py').resolve() if False else tmp_path / 'src' / 'a.py'}:3"
+    assert pt.restyle(picks, "absolute", cwd)[0] == f"{tmp_path / 'src' / 'a.py'}:3"
+    link = tmp_path.parent / (tmp_path.name + "-link")
+    link.symlink_to(tmp_path)
+    assert pt.restyle(["a.py:3"], "relative", str(link / "src")) == ["src/a.py:3"]  # (cwd reached through a symlink)
+    assert pt.editor_argv('vim "', [("/t", None, None)]) == ["vi", "/t"]
 
 
 def test_labels_mention_edit_open_and_path_style(monkeypatch):
