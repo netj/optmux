@@ -534,20 +534,30 @@ def restyle(picks, style, cwd):
 
 
 def editor_argv(editor, targets):
-    """argv to edit [(path, line, col)] with the editor command `editor`: Helix and VS Code take `path:line:col`,
-    anything else (vim, nano, emacs) `+LINE` ahead of the files."""
+    """argv to edit [(path, line, col)] with the editor command `editor`. Helix and VS Code take `path:line:col`; nano
+    and emacs `+LINE[,COL] path` for each file; vim (nvim, vi) one jump after startup, or with several files `-o` (a
+    window each) and a `-c` that jumps in each window."""
     try:
         argv = shlex.split(editor) if editor and editor.strip() else []
     except ValueError:  # (unbalanced quotes)
         argv = []
     argv = argv or ["vi"]
     name = os.path.basename(argv[0])
+    at = lambda l, c, sep: f"{l}{sep}{c}" if c else f"{l}"
     where = lambda p, l, c: p + "".join(f":{n}" for n in (l, c) if n is not None) if l else p
     if name in ("hx", "helix"):
         return argv + [where(*t) for t in targets]
     if name in ("code", "codium", "cursor"):
         return argv + [a for t in targets for a in (("-g", where(*t)) if t[1] else (t[0],))]
-    return argv + ([f"+{targets[0][1]}"] if targets and targets[0][1] else []) + [t[0] for t in targets]
+    if name in ("nano", "pico", "micro"):
+        return argv + [a for p, l, c in targets for a in ((f"+{at(l, c, ',')}",) if l else ()) + (p,)]
+    if name in ("emacs", "emacsclient"):
+        return argv + [a for p, l, c in targets for a in ((f"+{at(l, c, ':')}",) if l else ()) + (p,)]
+    if len(targets) == 1:  # (vim and anything unknown)
+        p, l, c = targets[0]
+        return argv + ([f"+call cursor({l},{c})" if c else f"+{l}"] if l else []) + [p]
+    jumps = [a for n, (p, l, c) in enumerate(targets, 1) if l for a in ("-c", f"{n}wincmd w | call cursor({l},{c or 1})")]
+    return argv + ["-o"] + [t[0] for t in targets] + (jumps + ["-c", "1wincmd w"] if jumps else [])
 
 
 def notify(message):
