@@ -322,6 +322,16 @@ def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
     assert [q for q, _ in pt.load_history("lines")] == ["ssh"]
 
 
+def test_an_emptied_query_is_saved_first_and_keeps_its_item(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
+    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    pt.save_state("lines", "", "first item")
+    pt.save_state("lines", "ssh", "ssh host")
+    pt.save_state("lines", "", None)  # C-u, then Esc
+    assert pt.load_history("lines") == [("", "first item"), ("ssh", "ssh host")]
+
+
 def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(monkeypatch):
     import base64
 
@@ -363,3 +373,27 @@ def test_patterns_find_quoted_text_in_all_quote_styles_but_not_apostrophes():
 def test_spans_mix_styled_runs_with_the_patterns_around_them_in_screen_order():
     cap = "see ./a/b.py then \x1b[32mgit commit\x1b[0m for #234 and \x1b[31m./c.py\x1b[0m\n"
     assert [t for t, _ in pt.choices(cap, "spans")] == ["./a/b.py", "git commit", "#234", "./c.py"]
+
+
+def test_plain_grey_spans_are_left_out_but_emphasized_ones_stay():
+    cap = ("\x1b[38;2;136;136;136mrgb grey\x1b[0m \x1b[90mbright black\x1b[0m \x1b[38;5;246mramp grey\x1b[0m "
+           "\x1b[1;90mbold grey\x1b[0m \x1b[38;2;200;50;50mred\x1b[0m\n")
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["bold grey", "red"]
+
+
+def stoplist_env(monkeypatch, tmp_path, **groups):
+    """OPTMUX_DIR with a find.json holding the default `+ignore_spans` (plus `groups` of our own)."""
+    import json
+
+    import yaml
+
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    ignore = {**defaults["+optmux"]["+find"]["+ignore_spans"], **groups}
+    (tmp_path / "find.json").write_text(json.dumps({"ignore_spans": ignore}))
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+
+
+def test_the_stoplist_hides_known_chrome_spans_and_takes_more_groups(monkeypatch, tmp_path):
+    cap = "\x1b[33m\u23e9 auto mode on\x1b[0m \x1b[31mkeep me\x1b[0m /effort /mine \x1b[1mrecap:\x1b[0m\n"
+    stoplist_env(monkeypatch, tmp_path, mine=["/mine", "[bad"])
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["keep me"]
