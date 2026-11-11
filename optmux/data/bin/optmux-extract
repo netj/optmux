@@ -216,6 +216,28 @@ def load_stoplist():
     return out
 
 
+# a quote that runs over several lines (a program wraps its own text with newlines): only " and `, which seldom
+# open without closing; no blank line inside, a closing quote has no space before it, so a stray one does not pair up
+MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`)(?!\w)")
+
+
+def find_multiline_quotes(lines):
+    """[(line, column, text)] for the quotes that span lines, their lines joined by single spaces."""
+    text = "\n".join(lines)
+    starts, pos = [], 0
+    for line in lines:
+        starts.append(pos)
+        pos += len(line) + 1
+    found = []
+    for m in MULTILINE_QUOTE.finditer(text):
+        inner = m.group(1) if m.group(1) is not None else m.group(2)
+        if "\n" not in inner:
+            continue  # (the one-line quotes are found line by line)
+        first = max(i for i, st in enumerate(starts) if st <= m.start())
+        found.append((first, m.start() - starts[first], re.sub(r"\s*\n\s*", " ", inner)))
+    return found
+
+
 def span_items(parsed, width):
     """([(text, style, line, column)], covered) for the styled runs on the screen, `covered` being {line: [(start, end)]}. A run that fills its line right up to the edge and
     continues in the same style at the start of the next line was wrapped by the program: join the two.
@@ -263,8 +285,14 @@ def choices(capture, mode, width=None):
     entries = [(line, col, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
     for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
         for start, label, text in find_patterns(plain):
-            if not any(start < e and s < start + len(text) for s, e in covered.get(line, [])):
+            # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
+            end = start + len(text)
+            inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
+            if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
                 entries.append((line, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
+    for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
+        if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
+            entries.append((line, col, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text))
     stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
     for _, _, text, display in sorted(entries, key=lambda e: e[:2]):
@@ -470,7 +498,7 @@ def pick(pane):
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
     earlier = load_history(mode)
     query, remembered = earlier[0] if earlier else ("", None)
-    back, recalled = (0 if earlier else -1), bool(earlier)
+    back, recalled = (0 if earlier else -1), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode

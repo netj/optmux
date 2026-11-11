@@ -112,22 +112,15 @@
       - "*.map"
     # Spans eXtract (C-t X, in the spans filter) never lists: the chrome a coding tool draws all the time. Groups of
     # regular expressions matched against a whole span (case-insensitive), with the same rules as ignore_files: set a
-    # group to replace its list, `[]` to drop it, or add a group of your own. Keep it dumb: add a line when something
-    # keeps showing up, drop it when it stops. (A pattern ending in `:` is written `[:]`, or YAML reads a key.)
+    # group to replace its list, `[]` to drop it, or add a group of your own. Plain grey text is already left out, so this
+    # is for the rest. Keep it dumb: add a line when something keeps showing up, drop it when it stops. (A pattern ending in `:` is written `[:]`, or YAML reads a key.)
     +ignore_spans:
-      claude_code_footer:
+      claude_code:
       - \W*(auto|plan|accept edits|bypass permissions) (mode )?on
-      - .*\(shift\+tab to cycle\).*
-      - .*esc to interrupt.*
-      - \? for shortcuts
-      - .*ctrl\+[a-z] to .*
-      claude_code_commands:
-      - /(add-dir|clear|compact|config|context|cost|effort|help|init|login|logout|mcp|model|permissions|resume|status|terminal-setup)
-      claude_code_status:
-      - \w+(ed|ing) for \d.*
-      - \d+ tokens?
+      - Jump to bottom.*
       - Not logged in.*
       - recap[:]
+      - /(add-dir|clear|compact|config|context|cost|effort|help|init|login|logout|mcp|model|permissions|resume|status|terminal-setup)
     +lsp:
       python:
         +extensions:
