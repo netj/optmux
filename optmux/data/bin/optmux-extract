@@ -14,7 +14,7 @@ cursor), `M-n` forward again to a fresh start (`C-u` clears the query). `icons` 
 text, as in optmux Find) says how a pattern's kind is drawn.
 
 `C-e` edits the selection in `$EDITOR` in a new pane (files at their `:line:col`, anything else through a temp file), `C-o`
-opens it (files revealed in Finder, URLs in the browser, `#234` and commit hashes on GitHub), and `C-r` cycles how
+opens it (files revealed in Finder, URLs in the browser, `#234` and commit hashes on GitHub), and `M-r` cycles how
 paths are typed and copied: as shown, relative to the project, or absolute.
 
 The selection can also be looked up in the project instead: `C-f` finds it among the files, `C-g` greps for it
@@ -434,10 +434,10 @@ def labels(filter_name, copier, paths="shown"):
     do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-r: paths {paths}; C-u: clear; M-p: older; C-f: files; C-g: grep; C-M-f: all",
+                f"M-r: paths {paths}; C-u: clear; M-p: older; C-f: files; C-g: grep; C-M-f: all",
                 f"--prompt={filter_name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
-            f"C-r: paths {paths};  M-p/M-n: older/newer query;  C-u: clear;  in the project:  C-f files;  C-g grep;  C-M-f all",
+            f"M-r: paths {paths};  M-p/M-n: older/newer query;  C-u: clear;  in the project:  C-f files;  C-g grep;  C-M-f all",
             f"--prompt={filter_name} filtered (C-M-x to switch) > "]
 
 
@@ -595,8 +595,16 @@ def edit(pane, chosen, mode):
         temp = f.name
         targets = [(temp, None, None)]
     command = shlex.join(editor_argv(os.environ.get("EDITOR"), targets)) + (f"; rm -f {shlex.quote(temp)}" if temp else "")
-    tmux("split-window", "-t", pane, "-c", cwd.replace("#", "##"), command)
+    tmux("split-window", *split_flags(pane), "-t", pane, "-c", cwd.replace("#", "##"), command)
     return 0
+
+
+def split_flags(pane):
+    """Open above, as optmux's other shortcuts do (the pane keeps its bottom edge), across the window's edge
+    (-f) when the pane is too short to halve."""
+    fits = os.path.join(os.path.dirname(os.path.abspath(__file__)), "optmux-split-fits")
+    ok = subprocess.run([fits, pane], capture_output=True).returncode == 0
+    return ["-v", "-b"] if ok else ["-f", "-v", "-b"]
 
 
 def open_command(pick, cwd, system=None):
@@ -689,7 +697,7 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
-                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,ctrl-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
+                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
                 *labels(shown, copier, paths),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
@@ -708,7 +716,7 @@ def pick(pane):
                 recalled = True
             continue
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
-        if key not in ("ctrl-t", "ctrl-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
+        if key not in ("ctrl-t", "alt-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
             save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
@@ -721,7 +729,7 @@ def pick(pane):
         elif key == "ctrl-t":
             copier = cycle(COPIERS, copier)
             tmux("set-option", "-g", COPY_OPTION, copier)
-        elif key == "ctrl-r":
+        elif key == "alt-r":
             paths = cycle(PATH_STYLES, paths)
             tmux("set-option", "-g", PATH_OPTION, paths)
         elif key in ("ctrl-c", "esc") or not chosen:
