@@ -543,3 +543,14 @@ def test_the_editor_is_zoomed_and_gives_the_zoom_back_when_the_window_was_zoomed
     pt.edit("%1", ["a.py"], "spans")
     split = calls[-1]
     assert split[1] == "-Z" and split[-1].endswith("; tmux select-pane -Z -t %1")
+
+
+
+
+def test_the_stoplist_covers_jump_to_bottom_and_new_messages():
+    import re
+    import yaml
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
+    for chrome in ("Jump to bottom (click) ↓", "3 new messages (click) ↓", "1 new message (click)"):
+        assert any(re.fullmatch(p, chrome, re.I) for p in patterns), chrome

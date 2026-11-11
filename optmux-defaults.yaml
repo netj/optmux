@@ -117,7 +117,7 @@
     +ignore_spans:
       claude_code:
       - \W*(auto-?)?(accept edits|plan|auto|bypass permissions)( mode)? on.*
-      - Jump to bottom.*
+      - (Jump to bottom|\d+ new messages?).*
       - Not logged in.*
       - recap[:]
       - /(add-dir|clear|compact|config|context|cost|effort|help|init|login|logout|mcp|model|permissions|resume|status|terminal-setup)
