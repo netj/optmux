@@ -463,12 +463,12 @@ def test_edit_opens_a_split_in_the_pane_directory_and_removes_its_temp_file(monk
     monkeypatch.setattr(pt, "split_flags", lambda pane: ["-v", "-b"])
     (tmp_path / "a.py").write_text("x")
     assert pt.edit("%1", ["a.py:7"], "spans") == 0
-    assert calls[-1][:7] == ("split-window", "-v", "-b", "-t", "%1", "-c", str(tmp_path))
-    assert calls[-1][7] == f"vim +7 {tmp_path}/a.py"
+    assert calls[-1][:8] == ("split-window", "-Z", "-v", "-b", "-t", "%1", "-c", str(tmp_path))
+    assert calls[-1][8] == f"vim +7 {tmp_path}/a.py"
     assert pt.edit("%1", ["echo $(rm -rf x)"], "spans") == 0
     import shlex
-    words = shlex.split(calls[-1][7].split("; rm -f ")[0])
-    assert words[0] == "vim" and Path(words[1]).read_text() == "echo $(rm -rf x)\n" and calls[-1][7].endswith(shlex.quote(words[1]))
+    words = shlex.split(calls[-1][8].split("; rm -f ")[0])
+    assert words[0] == "vim" and Path(words[1]).read_text() == "echo $(rm -rf x)\n" and calls[-1][8].endswith(shlex.quote(words[1]))
     Path(words[1]).unlink()
 
 
@@ -529,3 +529,17 @@ def test_the_editor_opens_above_or_across_the_edge_when_the_pane_is_short(monkey
     for code, flags in ((0, ["-v", "-b"]), (1, ["-f", "-v", "-b"])):
         monkeypatch.setattr(pt.subprocess, "run", lambda *a, code=code, **k: type("R", (), {"returncode": code})())
         assert pt.split_flags("%1") == flags
+
+
+def test_the_editor_is_zoomed_and_gives_the_zoom_back_when_the_window_was_zoomed(monkeypatch, tmp_path):
+    calls = []
+    def fake_tmux(*a, **k):
+        calls.append(a)
+        return type("R", (), {"stdout": "1\n" if "#{window_zoomed_flag}" in a else f"{tmp_path}\n"})()
+    monkeypatch.setattr(pt, "tmux", fake_tmux)
+    monkeypatch.setattr(pt, "split_flags", lambda pane: ["-v", "-b"])
+    monkeypatch.setenv("EDITOR", "vim")
+    (tmp_path / "a.py").write_text("x")
+    pt.edit("%1", ["a.py"], "spans")
+    split = calls[-1]
+    assert split[1] == "-Z" and split[-1].endswith("; tmux select-pane -Z -t %1")

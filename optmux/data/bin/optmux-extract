@@ -595,7 +595,10 @@ def edit(pane, chosen, mode):
         temp = f.name
         targets = [(temp, None, None)]
     command = shlex.join(editor_argv(os.environ.get("EDITOR"), targets)) + (f"; rm -f {shlex.quote(temp)}" if temp else "")
-    tmux("split-window", *split_flags(pane), "-t", pane, "-c", cwd.replace("#", "##"), command)
+    # the editor is zoomed (-Z); when the window was zoomed on this pane already, quitting the editor hands the zoom back to it
+    if tmux("display-message", "-p", "-t", pane, "#{window_zoomed_flag}", capture_output=True, text=True).stdout.strip() == "1":
+        command += f"; tmux select-pane -Z -t {shlex.quote(pane)}"
+    tmux("split-window", "-Z", *split_flags(pane), "-t", pane, "-c", cwd.replace("#", "##"), command)
     return 0
 
 
