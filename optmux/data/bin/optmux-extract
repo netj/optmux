@@ -9,8 +9,8 @@ program itself styled: colored, bold, underlined, ...) mixed, in screen order, w
 names, commit hashes, PR/issue numbers like #234, quoted text, versions). Enter types the selection into the pane; `C-y` copies it, by the method
 `C-t` cycles through (OSC 52, the system clipboard, or just the tmux buffer). The last filter and copy
 method are remembered (tmux options on the server) for the next time, and so are each filter's query and the
-item the cursor was on: it opens fresh, and `M-p` steps back through the filter's earlier queries (each with its
-cursor), `M-n` forward again to a fresh start. `icons` (emoji, nerd or
+item the cursor was on: it opens on the query you left, and `M-p` steps back through the filter's earlier queries (each with its
+cursor), `M-n` forward again to a fresh start (`C-u` clears the query). `icons` (emoji, nerd or
 text, as in optmux Find) says how a pattern's kind is drawn.
 
 The selection can also be looked up in the project instead: `C-f` finds it among the files, `C-g` greps for it
@@ -54,6 +54,20 @@ class Style:
         """The escape sequence that switches to this style from a clean slate."""
         params = sorted(self.attrs) + [*self.fg, *self.bg]
         return "\x1b[0;" + ";".join(map(str, params)) + "m" if params else "\x1b[0m"
+
+
+def is_grey(fg):
+    """Whether a foreground is a mid grey: bright black, a 256-color grey (8, 59, 102, 145, or the ramp 232-250), or an
+    RGB with nearly equal channels, neither near-white nor near-black. Programs draw their chrome and de-emphasized
+    text in these; white (37, 7, 15, 255) is ordinary text, set explicitly."""
+    if fg == (90,):
+        return True
+    if len(fg) == 3 and fg[:2] == (38, 5):
+        return fg[2] in (8, 59, 102, 145) or 232 <= fg[2] <= 250
+    if len(fg) == 5 and fg[:2] == (38, 2):
+        r, g, b = fg[2:]
+        return max(r, g, b) - min(r, g, b) <= 16 and 50 <= min(r, g, b) and max(r, g, b) <= 210
+    return False
 
 
 def apply_sgr(style, params):
@@ -186,6 +200,45 @@ def find_patterns(plain):
     return sorted(found)
 
 
+def load_stoplist():
+    """Compiled `+find: +ignore_spans` patterns (every group; from $OPTMUX_DIR/find.json): spans never listed.
+    A pattern that is not a valid regex is skipped."""
+    try:
+        groups = json.loads(open(os.path.join(os.environ["OPTMUX_DIR"], "find.json")).read()).get("ignore_spans")
+    except (KeyError, OSError, ValueError, AttributeError):
+        return []
+    out = []
+    for patterns in groups.values() if isinstance(groups, dict) else []:
+        for pattern in patterns if isinstance(patterns, list) else []:
+            try:
+                out.append(re.compile(pattern, re.IGNORECASE))
+            except (re.error, TypeError):
+                pass
+    return out
+
+
+# a quote that runs over several lines (a program wraps its own text with newlines): only " and `, which seldom
+# open without closing; no blank line inside, a closing quote has no space before it, so a stray one does not pair up
+MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`)(?!\w)")
+
+
+def find_multiline_quotes(lines):
+    """[(line, column, text)] for the quotes that span lines, their lines joined by single spaces."""
+    text = "\n".join(lines)
+    starts, pos = [], 0
+    for line in lines:
+        starts.append(pos)
+        pos += len(line) + 1
+    found = []
+    for m in MULTILINE_QUOTE.finditer(text):
+        inner = m.group(1) if m.group(1) is not None else m.group(2)
+        if "\n" not in inner:
+            continue  # (the one-line quotes are found line by line)
+        first = max(i for i, st in enumerate(starts) if st <= m.start())
+        found.append((first, m.start() - starts[first], re.sub(r"\s*\n\s*", " ", inner)))
+    return found
+
+
 def span_items(parsed, width):
     """([(text, style, line, column)], covered) for the styled runs on the screen, `covered` being {line: [(start, end)]}. A run that fills its line right up to the edge and
     continues in the same style at the start of the next line was wrapped by the program: join the two.
@@ -198,6 +251,9 @@ def span_items(parsed, width):
             text = plain[s:e].strip()
             # a whole line with a background is a highlighted block (diff line, prompt box): lines mode has it
             if len(text) < MIN_SPAN or (style.bg and text == plain.strip()):
+                continue
+            # grey text with no emphasis is the program's chrome and asides (status lines, hints), not something to pick
+            if is_grey(style.fg) and not style.bg and not style.attrs & {1, 4, 7}:
                 continue
             end = s + len(plain[s:e].rstrip())
             start = s + len(plain[s:e]) - len(plain[s:e].lstrip())
@@ -230,10 +286,19 @@ def choices(capture, mode, width=None):
     entries = [(line, col, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
     for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
         for start, label, text in find_patterns(plain):
-            if not any(start < e and s < start + len(text) for s, e in covered.get(line, [])):
+            # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
+            end = start + len(text)
+            inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
+            if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
                 entries.append((line, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
+    for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
+        if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
+            entries.append((line, col, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text))
+    stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
     for _, _, text, display in sorted(entries, key=lambda e: e[:2]):
+        if any(rx.fullmatch(text) for rx in stoplist):
+            continue
         found.pop(text, None)
         found[text] = display
     return list(found.items())
@@ -313,8 +378,11 @@ def load_history(name):
 def save_state(name, query, item):
     """Remember where the filter `name` was left: first in its history, the same query before it dropped."""
     try:
+        before = load_history(name)
+        if not item:  # (no item known now: keep the one this query had)
+            item = next((i for q, i in before if q == query[:MAX_QUERY]), None)
         entries = [(query[:MAX_QUERY], item[:MAX_ITEM] if item else None)]
-        entries += [e for e in load_history(name) if e[0] != entries[0][0]]
+        entries += [e for e in before if e[0] != entries[0][0]]
         tmux("set-option", "-g", STATE_OPTION + name,
              json.dumps([{"query": q, "item": i} for q, i in entries[:MAX_HISTORY]], ensure_ascii=False))
     except (subprocess.CalledProcessError, OSError):
@@ -428,7 +496,10 @@ def pick(pane):
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
     mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
-    query, remembered, back, recalled = "", None, -1, False  # (a fresh start; M-p steps `back` through the filter's earlier queries)
+    # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
+    earlier = load_history(mode)
+    query, remembered = earlier[0] if earlier else ("", None)
+    back, recalled = (0 if earlier else -1), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
@@ -469,7 +540,8 @@ def pick(pane):
                 query, remembered = earlier[back] if back >= 0 else ("", None)
                 recalled = True
             continue
-        if query or (chosen and key not in ("ctrl-c", "esc", "ctrl-alt-x", "ctrl-t")):  # (leaving with nothing typed or picked saves nothing)
+        # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
+        if key != "ctrl-t":  # (switching the copy method stays in the same session, and would shift the M-p index)
             save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)

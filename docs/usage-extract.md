@@ -4,7 +4,7 @@
 
 - **`C-M-x`** again (the key that opened the picker) switches between **lines** and **spans**. Spans are the runs of text the program colored or styled (the command, path or name worth copying; one the program wrapped onto the next line in the same style is joined back when it clearly filled the line), mixed in screen order with the patterns it did not style (URLs, paths, file names with an optional `:line:col`, commit hashes, PR or issue numbers like `#234`, quoted text (`'x'`, `"x"`, `` `x` ``, GNU `` `x' ``), semver versions). The last one used is remembered.
 - **`C-y`** copies by the method **`C-t`** cycles: `osc52` (eXtract writes an OSC 52 escape to its own terminal and tmux relays it, so it reaches your local clipboard over SSH too), `native` (`pbcopy`, `wl-copy`, `xclip` or `xsel`) or `buffer` (the tmux buffer only). Also remembered. Either way the tmux buffer holds the text afterwards.
-- **Where you were is remembered**, per filter: eXtract opens fresh (a new extract starts from an empty query), and `M-p` steps back through that filter's earlier queries, each with the cursor on the item you last picked or stood on, so the `bash`, `.tmp/` or pattern you use often is a few keystrokes away (`M-n` goes forward again to a fresh start). A recalled query that matches nothing on the screen now is dropped. `C-u` clears the query. The **spans** filter draws each pattern kind with an icon (🔗 URL, 📁 path, 📄 file name, 💬 quoted text, #️⃣ commit hash, 🔀 PR or issue number, 🏷️ version) and the program's own styled runs with 🎨, in the style of `+icons` (`nerd` by default; shown here as emoji) like Find.
+- **Where you were is remembered**, per filter: eXtract opens on the query you left (leaving with `Esc` counts, and an emptied query stays empty), with the cursor on the item you last picked, and `M-p` steps back through that filter's earlier queries before it, each with the cursor on the item you picked then, so the `bash`, `.tmp/` or pattern you use often is a few keystrokes away (`M-n` goes forward again to a fresh, empty start). A query that `M-p` recalls and that matches nothing on the screen now is skipped; the one eXtract opens on stays even then (`C-u` clears it). Spans in plain grey (a coding tool's status lines and hints) are left out, so they don't crowd the list; bold or highlighted ones stay. To find spans starting with a bang, type `^!` or `'!`: a lone `!` is fzf's negation, which matches everything. `C-u` clears the query. The **spans** filter draws each pattern kind with an icon (🔗 URL, 📁 path, 📄 file name, 💬 quoted text, #️⃣ commit hash, 🔀 PR or issue number, 🏷️ version) and the program's own styled runs with 🎨, in the style of `+icons` (`nerd` by default; shown here as emoji) like Find.
 - **`C-f`, `C-g`, `C-M-f`** look the selection up in the project instead of typing it: the picks (or, with nothing matching, the text you typed in the filter) become the query of [OPTMUX Find](usage-find.md), which continues in this same popup: **`C-f`** in the files, **`C-g`** by grep, **`C-M-f`** in omni (tags, symbols and files). Pick an error's path, a function name or a phrase from the screen, then jump to where it lives (a `:line:col` after a path is left off, since a file name has none).
 - Several picks go on one line separated by spaces, except lines mode (always one pick per line) and picks that themselves contain whitespace, such as commands in spans mode, which each get their own line.
 - Picks are pasted as a bracketed paste, so a shell (or Claude Code) takes several lines as one paste. A program that doesn't ask for bracketed paste (plain `cat`, some REPLs) receives each newline as `Enter`.
@@ -21,3 +21,19 @@ Local copying still works, but **copying from a remote OPTMUX session over SSH w
 **Workaround:** turn off **View → Allow Mouse Reporting** (`⌘R`), or hold `Fn`, to hand the mouse back to Terminal and drag-select with its own selection, then `⌘C`. `⌘R` again returns the mouse to tmux. You get only what's on screen, and the selection cuts across split panes — zoom first with `prefix + z`.
 
 **Better:** use a terminal that supports OSC 52 — [Ghostty](https://ghostty.org), [iTerm2](https://iterm2.com), [Warp](https://warp.dev), [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org), or [Alacritty](https://alacritty.org). The tips screen (shown on first attach, or `C-M-h`) nags about this unless it can confirm your terminal, using the attached client's `TERM_PROGRAM` and terminal type — over SSH only the latter survives, so `xterm-ghostty` and friends are still recognized on remote hosts.
+
+## Leaving out the chrome
+
+The spans filter skips plain grey text, and what a coding tool draws on every screen in color (Claude Code's mode line, its always-listed `/` commands, "Jump to bottom"). `+ignore_spans` under `+find:` is that list: groups of regular expressions, each matched against a whole span or pattern match (case-insensitive). The defaults live in `optmux-defaults.yaml`; as with `+ignore_files`, setting a group replaces its list, `[]` drops it, and a new group adds to the rest:
+
+```yaml
++optmux:
+  +find:
+    +ignore_spans:
+      my_tool:
+      - '>>> ready'
+      - \d+ files changed
+      claude_code_commands: []
+```
+
+A pattern ending in `:` is written `[:]`, or YAML reads it as a key.
