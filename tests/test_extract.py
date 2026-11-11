@@ -427,6 +427,126 @@ def test_white_is_text_not_grey_and_the_mode_line_hint_is_covered():
     assert any(re.fullmatch(p, "⏵⏵ accept edits on (shift+tab to cycle)", re.I) for p in patterns)
 
 
+def test_classify_whole_picks():
+    assert [pt.classify(p) for p in ["https://x.org/a", "src/a.py:3:1", "foo.py", "eb0eb3f", "#234", "git commit", "v1.2.3", "  ./a/b  "]] == [
+        "url", "path", "file", "hash", "pr", "other", "other", "path"]
+
+
+def test_split_position():
+    assert pt.split_position("a/b.py:12:3") == ("a/b.py", 12, 3)
+    assert pt.split_position("a/b.py:12") == ("a/b.py", 12, None)
+    assert pt.split_position("a/b.py") == ("a/b.py", None, None)
+
+
+def test_editor_argv_picks_the_jump_syntax_per_editor():
+    t = [("/a/x.py", 12, 3), ("/a/y.py", None, None)]
+    assert pt.editor_argv("nvim", t) == ["nvim", "+12", "/a/x.py", "/a/y.py"]
+    assert pt.editor_argv("hx", t) == ["hx", "/a/x.py:12:3", "/a/y.py"]
+    assert pt.editor_argv("code -w", t) == ["code", "-w", "-g", "/a/x.py:12:3", "/a/y.py"]
+    assert pt.editor_argv(None, [("/t", None, None)]) == ["vi", "/t"]
+    assert pt.editor_argv("  ", [("/t", None, None)]) == ["vi", "/t"]
+
+
+def test_edit_plan_files_that_exist_else_the_text(tmp_path):
+    (tmp_path / "a.py").write_text("x")
+    assert pt.edit_plan(["a.py:4", "https://x.org", "nope.py"], "spans", str(tmp_path)) == ([(str(tmp_path / "a.py"), 4, None)], None, None)
+    assert pt.edit_plan(["nope.py"], "spans", str(tmp_path))[2] == "no such file: nope.py"
+    assert "C-o" in pt.edit_plan(["https://x.org"], "spans", str(tmp_path))[2]
+    assert pt.edit_plan(["a.py", "git commit"], "spans", str(tmp_path)) == ([], "a.py\ngit commit", None)
+    assert pt.edit_plan(["  #234"], "lines", str(tmp_path)) == ([], "#234", None)
+
+
+def test_edit_opens_a_split_in_the_pane_directory_and_removes_its_temp_file(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: calls.append(a) or type("R", (), {"stdout": f"{tmp_path}\n"})())
+    monkeypatch.setenv("EDITOR", "vim")
+    monkeypatch.setattr(pt, "split_flags", lambda pane: ["-v", "-b"])
+    (tmp_path / "a.py").write_text("x")
+    assert pt.edit("%1", ["a.py:7"], "spans") == 0
+    assert calls[-1][:8] == ("split-window", "-Z", "-v", "-b", "-t", "%1", "-c", str(tmp_path))
+    assert calls[-1][8] == f"vim +7 {tmp_path}/a.py"
+    assert pt.edit("%1", ["echo $(rm -rf x)"], "spans") == 0
+    import shlex
+    words = shlex.split(calls[-1][8].split("; rm -f ")[0])
+    assert words[0] == "vim" and Path(words[1]).read_text() == "echo $(rm -rf x)\n" and calls[-1][8].endswith(shlex.quote(words[1]))
+    Path(words[1]).unlink()
+
+
+def test_open_command_by_kind(monkeypatch, tmp_path):
+    (tmp_path / "d").mkdir()
+    (tmp_path / "f.txt").write_text("x")
+    cwd = str(tmp_path)
+    assert pt.open_command("https://x.org/a", cwd, "darwin") == (["open", "https://x.org/a"], None)
+    assert pt.open_command("https://x.org/a", cwd, "linux") == (["xdg-open", "https://x.org/a"], None)
+    assert pt.open_command("f.txt:3", cwd, "darwin")[0] == ["open", "-R", str(tmp_path / "f.txt")]
+    assert pt.open_command("./d", cwd, "darwin")[0] == ["open", str(tmp_path / "d")]
+    assert pt.open_command("f.txt", cwd, "linux")[0] == ["xdg-open", str(tmp_path / "f.txt")]
+    assert pt.open_command("gone.txt", cwd, "darwin") == (None, "no such path: gone.txt")
+    assert pt.open_command("git commit", cwd, "darwin")[0] is None
+    monkeypatch.setattr(pt.shutil, "which", lambda name: None)
+    assert pt.open_command("#12", cwd, "darwin")[0] is None
+    monkeypatch.setattr(pt.shutil, "which", lambda name: "/bin/gh")
+    assert "not in a git repository" in pt.open_command("#12", cwd, "darwin")[1]
+    subprocess.run(["git", "init", "-q", cwd], check=True)
+    assert pt.open_command("#12", cwd, "darwin") == (["gh", "browse", "12"], None)
+    assert pt.open_command("eb0eb3f", cwd, "darwin") == (["gh", "browse", "eb0eb3f"], None)
+
+
+def test_open_items_opens_each_by_its_kind_and_says_why_not(monkeypatch, tmp_path):
+    opened, shown = [], []
+    monkeypatch.setattr(pt, "pane_directory", lambda pane: str(tmp_path))
+    monkeypatch.setattr(pt, "run_open", lambda argv, cwd: opened.append(argv))
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: shown.append(a))
+    pt.open_items("%1", ["https://x.org", "make test", "nope.py"])
+    assert len(opened) == 1 and opened[0][-1] == "https://x.org"
+    assert "can't open: make test" in shown[0][-1] and "no such path: nope.py" in shown[0][-1]
+
+
+def test_restyle_paths_relative_to_the_project_or_absolute(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x")
+    cwd = str(tmp_path / "src")
+    picks = ["a.py:3", "gone.py", "echo hi"]
+    assert pt.restyle(picks, "shown", cwd) == picks
+    assert pt.restyle(picks, "relative", cwd) == ["src/a.py:3", "gone.py", "echo hi"]
+    assert pt.restyle(picks, "absolute", cwd)[0] == f"{tmp_path / 'src' / 'a.py'}:3"
+    link = tmp_path.parent / (tmp_path.name + "-link")
+    link.symlink_to(tmp_path)
+    assert pt.restyle(["a.py:3"], "relative", str(link / "src")) == ["src/a.py:3"]  # (cwd reached through a symlink)
+    assert pt.editor_argv('vim "', [("/t", None, None)]) == ["vi", "/t"]
+
+
+def test_labels_mention_edit_open_and_path_style(monkeypatch):
+    import os
+    for columns in (120, 60):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: os.terminal_size((columns, 30)))
+        header = pt.labels("spans", "osc52", "relative")[0]
+        assert "C-e" in header and "C-o" in header and "paths relative" in header
+
+
+def test_the_editor_opens_above_or_across_the_edge_when_the_pane_is_short(monkeypatch):
+    for code, flags in ((0, ["-v", "-b"]), (1, ["-f", "-v", "-b"])):
+        monkeypatch.setattr(pt.subprocess, "run", lambda *a, code=code, **k: type("R", (), {"returncode": code})())
+        assert pt.split_flags("%1") == flags
+
+
+def test_the_editor_is_zoomed_and_gives_the_zoom_back_when_the_window_was_zoomed(monkeypatch, tmp_path):
+    calls = []
+    def fake_tmux(*a, **k):
+        calls.append(a)
+        return type("R", (), {"stdout": "1\n" if "#{window_zoomed_flag}" in a else f"{tmp_path}\n"})()
+    monkeypatch.setattr(pt, "tmux", fake_tmux)
+    monkeypatch.setattr(pt, "split_flags", lambda pane: ["-v", "-b"])
+    monkeypatch.setenv("EDITOR", "vim")
+    (tmp_path / "a.py").write_text("x")
+    pt.edit("%1", ["a.py"], "spans")
+    split = calls[-1]
+    assert split[1] == "-Z" and split[-1].endswith("; tmux select-pane -Z -t %1")
+
+
+
+
 def test_the_stoplist_covers_jump_to_bottom_and_new_messages():
     import re
     import yaml
