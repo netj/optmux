@@ -440,11 +440,20 @@ def test_split_position():
 
 def test_editor_argv_picks_the_jump_syntax_per_editor():
     t = [("/a/x.py", 12, 3), ("/a/y.py", None, None)]
-    assert pt.editor_argv("nvim", t) == ["nvim", "+12", "/a/x.py", "/a/y.py"]
     assert pt.editor_argv("hx", t) == ["hx", "/a/x.py:12:3", "/a/y.py"]
     assert pt.editor_argv("code -w", t) == ["code", "-w", "-g", "/a/x.py:12:3", "/a/y.py"]
+    assert pt.editor_argv("nano", t) == ["nano", "+12,3", "/a/x.py", "/a/y.py"]
+    assert pt.editor_argv("emacs", t) == ["emacs", "+12:3", "/a/x.py", "/a/y.py"]
     assert pt.editor_argv(None, [("/t", None, None)]) == ["vi", "/t"]
     assert pt.editor_argv("  ", [("/t", None, None)]) == ["vi", "/t"]
+
+
+def test_vim_jumps_once_for_one_file_and_in_every_window_for_several():
+    assert pt.editor_argv("nvim", [("/a", 12, None)]) == ["nvim", "+12", "/a"]
+    assert pt.editor_argv("nvim", [("/a", 12, 3)]) == ["nvim", "+call cursor(12,3)", "/a"]
+    assert pt.editor_argv("vim", [("/a", None, None), ("/b", 20, None), ("/c", 5, 2)]) == [
+        "vim", "-o", "/a", "/b", "/c", "-c", "2wincmd w | call cursor(20,1)", "-c", "3wincmd w | call cursor(5,2)", "-c", "1wincmd w"]
+    assert pt.editor_argv("vim", [("/a", None, None), ("/b", None, None)]) == ["vim", "-o", "/a", "/b"]
 
 
 def test_edit_plan_files_that_exist_else_the_text(tmp_path):
