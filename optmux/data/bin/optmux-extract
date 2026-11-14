@@ -289,7 +289,7 @@ def choices(capture, mode, width=None):
     icons = PATTERN_ICONS[icon_style()]
     mark = f"\x1b[2m{icons['spans']}\x1b[0m " if icons["spans"] else ""
     spans, covered = span_items(parsed, width)
-    # (entries sort by line, column, then rank: a styled span comes after the patterns inside it, so it is listed first in fzf, one to skip at most)
+    # (entries sort by line, column, then rank: a styled span follows the patterns inside it, so fzf shows the span first and a pattern is one skip away)
     entries = [(line, col, 1, 0, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
     for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
         for start, label, text in find_patterns(plain):

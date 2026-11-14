@@ -404,6 +404,22 @@ def test_a_path_inside_a_styled_command_is_listed_as_its_own_option():
     assert [t for t, _ in pt.choices(cap, "spans")] == ["/tmp/x/PR_DESCRIPTION.md", "! pbcopy < /tmp/x/PR_DESCRIPTION.md"]  # the span last: first in fzf
 
 
+def test_several_patterns_inside_a_span_all_come_before_it():
+    cap = "\x1b[1mrun cat /a/b.md /c/d.py now\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["/a/b.md", "/c/d.py", "run cat /a/b.md /c/d.py now"]
+
+
+def test_each_span_follows_its_own_patterns():
+    cap = "\x1b[1mrun /a/b.md\x1b[0m then \x1b[1msee https://example.com/x\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["/a/b.md", "run /a/b.md", "https://example.com/x", "see https://example.com/x"]
+
+
+def test_a_repeated_path_stays_at_its_latest_position():
+    span = "\x1b[1mrun cat /a/b.md\x1b[0m"
+    assert [t for t, _ in pt.choices(f"/a/b.md\n{span}\n", "spans")] == ["/a/b.md", "run cat /a/b.md"]
+    assert [t for t, _ in pt.choices(f"{span}\n/a/b.md\n", "spans")] == ["run cat /a/b.md", "/a/b.md"]
+
+
 def test_quotes_spanning_lines_are_listed_whole():
     cap = 'it reads: "Written with Claude Code: the design and\n  the work for a week."\n\nstray " mark\nsingle "one line" here\n'
     texts = [t for t, _ in pt.choices(cap, "spans")]
