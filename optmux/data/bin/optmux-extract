@@ -289,20 +289,21 @@ def choices(capture, mode, width=None):
     icons = PATTERN_ICONS[icon_style()]
     mark = f"\x1b[2m{icons['spans']}\x1b[0m " if icons["spans"] else ""
     spans, covered = span_items(parsed, width)
-    entries = [(line, col, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
+    # (entries sort by line, column, then rank: a styled span comes after the patterns inside it, so it is listed first in fzf, one to skip at most)
+    entries = [(line, col, 1, 0, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
     for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
         for start, label, text in find_patterns(plain):
             # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
             end = start + len(text)
             inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
             if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
-                entries.append((line, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
+                entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
     for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
         if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
-            entries.append((line, col, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text))
+            entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text))
     stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
-    for _, _, text, display in sorted(entries, key=lambda e: e[:2]):
+    for *_, text, display in sorted(entries, key=lambda e: e[:4]):
         if any(rx.fullmatch(text) for rx in stoplist):
             continue
         found.pop(text, None)

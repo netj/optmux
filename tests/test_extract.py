@@ -401,7 +401,7 @@ def test_the_stoplist_hides_known_chrome_spans_and_takes_more_groups(monkeypatch
 
 def test_a_path_inside_a_styled_command_is_listed_as_its_own_option():
     cap = "\x1b[1m! pbcopy < /tmp/x/PR_DESCRIPTION.md\x1b[0m\n"
-    assert [t for t, _ in pt.choices(cap, "spans")] == ["! pbcopy < /tmp/x/PR_DESCRIPTION.md", "/tmp/x/PR_DESCRIPTION.md"]
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["/tmp/x/PR_DESCRIPTION.md", "! pbcopy < /tmp/x/PR_DESCRIPTION.md"]  # the span last: first in fzf
 
 
 def test_quotes_spanning_lines_are_listed_whole():
