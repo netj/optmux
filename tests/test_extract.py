@@ -507,6 +507,12 @@ def test_open_command_by_kind(monkeypatch, tmp_path):
     assert pt.open_command("./d", cwd, "darwin")[0] == ["open", str(tmp_path / "d")]
     assert pt.open_command("f.txt", cwd, "linux")[0] == ["xdg-open", str(tmp_path / "f.txt")]
     assert pt.open_command("gone.txt", cwd, "darwin") == (None, "no such path: gone.txt")
+    assert pt.open_command("docs.python.org", cwd, "darwin") == (["open", "http://docs.python.org"], None)
+    for gone in ("missing.py", "Dockerfile.dev", "notes.md", "example.com:12", "x.museum"):
+        assert pt.open_command(gone, cwd, "darwin")[0] is None
+    assert pt.open_command("EXAMPLE.COM", cwd, "darwin")[0] == ["open", "http://EXAMPLE.COM"]
+    (tmp_path / "x.com").write_text("")
+    assert pt.open_command("x.com", cwd, "linux")[0] == ["xdg-open", str(tmp_path / "x.com")]
     assert pt.open_command("git commit", cwd, "darwin")[0] is None
     monkeypatch.setattr(pt.shutil, "which", lambda name: None)
     assert pt.open_command("#12", cwd, "darwin")[0] is None

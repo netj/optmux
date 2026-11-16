@@ -621,6 +621,18 @@ def split_flags(pane):
     return ["-v", "-b"] if ok else ["-f", "-v", "-b"]
 
 
+# Top-level domains a bare name like docs.python.org is taken to end in, only when no such file exists. Deliberately
+# short: anything that is also a common file extension (.py .sh .md .rs .pl .dev .app .me .co .cloud ...) stays a file.
+DOMAIN_TLDS = {"com", "org", "net", "gov", "edu", "mil", "io", "us", "uk", "ca", "de", "fr", "jp", "kr", "cn", "au", "nl", "se", "ch", "eu", "biz", "xyz"}
+
+
+def bare_domain(pick):
+    """pick as an http:// URL when it is a bare domain name (docs.python.org, example.com), else None. A :port is not
+    accepted, as it can't be told from :line."""
+    m = re.fullmatch(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+([A-Za-z]+)", pick)
+    return f"http://{pick}" if m and m.group(1).lower() in DOMAIN_TLDS else None
+
+
 def open_command(pick, cwd, system=None):
     """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, a hash or PR/issue
     number on GitHub. argv is None when it cannot be opened, and the message says why."""
@@ -632,7 +644,8 @@ def open_command(pick, cwd, system=None):
     if kind in ("path", "file"):
         full = resolve(split_position(pick)[0], cwd)
         if not os.path.exists(full):
-            return None, f"no such path: {pick}"
+            url = bare_domain(pick) if kind == "file" else None
+            return (opener + [url], None) if url else (None, f"no such path: {pick}")
         return opener + ([] if os.path.isdir(full) or system != "darwin" else ["-R"]) + [full], None
     if kind in ("hash", "pr"):
         if not shutil.which("gh"):
