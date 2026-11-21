@@ -451,12 +451,9 @@ FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
 MAX_QUERY = 200  # characters of selection handed to Find
 
 
-def labels(filter_name, copier, paths="shown", resume=None):
+def labels(filter_name, copier, paths="shown"):
     """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
-    do what. `resume` is the stale query that C-M-x brings back (shown in the prompt)."""
-    if resume is not None:
-        hint = resume if len(resume) <= 20 else resume[:19] + "…"
-        return [*labels(filter_name, copier, paths)[:1], f'--prompt={filter_name} (C-M-x: resume "{hint}") > ']
+    do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
                 f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}",
@@ -726,9 +723,7 @@ def pick(pane):
     earlier = load_history(mode)
     fresh = not earlier or is_stale(mode)  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
     query, remembered = ("", None) if fresh else earlier[0]
-    back, recalled = (-1 if fresh else 0), False
-    # opened empty because the last query is old: the first C-M-x, with nothing typed, brings it back instead of cycling
-    resumable = (mode, earlier[0]) if earlier and fresh and earlier[0][0].strip() else None  # (an emptied query is nothing to resume)  # (the query it opens on stays even if it matches nothing: C-u clears it)
+    back, recalled = (-1 if fresh else 0), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
@@ -752,7 +747,7 @@ def pick(pane):
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
                 f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
-                *labels(shown, copier, paths, resume=resumable[1][0] if resumable and resumable[0] == shown else None),
+                *labels(shown, copier, paths),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -762,18 +757,13 @@ def pick(pane):
             return proc.returncode
         query, key, chosen = parse_fzf_output(proc.stdout)
         if key in ("alt-p", "alt-n"):  # older and newer queries of this filter, each with the item the cursor was on
-            earlier, resumable = load_history(shown), None
+            earlier = load_history(shown)
             was = back
             back = max(-1, min(back + (1 if key == "alt-p" else -1), len(earlier) - 1))
             if back != was:  # (at either end there is nowhere to go: what you typed stays)
                 query, remembered = earlier[back] if back >= 0 else ("", None)
                 recalled = True
             continue
-        if key == "ctrl-alt-x" and resumable and resumable[0] == shown and not query.strip():
-            (query, remembered), back, recalled, resumable = resumable[1], 0, True, None
-            continue  # (nothing is saved: this is still the same visit)
-        if query.strip() or key != "ctrl-t" and key != "alt-r":
-            resumable = None  # (typing or leaving ends the offer; switching the copy method or paths does not)
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
         if key not in ("ctrl-t", "alt-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
             save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)

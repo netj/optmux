@@ -273,18 +273,12 @@ def test_the_queries_and_items_of_a_filter_are_remembered_newest_first(monkeypat
     assert pt.load_history("spans") == [("ok", None)]
 
 
-def test_the_prompt_offers_to_resume_a_stale_query():
-    assert 'C-M-x: resume "bash"' in pt.labels("spans", "osc52", resume="bash")[1]
-    assert "…" in pt.labels("spans", "osc52", resume="x" * 50)[1]
-    assert "resume" not in pt.labels("spans", "osc52")[1]
-
-
 def test_the_last_query_goes_stale_after_a_few_minutes(monkeypatch):
     options = {}
     monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
     monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
     monkeypatch.delenv("OPTMUX_EXTRACT_RESUME_MINUTES", raising=False)
-    assert pt.is_stale("spans")  # (never left: nothing to resume)
+    assert pt.is_stale("spans")  # (never left: nothing to open on)
     pt.save_state("spans", "bash", None)
     assert not pt.is_stale("spans")
     now = pt.time.time()
