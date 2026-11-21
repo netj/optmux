@@ -479,10 +479,10 @@ MAX_QUERY = 200  # characters of selection handed to Find
 
 
 def view_bar(active, sep=";  ", cycle_hint="C-M-x to cycle"):
-    """The line of M-digit keys, the active view in reverse bold, then the key that cycles through them."""
+    """The line of M-digit keys, the active view in reverse bold, led by the key that cycles through them."""
     keys = sorted(VIEW_KEYS.items(), key=lambda kv: (kv[0] == "0", kv[0]))
     bar = sep.join(f"M-{d} " + (f"\x1b[1;7m{view}\x1b[0m" if view == active else view) for d, view in keys)
-    return f"{bar}{sep}{cycle_hint}" if cycle_hint else bar
+    return f"{cycle_hint}{sep}{bar}" if cycle_hint else bar
 
 
 def prompt_for(view):
@@ -502,7 +502,7 @@ def labels(filter_name, copier, paths="shown"):
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
                 f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
-                + view_bar(filter_name, "; ", None) + "\nC-M-x: cycle the views",
+                + "C-M-x: cycle the views\n" + view_bar(filter_name, "; ", None),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
             f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
