@@ -643,3 +643,49 @@ def test_the_stoplist_covers_jump_to_bottom_and_new_messages():
     patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
     for chrome in ("Jump to bottom (click) ↓", "3 new messages (click) ↓", "1 new message (click)"):
         assert any(re.fullmatch(p, chrome, re.I) for p in patterns), chrome
+
+
+def test_the_query_log_keeps_when_each_query_was_used_for_a_month(tmp_path):
+    path = str(tmp_path / "q.json")
+    day = 86400
+    pt.log_query("bash", now=100 * day, path=path)
+    pt.log_query("  ", now=100 * day, path=path)  # blank: nothing to recall
+    pt.log_query("old", now=60 * day, path=path)
+    pt.log_query("bash\nx", now=101 * day, path=path)  # (control characters become spaces)
+    pt.log_query("bash", now=102 * day, path=path)
+    log = pt.load_query_log(path)
+    assert log == {"bash": [102 * day, 100 * day], "bash x": [101 * day]}  # (old is past the 28 days)
+    for n in range(pt.QUERY_LOG_USES + 5):
+        pt.log_query("busy", now=102 * day + n, path=path)
+    assert len(pt.load_query_log(path)["busy"]) == pt.QUERY_LOG_USES
+    Path(path).write_text("garbage")
+    assert pt.load_query_log(path) == {}
+    assert pt.load_query_log(str(tmp_path / "missing.json")) == {}
+
+
+def test_the_history_rows_say_when_and_how_often_without_repeating_a_query():
+    day = 86400
+    log = {"bash": [100 * day, 99 * day, 98 * day], "once": [95 * day]}
+    rows = pt.history_rows(log, now=100 * day + 3 * 3600, extra=["once", "from-before", "from-before", " "])
+    assert [r.split("\t")[0] for r in rows] == ["bash", "once", "from-before"]  # (newest first; each query once)
+    assert "3h" in rows[0] and "×3" in rows[0] and "5d" in rows[1] and "×" not in rows[1]
+    assert pt.ago(0) == "now" and pt.ago(59) == "now" and pt.ago(120) == "2m" and pt.ago(86400 * 15) == "2w"
+
+
+def test_the_popup_box_matches_where_tmux_centers_it():
+    # measured with a 168x132 client and `-w 100% -h 60%`: rows 25..103
+    assert pt.popup_box(168, 132, 166, 77) == (0, 25, 168, 79)
+    assert pt.popup_box(80, 24, 78, 12) == (0, 4, 80, 14)  # 80x24 client: rows 4..17
+
+
+def test_the_frame_is_the_popups_border():
+    lines = pt.frame(20, 5).lstrip("\x1b[?25l").split("\n")
+    assert [len(l) for l in lines] == [20] * 5
+    assert lines[0].startswith("╭─ OPTMUX eXtract ") and lines[0].endswith("╮") and lines[1] == "│" + " " * 18 + "│"
+    assert lines[-1] == "╰" + "─" * 18 + "╯"
+
+
+def test_the_header_mentions_the_query_history(monkeypatch):
+    for columns in (200, 60):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
+        assert "C-r" in pt.labels("spans", "osc52")[0]
