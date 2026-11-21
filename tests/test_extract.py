@@ -706,3 +706,9 @@ def test_back_from_the_history_eXtract_keeps_the_query_picked_even_when_nothing_
     monkeypatch.setattr(pt.subprocess, "run", fake_run)
     pt.pick("%0", resume=dict(mode="spans", query="zzz-no-match", item=None))
     assert seen == ["--query=zzz-no-match"]
+
+
+def test_status_rows_and_the_tmux_that_has_floating_panes():
+    assert [pt.status_rows(s, "bottom", "bottom") for s in ("on", "off", "2")] == [1, 0, 2]
+    assert pt.status_rows("on", "top", "bottom") == 0 and pt.status_rows("on", "top", "top") == 1
+    assert [pt.has_floating_panes(v) for v in ("3.8", "3.7a", "next-3.8", "3.6", "3.5a", "")] == [True, True, True, False, False, False]

@@ -831,9 +831,9 @@ HISTORY_STYLE = "bg=colour237"  # the history popup's own look, so it reads as s
 HISTORY_FZF_COLORS = "bg:237,bg+:239"
 
 
-def has_floating_panes():
+def has_floating_panes(version):
     """tmux 3.7+ (`new-pane`), going by the server's version (`3.8`, `3.7a`, `next-3.8`)."""
-    m = re.search(r"(\d+)\.(\d+)", show_format("#{version}"))
+    m = re.search(r"(\d+)\.(\d+)", version)
     return bool(m) and (int(m[1]), int(m[2])) >= (3, 7)
 
 
@@ -849,12 +849,11 @@ def popup_box(client_width, client_height, cols, rows):
             width, height)
 
 
-def status_rows_above():
-    """Rows the status line takes above the window (0 when it is at the bottom): client rows minus these are the
-    window's, where floating panes are placed."""
-    status = show_option("status")
-    lines = 0 if status == "off" else 1 if status in ("on", "") else int(status) if status.isdigit() else 1
-    return lines if show_option("status-position") == "top" else 0
+def status_rows(status, position, side):
+    """Rows the status line takes on `side` ("top" or "bottom") of the client: `status` is on, off or a number
+    of lines, `position` top or bottom."""
+    lines = 0 if status == "off" else int(status) if status.isdigit() else 1
+    return lines if position == side else 0
 
 
 def frame(width, height, title=TITLE):
@@ -868,37 +867,49 @@ def self_argv(*args):
     return [sys.executable, os.path.abspath(__file__), *args]
 
 
+def shell(script, *args):
+    """A popup or pane command: `sh -c script`, so the user's own shell (fish ...) never reads it."""
+    return shlex.join(["sh", "-c", script, "sh", *args])
+
+
 def start_history(pane, argv, items, env, shown, query, item):
-    """C-r: leave the lookalike behind (if tmux can), and the history to open once this popup is gone."""
+    """C-r: leave the lookalike behind (if tmux can), and the history to open as soon as this popup is gone. Nothing
+    here starts python again: the lookalike is `cat` and fzf, and the history step is one detached process."""
     d = tempfile.mkdtemp(prefix="optmux-extract-")
-    client = show_format("#{client_tty}")
-    cw, ch = (int(n) for n in show_format("#{client_width} #{client_height}").split())
+    # (one question, not five: this is time before the popup can close)
+    client, cw, ch, version, status, position = show_format(
+        "#{client_tty}\t#{client_width}\t#{client_height}\t#{version}\t#{status}\t#{status-position}").split("\t")
+    cw, ch = int(cw), int(ch)
     cols, rows = shutil.get_terminal_size()
     box = popup_box(cw, ch, cols, rows)
-    with open(os.path.join(d, "items"), "w") as f:
-        f.write(items)
+    for name, text in (("items", items), ("query", query), ("frame", frame(box[2], box[3]))):
+        with open(os.path.join(d, name), "w") as f:
+            f.write(text)
     state = dict(pane=pane, client=client, box=box, shown=shown, query=query, item=item, panes=[],
-                 argv=argv, prompt=env["OPTMUX_EXTRACT_PROMPT"])
-    if has_floating_panes():
+                 status_below=status_rows(status, position, "bottom"))
+    if has_floating_panes(version):
         left, top, width, height = box
-        y = top - status_rows_above()
+        y = top - status_rows(status, position, "top")
         new = ["new-pane", "-d", "-B", "none", "-t", pane, "-P", "-F", "#{pane_id}"]
-        state["panes"] = [
+        fzf = shlex.join(["env", f"OPTMUX_EXTRACT_PROMPT={env['OPTMUX_EXTRACT_PROMPT']}", *argv])
+        state["panes"] = [  # (the frame, and inside it the same fzf with the same list: no key reaches it)
             tmux(*new, "-x", str(width), "-y", str(height), "-X", str(left), "-Y", str(y),
-                 shlex.join(self_argv("--frame", str(width), str(height))), capture_output=True, text=True).stdout.strip(),
+                 shell('cat "$1"; exec sleep 600', os.path.join(d, "frame")), capture_output=True, text=True).stdout.strip(),
             tmux(*new, "-x", str(width - 2), "-y", str(height - 2), "-X", str(left + 1), "-Y", str(y + 1),
-                 shlex.join(self_argv("--backdrop", d)), capture_output=True, text=True).stdout.strip(),
+                 f"{fzf} < {shlex.quote(os.path.join(d, 'items'))} > /dev/null; exec sleep 600",
+                 capture_output=True, text=True).stdout.strip(),
         ]
     with open(os.path.join(d, "state.json"), "w") as f:
         json.dump(state, f)
-    if state["panes"]:  # this popup stays up until the lookalike has drawn its prompt, so nothing shows through
-        for _ in range(100):
+    if state["panes"]:  # this popup stays up until the lookalike has drawn its prompt (a moment: it is only fzf)
+        for _ in range(30):
             if env["OPTMUX_EXTRACT_PROMPT"] in tmux("capture-pane", "-p", "-t", state["panes"][1],
                                                      capture_output=True, text=True).stdout:
                 break
             time.sleep(0.01)
-    # (a moment later, as open_find does: this popup has to be gone first, or the history opens into it)
-    tmux("run-shell", "-b", f"sleep 0.2; {shlex.join(self_argv('--history', d))}".replace("#", "##"))
+    # (detached: it outlives this popup, and tries to open the history until this one is gone)
+    subprocess.Popen(self_argv("--history", d), start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return 0
 
 
@@ -907,66 +918,51 @@ def load_state(d):
         return json.load(f)
 
 
-def backdrop(d):
-    """In the lookalike's pane: eXtract's fzf as it was, which no key reaches (it is killed when done)."""
-    state = load_state(d)
-    with open(os.path.join(d, "items")) as items:
-        subprocess.run(state["argv"], stdin=items, stdout=subprocess.DEVNULL,
-                       env={**os.environ, "OPTMUX_EXTRACT_PROMPT": state["prompt"]})
-    time.sleep(600)
-
-
 def show_history(d):
-    """From `run-shell -b`, once eXtract's popup is gone: the history popup, then eXtract again."""
+    """Detached from eXtract's popup: the history popup, then eXtract again."""
     state = load_state(d)
     left, top, width, height = state["box"]
-    log = load_query_log()
-    rows = history_rows(log, extra=[q for name in ("spans", "lines") for q, _ in load_history(name)])
-    with open(os.path.join(d, "history"), "w") as f:
+    def at(name):
+        return os.path.join(d, name)
+    rows = history_rows(load_query_log(), extra=[q for name in ("spans", "lines") for q, _ in load_history(name)])
+    with open(at("history"), "w") as f:
         f.write("\n".join(rows) + "\n" if rows else "")
     prompt_row = top + height - 2  # eXtract's prompt: the last row inside its border
     lines = max(4, min(HISTORY_ROWS, len(rows) + 1))
     client_height = int(show_format("#{client_height}", "-c", state["client"]))
-    below = client_height - status_rows_below() - prompt_row  # (rows from the prompt down to the status line)
+    below = client_height - state["status_below"] - prompt_row  # (rows from the prompt down to the status line)
     layout, first = ("reverse", prompt_row) if below >= lines else ("default", prompt_row - lines + 1)
-    # display-popup's -y is the row under the popup (as for menus)
-    subprocess.run(["tmux", "display-popup", "-c", state["client"], "-B", "-s", HISTORY_STYLE, "-x", str(left + 1),
-                    "-y", str(first + lines), "-w", str(width - 2), "-h", str(lines), "-E",
-                    shlex.join(self_argv("--history-fzf", d, layout, str(lines)))])
+    with open(at("paint"), "w") as f:  # (the look and the prompt, put up before fzf is, so the popup never shows empty)
+        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1Hhistory > {state['query']}")
+    script = (f'cat "$1/paint"; : > "$1/started"; fzf --ansi --layout="$2" --no-info --delimiter="\t" --nth=1 --tiebreak=index '
+              f'--prompt="history > " --color="{HISTORY_FZF_COLORS}" --print-query --no-scrollbar --query="$(cat "$1/query")" '
+              f'< "$1/history" > "$1/out"')
+    # display-popup's -y is the row under the popup (as for menus). While eXtract's popup is still closing, tmux
+    # ignores this one (and we never started): so try again a moment later
+    for _ in range(100):
+        subprocess.run(["tmux", "display-popup", "-c", state["client"], "-B", "-s", HISTORY_STYLE, "-x", str(left + 1),
+                        "-y", str(first + lines), "-w", str(width - 2), "-h", str(lines), "-E",
+                        shell(script, d, layout)])
+        if os.path.exists(at("started")):
+            break
+        time.sleep(0.03)
+    try:
+        with open(at("out")) as f:
+            typed, *picked = f.read().split("\n")[:-1] or [""]
+        chosen = picked[0].split("\t", 1)[0] if picked else typed
+    except OSError:
+        chosen = state["query"]  # (left with Esc, or never opened: eXtract as it was)
+    with open(at("chosen"), "w") as f:
+        f.write(chosen)
     if state["panes"]:  # the copy eXtract shows until its fzf draws, and the lookalike goes once it's up
-        with open(os.path.join(d, "snapshot"), "w") as f:
-            f.write(tmux("capture-pane", "-e", "-p", "-t", state["panes"][1], capture_output=True, text=True).stdout)
+        with open(at("snapshot"), "w") as f:
+            f.write("\x1b[?25l" + tmux("capture-pane", "-e", "-p", "-t", state["panes"][1],
+                                       capture_output=True, text=True).stdout.rstrip("\n"))
         kill = "; ".join(shlex.join(["tmux", "kill-pane", "-t", p]) for p in state["panes"])
         tmux("run-shell", "-b", f"sleep 0.15; {kill}".replace("#", "##"))
     subprocess.run(["tmux", "display-popup", "-c", state["client"], "-E", "-w", str(width), "-h", str(height),
-                    "-b", "rounded", "-T", TITLE, shlex.join(self_argv("--resume", d))])
-
-
-def status_rows_below():
-    status = show_option("status")
-    lines = 0 if status == "off" else 1 if status in ("on", "") else int(status) if status.isdigit() else 1
-    return lines if show_option("status-position") != "top" else 0
-
-
-def history_fzf(d, layout, lines):
-    """In the history popup: its look and prompt go up first, then fzf takes over. Writes the query picked (an
-    entry, else what was typed) to `chosen`; nothing when left with Esc."""
-    state = load_state(d)
-    query = state["query"]
-    # (the background and prompt, painted before fzf is up, so the popup never shows empty)
-    sys.stdout.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines}Hhistory > {query}")
-    sys.stdout.flush()
-    with open(os.path.join(d, "history")) as rows:
-        proc = subprocess.run(["fzf", "--ansi", f"--layout={layout}", "--no-info", "--delimiter=\t", "--nth=1",
-                               "--tiebreak=index", "--prompt=history > ", f"--color={HISTORY_FZF_COLORS}",
-                               "--print-query", f"--query={query}", "--no-scrollbar"],
-                              stdin=rows, stdout=subprocess.PIPE, text=True)
-    if proc.returncode not in (0, 1):
-        return
-    typed, *picked = proc.stdout.split("\n")[:-1] or [""]
-    chosen = picked[0].split("\t", 1)[0] if picked else typed
-    with open(os.path.join(d, "chosen"), "w") as f:
-        f.write(chosen)
+                    "-b", "rounded", "-T", TITLE,
+                    shell('cat "$1/snapshot" 2>/dev/null; exec "$2" "$3" --resume "$1"', d, *self_argv()[:2])])
 
 
 def resume(d):
@@ -974,17 +970,12 @@ def resume(d):
     same item when the query is the same."""
     state = load_state(d)
     try:
-        with open(os.path.join(d, "snapshot")) as f:
-            sys.stdout.write("\x1b[?25l" + f.read().rstrip("\n"))
-            sys.stdout.flush()
-    except OSError:
-        pass
-    try:
         with open(os.path.join(d, "chosen")) as f:
             chosen = f.read()
     except OSError:
         chosen = state["query"]
     shutil.rmtree(d, ignore_errors=True)
+    # (the query stays even if nothing matches it now, like the one eXtract opens on: C-u clears it)
     return pick(state["pane"], resume=dict(mode=state["shown"], query=chosen,
                                            item=state["item"] if chosen == state["query"] else None))
 
@@ -1104,12 +1095,7 @@ def pick(pane, resume=None):
 
 if __name__ == "__main__":
     # the steps of C-r's history run as this script too (see start_history); each takes the directory it keeps its state in
-    steps = {"--history": show_history, "--history-fzf": history_fzf, "--backdrop": backdrop, "--resume": resume}
-    if len(sys.argv) > 1 and sys.argv[1] == "--frame":
-        sys.stdout.write(frame(int(sys.argv[2]), int(sys.argv[3])))
-        sys.stdout.flush()
-        time.sleep(600)
-        sys.exit(0)
+    steps = {"--history": show_history, "--resume": resume}
     if len(sys.argv) > 2 and sys.argv[1] in steps:
         sys.exit(steps[sys.argv[1]](*sys.argv[2:]) or 0)
     if len(sys.argv) > 2:
