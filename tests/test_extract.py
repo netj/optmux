@@ -81,21 +81,24 @@ def test_each_bucket_lists_only_its_own_spans():
     assert pt.choices("plain text only\n", "paths") == []
 
 
-def test_view_keys_and_the_active_one_in_bold():
+def test_view_keys_cycle_and_the_active_one_highlighted():
     assert pt.VIEW_KEYS == {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
-    assert pt.FILTERS == ["lines", "spans"]  # (C-M-x stays a plain toggle)
+    assert sorted(pt.VIEW_ORDER) == sorted(pt.VIEW_KEYS.values()) and pt.VIEW_ORDER[0] == "spans"
+    assert pt.cycle(pt.VIEW_ORDER, "lines") == "spans" and pt.cycle(pt.VIEW_ORDER, "spans") == "styled"
     assert [pt.history_name(m) for m in ("lines", "spans", "paths")] == ["lines", "spans", "spans"]
     bar = pt.view_bar("paths")
-    assert "\x1b[1mM-8 paths\x1b[22m" in bar and bar.count("\x1b[1m") == 1 and bar.endswith("M-0 lines")
+    assert "\x1b[1;7m M-8 paths \x1b[0m" in bar and bar.count("\x1b[1;7m") == 1 and bar.endswith("M-0 lines;  C-M-x to cycle")
 
 
-def test_labels_name_the_view_and_say_when_it_is_empty(monkeypatch):
+def test_prompts_and_labels(monkeypatch):
     import os
+    assert pt.prompt_for("lines") == "lines > " and pt.prompt_for("spans") == "spans > "
+    assert pt.prompt_for("refs") == "spans[refs] (URLs, hashes, PRs, versions) > "
+    assert pt.prompt_for("paths", empty=True).endswith("(none on screen) > ")
     for width in (120, 60):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
         header, prompt = pt.labels("paths", "osc52")
-        assert "spans: paths" in prompt and "M-8 paths" in header
-        assert "(none on screen)" in pt.labels("refs", "osc52", empty=True)[1]
+        assert "M-8 paths" in header and "C-M-x" in header and prompt.startswith("--prompt=spans[paths]")
 
 
 def test_cycle_wraps_around():
@@ -106,11 +109,11 @@ def test_labels_shrink_in_narrow_terminals(monkeypatch):
     import os
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
     wide = pt.labels("spans", "osc52")
-    assert wide[1] == "--prompt=spans filtered (C-M-x to switch) > "
+    assert wide[1] == "--prompt=spans > "
     assert "C-f files" in wide[0] and "C-g grep" in wide[0] and "C-M-f all" in wide[0] and "M-p/M-n" in wide[0]
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
     narrow = pt.labels("spans", "osc52")
-    assert narrow[1] == "--prompt=spans (C-M-x) > "
+    assert narrow[1] == "--prompt=spans > "
     assert all(len(re.sub(r"\x1b\[[0-9;]*m", "", line)) < 80 for line in narrow[0].split("\n")) and "C-f: files" in narrow[0]
 
 
