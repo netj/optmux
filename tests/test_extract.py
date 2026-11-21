@@ -712,3 +712,13 @@ def test_status_rows_and_the_tmux_that_has_floating_panes():
     assert [pt.status_rows(s, "bottom", "bottom") for s in ("on", "off", "2")] == [1, 0, 2]
     assert pt.status_rows("on", "top", "bottom") == 0 and pt.status_rows("on", "top", "top") == 1
     assert [pt.has_floating_panes(v) for v in ("3.8", "3.7a", "next-3.8", "3.6", "3.5a", "")] == [True, True, True, False, False, False]
+
+
+def test_the_lookalike_shows_eXtract_as_it_is_now_not_as_it_opened():
+    config = dict(view="spans", argv=["fzf", "--ansi", "--query=", "--bind=load:pos(3)+unbind(load)", "--prompt=spans 0/0 > ", "--no-info"])
+    argv = pt.lookalike_argv(config, "al", 2, 4)
+    assert argv[:3] == ["fzf", "--ansi", "--no-info"]  # (what it opened with, but the old query, cursor and prompt)
+    assert "--query=al" in argv and "--bind=load:pos(2)+unbind(load)" in argv and "--prompt=spans 1/4 > " in argv
+    assert "--bind=load:pos(3)+unbind(load)" not in argv and sum(a.startswith("--prompt=") for a in argv) == 1
+    assert not any(a.startswith("--bind=load:pos(") for a in pt.lookalike_argv(config, "", 0, 0))
+    assert pt.counted_prompt("lines", 0) == "--prompt=lines 0/0 > "
