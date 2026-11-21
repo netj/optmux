@@ -738,6 +738,8 @@ def pick(pane):
     mode = get_option(FILTER_OPTION, FILTERS + list(KINDS), FILTERS[0])
     if mode in KINDS and is_stale("spans"):  # (like the query, a kind view is a few minutes' business: then all spans)
         mode = "spans"
+        tmux("set-option", "-g", FILTER_OPTION, mode)  # (for good: leaving refreshes the time, and the old kind must not come back)
+        tmux("set-option", "-gu", KIND_OPTION)
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
     paths = get_option(PATH_OPTION, PATH_STYLES, PATH_STYLES[0])
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
@@ -800,7 +802,7 @@ def pick(pane):
             # C-M-x toggles lines and spans (from a kind: to lines, and from lines back to that kind)
             was = mode
             if key == "ctrl-alt-x":
-                if mode == "lines":
+                if shown == "lines":  # (toggle from what is on screen, which is not `mode` when that had nothing)
                     kind = get_option(KIND_OPTION, list(KINDS), "")
                     mode = kind if kind and not is_stale("spans") else "spans"
                 else:
