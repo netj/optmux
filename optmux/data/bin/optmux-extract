@@ -134,11 +134,18 @@ def parse_line(raw):
 
 
 FILTERS = ["lines", "spans"]
-# M-1..M-8 narrow the spans to one kind (M-0: all spans, M-9: lines); frequent kinds on the low digits. A kind's
-# name is also its filter name, "styled" being the program's own styled runs. What each is called in the prompt:
-KINDS = {"url": "URLs", "path": "paths", "file": "file names", "quote": "quoted text", "hash": "commit hashes",
-         "pr": "PR/issue numbers", "ver": "versions", "styled": "styled text"}
-KIND_KEYS = {f"alt-{n}": kind for n, kind in enumerate(KINDS, 1)}
+# Meta+digit picks the view. M-1 spans and M-0 lines are the two FILTERS; the rest narrow the spans to a bucket of
+# pattern kinds (the labels of PATTERNS, plus "styled" for the program's own runs). To add a pattern, put its kind in
+# a bucket (or leave it out: "others" takes whatever no bucket claims). Digits left free are for more buckets later.
+KINDS = {  # bucket: (what the prompt calls it, the pattern kinds in it); None: everything not in another bucket
+    "styled": ("styled text", {"styled"}),
+    "quotes": ("quoted text", {"quote"}),
+    "others": ("other spans", None),
+    "paths": ("paths and file names", {"path", "file"}),
+    "refs": ("links and refs: URLs, hashes, PRs, versions", {"url", "hash", "pr", "ver"}),  # what C-o opens
+}
+VIEW_KEYS = {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
+KIND_KEYS = {f"alt-{d}": view for d, view in VIEW_KEYS.items()}
 KIND_OPTION = "@optmux-extract-kind"  # the kind C-M-x returns to from lines
 COPIERS = ["osc52", "native", "buffer"]
 FILTER_OPTION = "@optmux-extract-filter"
@@ -284,9 +291,16 @@ def span_items(parsed, width):
     return [(m[0], m[1], m[6], m[7]) for m in merged], covered
 
 
+def in_bucket(bucket, kind):
+    members = KINDS[bucket][1]
+    if members is None:  # others: what no other bucket has
+        return not any(m and kind in m for _, (_, m) in ((n, v) for n, v in KINDS.items()))
+    return kind in members
+
+
 def choices(capture, mode, width=None):
     """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows.
-    `mode` is lines, spans, or one kind of span (a key of KINDS)."""
+    `mode` is lines, spans, or a bucket of them (a key of KINDS)."""
     parsed = [(parse_line(raw), raw) for raw in capture.expandtabs(4).splitlines()]
     while parsed and not parsed[-1][0][0].strip():
         parsed.pop()
@@ -312,7 +326,7 @@ def choices(capture, mode, width=None):
     stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
     for *_, text, display, kind in sorted(entries, key=lambda e: e[:4]):
-        if mode in KINDS and kind != mode or any(rx.fullmatch(text) for rx in stoplist):
+        if mode in KINDS and not in_bucket(mode, kind) or any(rx.fullmatch(text) for rx in stoplist):
             continue
         found.pop(text, None)
         found[text] = display
@@ -464,21 +478,26 @@ FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
 MAX_QUERY = 200  # characters of selection handed to Find
 
 
-def labels(filter_name, copier, paths="shown", empty=None):
-    """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
-    do what. `empty` is the kind that has nothing on the screen, when `filter_name` stands in for it."""
-    kind = KINDS.get(filter_name)
-    name = f"spans: {kind}" if kind else filter_name
+def view_bar(active, sep=";  "):
+    """The line of M-digit keys, the active view in bold."""
+    keys = sorted(VIEW_KEYS.items(), key=lambda kv: (kv[0] == "0", kv[0]))
+    return sep.join(f"\x1b[1mM-{d} {view}\x1b[22m" if view == active else f"M-{d} {view}" for d, view in keys)
+
+
+def labels(filter_name, copier, paths="shown", empty=False):
+    """fzf's --header (the editing keys, the lookup keys, then the views, the active one in bold) and --prompt: what is
+    listed and which keys do what. `empty`: nothing of this kind is on the screen."""
+    name = f"spans: {KINDS[filter_name][0]}" if filter_name in KINDS else filter_name
     if empty:
-        name = f"{filter_name}, no {KINDS[empty]} here"
+        name += " (none on screen)"
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
                 f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
-                "M-0: spans, M-1..8: one kind, M-9: lines",
+                + view_bar(filter_name, "; "),
                 f"--prompt={name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
             f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
-            f"M-0 all spans;  M-1 URLs;  M-2 paths;  M-3 files;  M-4 quotes;  M-5 hashes;  M-6 PRs;  M-7 versions;  M-8 styled;  M-9 lines",
+            + view_bar(filter_name),
             f"--prompt={name} filtered (C-M-x to switch) > "]
 
 
@@ -750,14 +769,13 @@ def pick(pane):
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         # (a kind with nothing here shows all spans, and the prompt says so)
-        shown, empty = mode, None
-        if mode in KINDS and not choices(capture, mode, width):
-            shown, empty = "spans", mode
+        shown, empty = mode, False
         for _ in FILTERS:
             items = choices(capture, shown, width)
-            if items:
+            if items or shown in KINDS:  # (a bucket with nothing says so, instead of showing something else)
+                empty = not items
                 break
-            shown, empty = cycle(FILTERS, shown), None
+            shown = cycle(FILTERS, shown)
         else:
             tmux("display-message", "-d", "2000", "optmux-extract: nothing to pick on screen")
             return 1
@@ -772,7 +790,7 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
-                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)},alt-0,alt-9",
+                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)}",
                 *labels(shown, copier, paths, empty),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
@@ -798,7 +816,7 @@ def pick(pane):
             if not text:
                 return 0
             return open_find(pane, FIND_KEYS[key], text)  # (this popup is done)
-        elif key == "ctrl-alt-x" or key in KIND_KEYS or key in ("alt-0", "alt-9"):
+        elif key == "ctrl-alt-x" or key in KIND_KEYS:
             # C-M-x toggles lines and spans (from a kind: to lines, and from lines back to that kind)
             was = mode
             if key == "ctrl-alt-x":
@@ -808,7 +826,7 @@ def pick(pane):
                 else:
                     mode = "lines"
             else:
-                mode = KIND_KEYS.get(key) or ("spans" if key == "alt-0" else "lines")
+                mode = KIND_KEYS[key]
             if mode in KINDS:
                 tmux("set-option", "-g", KIND_OPTION, mode)
             elif was in KINDS and mode == "lines":
