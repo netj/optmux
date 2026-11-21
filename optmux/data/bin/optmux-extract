@@ -490,24 +490,28 @@ def view_bar(active, sep=";  ", cycle_hint="C-M-x to cycle"):
     return f"{bar}{gap}{cycle_hint}" if cycle_hint else bar
 
 
-def prompt_for(view, empty=False):
-    """`spans[refs] (URLs, hashes, PRs, versions) > `, or just `spans > ` or `lines > `."""
-    name = f"spans[{view}] ({KINDS[view][0]})" if view in KINDS else view
-    return f"{name}{' (none on screen)' if empty else ''} > "
+def prompt_for(view):
+    """The prompt's fixed part: `spans[refs] (URLs, hashes, PRs, versions)`, or just `spans` or `lines`."""
+    return f"spans[{view}] ({KINDS[view][0]})" if view in KINDS else view
 
 
-def labels(filter_name, copier, paths="shown", empty=False):
+# fzf keeps the prompt's counts current: `selected/matching` (fzf's own $FZF_SELECT_COUNT and $FZF_MATCH_COUNT)
+PROMPT_COUNTS = ("result,multi:transform-prompt(printf '%s %s/%s > ' \"$OPTMUX_EXTRACT_PROMPT\" "
+                 "\"$FZF_SELECT_COUNT\" \"$FZF_MATCH_COUNT\")")
+
+
+def labels(filter_name, copier, paths="shown"):
     """fzf's --header (the editing keys, the lookup keys, then the views, the active one highlighted) and --prompt:
-    what is listed and which keys do what. `empty`: nothing of this kind is on the screen."""
+    what is listed and which keys do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
                 f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
                 + view_bar(filter_name, "; ", None) + "\nC-M-x: cycle the views",
-                f"--prompt={prompt_for(filter_name, empty)}"]
+                f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
             f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
             + view_bar(filter_name),
-            f"--prompt={prompt_for(filter_name, empty)}"]
+            f"--prompt={prompt_for(filter_name)} 0/0 > "]
 
 
 PATH_POSITION = re.compile(r"^([^\s:]*[/.][^\s:]*):\d+(?::\d+)?$")  # path:line or path:line:col, as a program prints it
@@ -777,11 +781,10 @@ def pick(pane):
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         # (a kind with nothing here shows all spans, and the prompt says so)
-        shown, empty = mode, False
+        shown = mode
         for _ in FILTERS:
             items = choices(capture, shown, width)
-            if items or shown in KINDS:  # (a bucket with nothing says so, instead of showing something else)
-                empty = not items
+            if items or shown in KINDS:  # (a bucket with nothing stays empty, `0/0` in the prompt, instead of showing something else)
                 break
             shown = cycle(FILTERS, shown)
         else:
@@ -796,12 +799,13 @@ def pick(pane):
         proc = subprocess.run(
             [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
-                "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
+                "--no-info", f"--bind={PROMPT_COUNTS}", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
                 f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)}",
-                *labels(shown, copier, paths, empty),
+                *labels(shown, copier, paths),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
+            env={**os.environ, "OPTMUX_EXTRACT_PROMPT": prompt_for(shown)},
         )
         if proc.returncode not in (0, 1, 130):
             input(f"[optmux-extract] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
