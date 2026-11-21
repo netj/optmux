@@ -66,6 +66,37 @@ def test_pattern_choices_are_labelled_and_deduplicated_at_latest_position():
     assert [t for t, _ in pt.choices(cap, "spans")] == ["b.py", "c.py", "a.py"]
 
 
+KIND_CAPTURE = ("see https://example.com/a and ./src/x.py or main.go\n"
+                "\x1b[36mgit commit\x1b[0m said 'hello there' at abc1234 for #12 in v1.2.3\n")
+
+
+def test_each_kind_lists_only_its_own_spans():
+    expected = {"url": ["https://example.com/a"], "path": ["./src/x.py"], "file": ["main.go"], "quote": ["hello there"],
+                "hash": ["abc1234"], "pr": ["#12"], "ver": ["v1.2.3"], "styled": ["git commit"]}
+    assert list(expected) == list(pt.KINDS)
+    for kind, texts in expected.items():
+        assert [t for t, _ in pt.choices(KIND_CAPTURE, kind)] == texts, kind
+    assert len(pt.choices(KIND_CAPTURE, "spans")) == sum(map(len, expected.values()))
+    assert pt.choices("plain text only\n", "url") == []
+
+
+def test_kind_keys_follow_the_kinds_and_share_the_spans_history():
+    assert pt.KIND_KEYS == {f"alt-{n}": k for n, k in enumerate(pt.KINDS, 1)} and len(pt.KIND_KEYS) == 8
+    assert pt.FILTERS == ["lines", "spans"]  # (C-M-x stays a plain toggle)
+    assert [pt.history_name(m) for m in ("lines", "spans", "url", "styled")] == ["lines", "spans", "spans", "spans"]
+
+
+def test_labels_name_the_kind_and_the_digits(monkeypatch):
+    import os
+    for width in (120, 60):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
+        header, prompt = pt.labels("url", "osc52")
+        assert "spans: URLs" in prompt and "M-0" in header
+        assert "no PR/issue numbers here" in pt.labels("spans", "osc52", empty="pr")[1]
+    monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
+    assert "M-9 lines" in pt.labels("spans", "osc52")[0]
+
+
 def test_cycle_wraps_around():
     assert pt.cycle(pt.FILTERS, pt.FILTERS[-1]) == pt.FILTERS[0]
 

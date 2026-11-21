@@ -134,6 +134,12 @@ def parse_line(raw):
 
 
 FILTERS = ["lines", "spans"]
+# M-1..M-8 narrow the spans to one kind (M-0: all spans, M-9: lines); frequent kinds on the low digits. A kind's
+# name is also its filter name, "styled" being the program's own styled runs. What each is called in the prompt:
+KINDS = {"url": "URLs", "path": "paths", "file": "file names", "quote": "quoted text", "hash": "commit hashes",
+         "pr": "PR/issue numbers", "ver": "versions", "styled": "styled text"}
+KIND_KEYS = {f"alt-{n}": kind for n, kind in enumerate(KINDS, 1)}
+KIND_OPTION = "@optmux-extract-kind"  # the kind C-M-x returns to from lines
 COPIERS = ["osc52", "native", "buffer"]
 FILTER_OPTION = "@optmux-extract-filter"
 COPY_OPTION = "@optmux-extract-copy"
@@ -279,7 +285,8 @@ def span_items(parsed, width):
 
 
 def choices(capture, mode, width=None):
-    """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows."""
+    """[(text, display)] to pick from, in screen order: the text is what gets inserted, the display what fzf shows.
+    `mode` is lines, spans, or one kind of span (a key of KINDS)."""
     parsed = [(parse_line(raw), raw) for raw in capture.expandtabs(4).splitlines()]
     while parsed and not parsed[-1][0][0].strip():
         parsed.pop()
@@ -291,21 +298,21 @@ def choices(capture, mode, width=None):
     mark = f"\x1b[2m{icons['spans']}\x1b[0m " if icons["spans"] else ""
     spans, covered = span_items(parsed, width)
     # (entries sort by line, column, then rank: a styled span follows the patterns inside it, so fzf shows the span first and a pattern is one skip away)
-    entries = [(line, col, 1, 0, text, f"{mark}{style.sgr()}{text}\x1b[0m") for text, style, line, col in spans]
+    entries = [(line, col, 1, 0, text, f"{mark}{style.sgr()}{text}\x1b[0m", "styled") for text, style, line, col in spans]
     for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
         for start, label, text in find_patterns(plain):
             # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
             end = start + len(text)
             inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
             if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
-                entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text))
+                entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text, label))
     for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
         if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
-            entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text))
+            entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text, "quote"))
     stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
-    for *_, text, display in sorted(entries, key=lambda e: e[:4]):
-        if any(rx.fullmatch(text) for rx in stoplist):
+    for *_, text, display, kind in sorted(entries, key=lambda e: e[:4]):
+        if mode in KINDS and kind != mode or any(rx.fullmatch(text) for rx in stoplist):
             continue
         found.pop(text, None)
         found[text] = display
@@ -441,6 +448,12 @@ def cursor_position(numbered, query, shown, item, recalled=False):
     return query, None
 
 
+def history_name(mode):
+    """The history a filter keeps its queries and time in: the kinds share the spans' (so M-p is the same wherever
+    in the spans you are, and a kind is as fresh as the spans are)."""
+    return "lines" if mode == "lines" else "spans"
+
+
 def cycle(values, current):
     return values[(values.index(current) + 1) % len(values)]
 
@@ -451,16 +464,22 @@ FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
 MAX_QUERY = 200  # characters of selection handed to Find
 
 
-def labels(filter_name, copier, paths="shown"):
+def labels(filter_name, copier, paths="shown", empty=None):
     """fzf's --header (two lines: editing keys, then the lookup keys) and --prompt: what is listed and which keys
-    do what."""
+    do what. `empty` is the kind that has nothing on the screen, when `filter_name` stands in for it."""
+    kind = KINDS.get(filter_name)
+    name = f"spans: {kind}" if kind else filter_name
+    if empty:
+        name = f"{filter_name}, no {KINDS[empty]} here"
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}",
-                f"--prompt={filter_name} (C-M-x) > "]
+                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
+                "M-0: spans, M-1..8: one kind, M-9: lines",
+                f"--prompt={name} (C-M-x) > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
-            f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}",
-            f"--prompt={filter_name} filtered (C-M-x to switch) > "]
+            f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
+            f"M-0 all spans;  M-1 URLs;  M-2 paths;  M-3 files;  M-4 quotes;  M-5 hashes;  M-6 PRs;  M-7 versions;  M-8 styled;  M-9 lines",
+            f"--prompt={name} filtered (C-M-x to switch) > "]
 
 
 PATH_POSITION = re.compile(r"^([^\s:]*[/.][^\s:]*):\d+(?::\d+)?$")  # path:line or path:line:col, as a program prints it
@@ -716,22 +735,27 @@ def pick(pane):
         capture_output=True, text=True,
     ).stdout
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
-    mode = get_option(FILTER_OPTION, FILTERS, FILTERS[0])
+    mode = get_option(FILTER_OPTION, FILTERS + list(KINDS), FILTERS[0])
+    if mode in KINDS and is_stale("spans"):  # (like the query, a kind view is a few minutes' business: then all spans)
+        mode = "spans"
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
     paths = get_option(PATH_OPTION, PATH_STYLES, PATH_STYLES[0])
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
-    earlier = load_history(mode)
-    fresh = not earlier or is_stale(mode)  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
+    earlier = load_history(history_name(mode))
+    fresh = not earlier or is_stale(history_name(mode))  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
     query, remembered = ("", None) if fresh else earlier[0]
     back, recalled = (-1 if fresh else 0), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
-        shown = mode
+        # (a kind with nothing here shows all spans, and the prompt says so)
+        shown, empty = mode, None
+        if mode in KINDS and not choices(capture, mode, width):
+            shown, empty = "spans", mode
         for _ in FILTERS:
             items = choices(capture, shown, width)
             if items:
                 break
-            shown = cycle(FILTERS, shown)
+            shown, empty = cycle(FILTERS, shown), None
         else:
             tmux("display-message", "-d", "2000", "optmux-extract: nothing to pick on screen")
             return 1
@@ -746,8 +770,8 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
-                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)}",
-                *labels(shown, copier, paths),
+                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)},alt-0,alt-9",
+                *labels(shown, copier, paths, empty),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
         )
@@ -757,7 +781,7 @@ def pick(pane):
             return proc.returncode
         query, key, chosen = parse_fzf_output(proc.stdout)
         if key in ("alt-p", "alt-n"):  # older and newer queries of this filter, each with the item the cursor was on
-            earlier = load_history(shown)
+            earlier = load_history(history_name(shown))
             was = back
             back = max(-1, min(back + (1 if key == "alt-p" else -1), len(earlier) - 1))
             if back != was:  # (at either end there is nowhere to go: what you typed stays)
@@ -766,14 +790,30 @@ def pick(pane):
             continue
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
         if key not in ("ctrl-t", "alt-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
-            save_state(shown, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
+            save_state(history_name(shown), query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key in FIND_KEYS:
             text = find_query(chosen, query)
             if not text:
                 return 0
             return open_find(pane, FIND_KEYS[key], text)  # (this popup is done)
-        elif key == "ctrl-alt-x":
-            mode, remembered, back = cycle(FILTERS, shown), None, -1
+        elif key == "ctrl-alt-x" or key in KIND_KEYS or key in ("alt-0", "alt-9"):
+            # C-M-x toggles lines and spans (from a kind: to lines, and from lines back to that kind)
+            was = mode
+            if key == "ctrl-alt-x":
+                if mode == "lines":
+                    kind = get_option(KIND_OPTION, list(KINDS), "")
+                    mode = kind if kind and not is_stale("spans") else "spans"
+                else:
+                    mode = "lines"
+            else:
+                mode = KIND_KEYS.get(key) or ("spans" if key == "alt-0" else "lines")
+            if mode in KINDS:
+                tmux("set-option", "-g", KIND_OPTION, mode)
+            elif was in KINDS and mode == "lines":
+                pass  # (KIND_OPTION keeps the kind to come back to)
+            elif mode == "spans":
+                tmux("set-option", "-gu", KIND_OPTION)
+            remembered, back = None, -1
             tmux("set-option", "-g", FILTER_OPTION, mode)
         elif key == "ctrl-t":
             copier = cycle(COPIERS, copier)
