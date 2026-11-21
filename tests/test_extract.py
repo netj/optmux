@@ -295,6 +295,10 @@ def test_the_last_query_goes_stale_after_a_few_minutes(monkeypatch):
     assert not pt.is_stale("spans")
     monkeypatch.setenv("OPTMUX_EXTRACT_RESUME_MINUTES", "60")
     assert not pt.is_stale("spans")
+    monkeypatch.setattr(pt.time, "time", lambda: now - 3600)  # (the clock went back: the query is not "from the future")
+    assert pt.is_stale("spans")
+    options[pt.STATE_OPTION + "spans"] = '[{"query": "old"}]'  # (saved before timestamps existed)
+    assert pt.is_stale("spans")
 
 
 @pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")

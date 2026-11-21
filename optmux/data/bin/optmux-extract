@@ -397,7 +397,8 @@ def is_stale(name):
         minutes = float(os.environ.get("OPTMUX_EXTRACT_RESUME_MINUTES", RESUME_MINUTES))
     except ValueError:
         minutes = RESUME_MINUTES
-    return minutes >= 0 and time.time() - left_at(name) > minutes * 60
+    age = time.time() - left_at(name)
+    return age < 0 or (minutes >= 0 and age > minutes * 60)  # (a clock that stepped back is no reason to keep it fresh)
 
 
 def save_state(name, query, item):
@@ -727,7 +728,7 @@ def pick(pane):
     query, remembered = ("", None) if fresh else earlier[0]
     back, recalled = (-1 if fresh else 0), False
     # opened empty because the last query is old: the first C-M-x, with nothing typed, brings it back instead of cycling
-    resumable = (mode, earlier[0]) if earlier and fresh else None  # (the query it opens on stays even if it matches nothing: C-u clears it)
+    resumable = (mode, earlier[0]) if earlier and fresh and earlier[0][0].strip() else None  # (an emptied query is nothing to resume)  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode
