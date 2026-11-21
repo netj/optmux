@@ -84,11 +84,12 @@ def test_each_bucket_lists_only_its_own_spans():
 def test_view_keys_cycle_and_the_active_one_highlighted():
     assert pt.VIEW_KEYS == {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
     assert sorted(pt.VIEW_ORDER) == sorted(pt.VIEW_KEYS.values()) and pt.VIEW_ORDER[0] == "spans"
+    assert pt.cycle(pt.VIEW_ORDER, "spans", -1) == "lines" and pt.cycle(pt.VIEW_ORDER, "styled", -1) == "spans"
     assert pt.cycle(pt.VIEW_ORDER, "lines") == "spans" and pt.cycle(pt.VIEW_ORDER, "spans") == "styled"
     assert [pt.history_name(m) for m in ("lines", "spans", "paths")] == ["lines", "spans", "spans"]
     bar = pt.view_bar("paths")
     assert re.sub(r"\x1b\[[0-9;]*m", "", bar) == re.sub(r"\x1b\[[0-9;]*m", "", pt.view_bar("spans"))  # (moving the highlight shifts nothing)
-    assert "M-8 \x1b[1;7mpaths\x1b[0m," in bar and bar.count("\x1b[1;7m") == 1 and bar.startswith("C-M-x to cycle:  M-1 spans,  M-2")
+    assert "M-8 \x1b[1;7mpaths\x1b[0m," in bar and bar.count("\x1b[1;7m") == 1 and bar.startswith("C-M-x/M-x to cycle:  M-1 spans,  M-2")
 
 
 def test_prompts_and_labels(monkeypatch):
@@ -275,7 +276,7 @@ def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
     assert pt.FIND_KEYS["ctrl-f"] == "files" and find.MODE_KEYS["files"] == "ctrl-f"
     assert pt.FIND_KEYS["ctrl-g"] == "grep" and find.MODE_KEYS["grep"] == "ctrl-g"
     assert pt.FIND_KEYS["ctrl-alt-f"] == "omni" and find.CYCLE_KEY == "ctrl-alt-f"
-    assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x"}  # extract's own keys
+    assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x", "alt-x"}  # extract's own keys
 
 
 def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):

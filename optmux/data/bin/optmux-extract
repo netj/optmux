@@ -134,7 +134,7 @@ def parse_line(raw):
 
 
 FILTERS = ["lines", "spans"]
-# Meta+digit picks the view, C-M-x steps through them (VIEW_ORDER). M-1 spans and M-0 lines are the two FILTERS; the rest narrow the spans to a bucket of
+# Meta+digit picks the view, C-M-x steps through them (VIEW_ORDER), M-x back. M-1 spans and M-0 lines are the two FILTERS; the rest narrow the spans to a bucket of
 # pattern kinds (the labels of PATTERNS, plus "styled" for the program's own runs). To add a pattern, put its kind in
 # a bucket (or leave it out: "others" takes whatever no bucket claims). Digits left free are for more buckets later.
 KINDS = {  # bucket: (what the prompt calls it, the pattern kinds in it); None: everything not in another bucket
@@ -468,8 +468,8 @@ def history_name(mode):
     return "lines" if mode == "lines" else "spans"
 
 
-def cycle(values, current):
-    return values[(values.index(current) + 1) % len(values)]
+def cycle(values, current, step=1):
+    return values[(values.index(current) + step) % len(values)]
 
 
 NARROW = 90  # columns; below this the hints shrink to fit
@@ -478,7 +478,7 @@ FIND_KEYS = {"ctrl-f": "files", "ctrl-g": "grep", "ctrl-alt-f": "omni"}
 MAX_QUERY = 200  # characters of selection handed to Find
 
 
-def view_bar(active, sep=",  ", cycle_hint="C-M-x to cycle:  "):
+def view_bar(active, sep=",  ", cycle_hint="C-M-x/M-x to cycle:  "):
     """The line of M-digit keys, the active view in reverse bold, led by the key that cycles through them."""
     keys = sorted(VIEW_KEYS.items(), key=lambda kv: (kv[0] == "0", kv[0]))
     bar = sep.join(f"M-{d} " + (f"\x1b[1;7m{view}\x1b[0m" if view == active else view) for d, view in keys)
@@ -502,7 +502,7 @@ def labels(filter_name, copier, paths="shown"):
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
                 f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
-                + view_bar(filter_name, ", ", "C-M-x to cycle:\n"),
+                + view_bar(filter_name, ", ", "C-M-x/M-x to cycle:\n"),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
             f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
@@ -797,7 +797,7 @@ def pick(pane):
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", f"--bind={PROMPT_COUNTS}", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
-                f"--expect=ctrl-alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)}",
+                f"--expect=ctrl-alt-x,alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)}",
                 *labels(shown, copier, paths),
             ],
             input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
@@ -824,9 +824,9 @@ def pick(pane):
             if not text:
                 return 0
             return open_find(pane, FIND_KEYS[key], text)  # (this popup is done)
-        elif key == "ctrl-alt-x" or key in KIND_KEYS:
+        elif key in ("ctrl-alt-x", "alt-x") or key in KIND_KEYS:
             # C-M-x steps through the views, from the one on screen (not `mode`, which may have fallen through)
-            mode = cycle(VIEW_ORDER, shown) if key == "ctrl-alt-x" else KIND_KEYS[key]
+            mode = KIND_KEYS[key] if key in KIND_KEYS else cycle(VIEW_ORDER, shown, -1 if key == "alt-x" else 1)
             remembered, back = None, -1
             tmux("set-option", "-g", FILTER_OPTION, mode)
         elif key == "ctrl-t":
