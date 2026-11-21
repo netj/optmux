@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -66,6 +67,41 @@ def test_pattern_choices_are_labelled_and_deduplicated_at_latest_position():
     assert [t for t, _ in pt.choices(cap, "spans")] == ["b.py", "c.py", "a.py"]
 
 
+KIND_CAPTURE = ("see https://example.com/a and ./src/x.py or main.go\n"
+                "\x1b[36mgit commit\x1b[0m said 'hello there' at abc1234 for #12 in v1.2.3\n")
+
+
+def test_each_bucket_lists_only_its_own_spans():
+    expected = {"styled": ["git commit"], "quotes": ["hello there"], "others": [],
+                "paths": ["./src/x.py", "main.go"], "refs": ["https://example.com/a", "abc1234", "#12", "v1.2.3"]}
+    assert set(expected) == set(pt.KINDS)
+    for bucket, texts in expected.items():
+        assert sorted(t for t, _ in pt.choices(KIND_CAPTURE, bucket)) == sorted(texts), bucket
+    assert len(pt.choices(KIND_CAPTURE, "spans")) == 8
+    assert pt.choices("plain text only\n", "paths") == []
+
+
+def test_view_keys_cycle_and_the_active_one_highlighted():
+    assert pt.VIEW_KEYS == {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
+    assert sorted(pt.VIEW_ORDER) == sorted(pt.VIEW_KEYS.values()) and pt.VIEW_ORDER[0] == "spans"
+    assert pt.cycle(pt.VIEW_ORDER, "spans", -1) == "lines" and pt.cycle(pt.VIEW_ORDER, "styled", -1) == "spans"
+    assert pt.cycle(pt.VIEW_ORDER, "lines") == "spans" and pt.cycle(pt.VIEW_ORDER, "spans") == "styled"
+    assert [pt.history_name(m) for m in ("lines", "spans", "paths")] == ["lines", "spans", "spans"]
+    bar = pt.view_bar("paths")
+    assert re.sub(r"\x1b\[[0-9;]*m", "", bar) == re.sub(r"\x1b\[[0-9;]*m", "", pt.view_bar("spans"))  # (moving the highlight shifts nothing)
+    assert "M-8 \x1b[1;7mpaths\x1b[0m," in bar and bar.count("\x1b[1;7m") == 1 and bar.startswith("C-M-x/M-x to cycle:  M-1 spans,  M-2")
+
+
+def test_prompts_and_labels(monkeypatch):
+    import os
+    assert pt.prompt_for("lines") == "lines" and pt.prompt_for("spans") == "spans"
+    assert pt.prompt_for("refs") == "spans[refs] (URLs, hashes, PRs, versions)"
+    for width in (120, 60):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
+        header, prompt = pt.labels("paths", "osc52")
+        assert "M-8" in header and "paths" in header and "C-M-x" in header and prompt.startswith("--prompt=spans[paths]") and prompt.endswith(" 0/0 > ")
+
+
 def test_cycle_wraps_around():
     assert pt.cycle(pt.FILTERS, pt.FILTERS[-1]) == pt.FILTERS[0]
 
@@ -74,12 +110,12 @@ def test_labels_shrink_in_narrow_terminals(monkeypatch):
     import os
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((120, 30)))
     wide = pt.labels("spans", "osc52")
-    assert wide[1] == "--prompt=spans filtered (C-M-x to switch) > "
+    assert wide[1] == "--prompt=spans 0/0 > "
     assert "C-f files" in wide[0] and "C-g grep" in wide[0] and "C-M-f all" in wide[0] and "M-p/M-n" in wide[0]
     monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda: os.terminal_size((60, 30)))
     narrow = pt.labels("spans", "osc52")
-    assert narrow[1] == "--prompt=spans (C-M-x) > "
-    assert all(len(line) < 80 for line in narrow[0].split("\n")) and "C-f: files" in narrow[0]
+    assert narrow[1] == "--prompt=spans 0/0 > "
+    assert all(len(re.sub(r"\x1b\[[0-9;]*m", "", line)) < 80 for line in narrow[0].split("\n")) and "C-f: files" in narrow[0]
 
 
 def test_control_characters_never_survive_into_the_text_to_type():
@@ -240,7 +276,7 @@ def test_the_lookup_keys_are_the_ones_find_itself_uses_for_those_sources():
     assert pt.FIND_KEYS["ctrl-f"] == "files" and find.MODE_KEYS["files"] == "ctrl-f"
     assert pt.FIND_KEYS["ctrl-g"] == "grep" and find.MODE_KEYS["grep"] == "ctrl-g"
     assert pt.FIND_KEYS["ctrl-alt-f"] == "omni" and find.CYCLE_KEY == "ctrl-alt-f"
-    assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x"}  # extract's own keys
+    assert not set(pt.FIND_KEYS) & {"ctrl-t", "ctrl-y", "ctrl-alt-x", "alt-x"}  # extract's own keys
 
 
 def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
