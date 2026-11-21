@@ -87,7 +87,8 @@ def test_view_keys_cycle_and_the_active_one_highlighted():
     assert pt.cycle(pt.VIEW_ORDER, "lines") == "spans" and pt.cycle(pt.VIEW_ORDER, "spans") == "styled"
     assert [pt.history_name(m) for m in ("lines", "spans", "paths")] == ["lines", "spans", "spans"]
     bar = pt.view_bar("paths")
-    assert "\x1b[1;7m M-8 paths \x1b[0m" in bar and bar.count("\x1b[1;7m") == 1 and bar.endswith("M-0 lines;  C-M-x to cycle")
+    assert re.sub(r"\x1b\[[0-9;]*m", "", bar) == re.sub(r"\x1b\[[0-9;]*m", "", pt.view_bar("spans"))  # (moving the highlight shifts nothing)
+    assert "\x1b[1;7mM-8 paths\x1b[0m" in bar and bar.count("\x1b[1;7m") == 1 and bar.endswith("M-0 lines;  C-M-x to cycle")
 
 
 def test_prompts_and_labels(monkeypatch):

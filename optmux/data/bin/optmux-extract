@@ -481,7 +481,7 @@ MAX_QUERY = 200  # characters of selection handed to Find
 def view_bar(active, sep=";  ", cycle_hint="C-M-x to cycle"):
     """The line of M-digit keys, the active view in reverse bold, then the key that cycles through them."""
     keys = sorted(VIEW_KEYS.items(), key=lambda kv: (kv[0] == "0", kv[0]))
-    bar = sep.join(f"\x1b[1;7m M-{d} {view} \x1b[0m" if view == active else f"M-{d} {view}" for d, view in keys)
+    bar = sep.join(f"\x1b[1;7mM-{d} {view}\x1b[0m" if view == active else f"M-{d} {view}" for d, view in keys)
     return f"{bar}{sep}{cycle_hint}" if cycle_hint else bar
 
 
