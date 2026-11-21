@@ -689,3 +689,20 @@ def test_the_header_mentions_the_query_history(monkeypatch):
     for columns in (200, 60):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
         assert "C-r" in pt.labels("spans", "osc52")[0]
+
+
+def test_back_from_the_history_eXtract_keeps_the_query_picked_even_when_nothing_matches(monkeypatch):
+    seen = []
+
+    def fake_run(argv, **kw):
+        if argv[0] == "fzf" and "--filter" not in argv:
+            seen.append(next(a for a in argv if a.startswith("--query=")))
+            return type("P", (), {"returncode": 130, "stdout": ""})()
+        return type("P", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "80"})())
+    monkeypatch.setattr(pt, "show_option", lambda name: "")
+    monkeypatch.setattr(pt, "choices", lambda capture, mode, width=None: [("one", "one")])
+    monkeypatch.setattr(pt.subprocess, "run", fake_run)
+    pt.pick("%0", resume=dict(mode="spans", query="zzz-no-match", item=None))
+    assert seen == ["--query=zzz-no-match"]

@@ -1014,7 +1014,8 @@ def pick(pane, resume=None):
     query, remembered = ("", None) if fresh else earlier[0]
     back, recalled = (-1 if fresh else 0), False
     if resume:  # (back from C-r's history: the view it was in, the query picked, and the item when it is the same query)
-        mode, query, remembered, back, recalled = resume["mode"], resume["query"], resume["item"], -1, True  # (the query it opens on stays even if it matches nothing: C-u clears it)
+        # (the query stays even if nothing matches it now, like the one eXtract opens on: C-u clears it)
+        mode, query, remembered, back = resume["mode"], resume["query"], resume["item"], -1
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         # (a kind with nothing here shows all spans, and the prompt says so)
