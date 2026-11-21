@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 from dataclasses import dataclass
 
 SGR = re.compile(r"\x1b\[([0-9;:]*)m")
@@ -370,6 +371,7 @@ def copy(text, method):
 STATE_OPTION = "@optmux-extract-at-"  # + the filter: where you left it, newest first (JSON: [{query, item}, ...])
 MAX_ITEM = 300  # characters remembered of an item
 MAX_HISTORY = 30  # queries remembered per filter
+RESUME_MINUTES = 5  # how long the last query stays the starting point (OPTMUX_EXTRACT_RESUME_MINUTES); after that M-p recalls it
 
 
 def load_history(name):
@@ -382,6 +384,23 @@ def load_history(name):
         return []
 
 
+def left_at(name):
+    """When the filter `name` was last left (epoch seconds), or 0 when unknown."""
+    try:
+        return float(json.loads(show_option(STATE_OPTION + name))[0].get("at", 0))
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+        return 0
+
+
+def is_stale(name):
+    try:
+        minutes = float(os.environ.get("OPTMUX_EXTRACT_RESUME_MINUTES", RESUME_MINUTES))
+    except ValueError:
+        minutes = RESUME_MINUTES
+    age = time.time() - left_at(name)
+    return age < 0 or (minutes >= 0 and age > minutes * 60)  # (a clock that stepped back is no reason to keep it fresh)
+
+
 def save_state(name, query, item):
     """Remember where the filter `name` was left: first in its history, the same query before it dropped."""
     try:
@@ -390,8 +409,10 @@ def save_state(name, query, item):
             item = next((i for q, i in before if q == query[:MAX_QUERY]), None)
         entries = [(query[:MAX_QUERY], item[:MAX_ITEM] if item else None)]
         entries += [e for e in before if e[0] != entries[0][0]]
+        at = time.time()
         tmux("set-option", "-g", STATE_OPTION + name,
-             json.dumps([{"query": q, "item": i} for q, i in entries[:MAX_HISTORY]], ensure_ascii=False))
+             json.dumps([{"query": q, "item": i, "at": at if n == 0 else 0} for n, (q, i) in enumerate(entries[:MAX_HISTORY])],
+                        ensure_ascii=False))
     except (subprocess.CalledProcessError, OSError):
         pass  # (forgetting where you were is no reason to lose what you picked)
 
@@ -700,8 +721,9 @@ def pick(pane):
     paths = get_option(PATH_OPTION, PATH_STYLES, PATH_STYLES[0])
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
     earlier = load_history(mode)
-    query, remembered = earlier[0] if earlier else ("", None)
-    back, recalled = (0 if earlier else -1), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
+    fresh = not earlier or is_stale(mode)  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
+    query, remembered = ("", None) if fresh else earlier[0]
+    back, recalled = (-1 if fresh else 0), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         shown = mode

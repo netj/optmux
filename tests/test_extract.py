@@ -273,6 +273,28 @@ def test_the_queries_and_items_of_a_filter_are_remembered_newest_first(monkeypat
     assert pt.load_history("spans") == [("ok", None)]
 
 
+def test_the_last_query_goes_stale_after_a_few_minutes(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
+    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    monkeypatch.delenv("OPTMUX_EXTRACT_RESUME_MINUTES", raising=False)
+    assert pt.is_stale("spans")  # (never left: nothing to open on)
+    pt.save_state("spans", "bash", None)
+    assert not pt.is_stale("spans")
+    now = pt.time.time()
+    monkeypatch.setattr(pt.time, "time", lambda: now + 10 * 60)
+    assert pt.is_stale("spans")
+    assert pt.load_history("spans") == [("bash", None)]  # (still there for M-p)
+    monkeypatch.setenv("OPTMUX_EXTRACT_RESUME_MINUTES", "-1")
+    assert not pt.is_stale("spans")
+    monkeypatch.setenv("OPTMUX_EXTRACT_RESUME_MINUTES", "60")
+    assert not pt.is_stale("spans")
+    monkeypatch.setattr(pt.time, "time", lambda: now - 3600)  # (the clock went back: the query is not "from the future")
+    assert pt.is_stale("spans")
+    options[pt.STATE_OPTION + "spans"] = '[{"query": "old"}]'  # (saved before timestamps existed)
+    assert pt.is_stale("spans")
+
+
 @pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")
 def test_the_cursor_goes_back_to_the_remembered_item():
     numbered = list(reversed(list(enumerate([("alpha", "alpha"), ("beta", "beta"), ("alphabet", "alphabet")]))))
