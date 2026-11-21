@@ -88,7 +88,7 @@ def test_view_keys_cycle_and_the_active_one_highlighted():
     assert [pt.history_name(m) for m in ("lines", "spans", "paths")] == ["lines", "spans", "spans"]
     bar = pt.view_bar("paths")
     assert re.sub(r"\x1b\[[0-9;]*m", "", bar) == re.sub(r"\x1b\[[0-9;]*m", "", pt.view_bar("spans"))  # (moving the highlight shifts nothing)
-    assert "M-8\x1b[1;7m paths;\x1b[0m" in bar and bar.count("\x1b[1;7m") == 1 and bar.endswith("M-0 lines;  C-M-x to cycle")
+    assert "M-8 \x1b[1;7mpaths\x1b[0m;" in bar and bar.count("\x1b[1;7m") == 1 and bar.endswith("M-0 lines;  C-M-x to cycle")
 
 
 def test_prompts_and_labels(monkeypatch):
@@ -98,7 +98,7 @@ def test_prompts_and_labels(monkeypatch):
     for width in (120, 60):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
         header, prompt = pt.labels("paths", "osc52")
-        assert "M-8" in header and " paths;" in header and "C-M-x" in header and prompt.startswith("--prompt=spans[paths]") and prompt.endswith(" 0/0 > ")
+        assert "M-8" in header and "paths" in header and "C-M-x" in header and prompt.startswith("--prompt=spans[paths]") and prompt.endswith(" 0/0 > ")
 
 
 def test_cycle_wraps_around():

@@ -481,13 +481,8 @@ MAX_QUERY = 200  # characters of selection handed to Find
 def view_bar(active, sep=";  ", cycle_hint="C-M-x to cycle"):
     """The line of M-digit keys, the active view in reverse bold, then the key that cycles through them."""
     keys = sorted(VIEW_KEYS.items(), key=lambda kv: (kv[0] == "0", kv[0]))
-    parts = [f"{view};" for _, view in keys]  # (the highlight covers ` name;`, a fixed width wherever it is)
-    if not cycle_hint:
-        parts[-1] = parts[-1].rstrip(";")
-    gap = sep[1:]
-    bar = gap.join(f"M-{d}" + (f"\x1b[1;7m {text}\x1b[0m" if view == active else f" {text}")
-                   for (d, view), text in zip(keys, parts))
-    return f"{bar}{gap}{cycle_hint}" if cycle_hint else bar
+    bar = sep.join(f"M-{d} " + (f"\x1b[1;7m{view}\x1b[0m" if view == active else view) for d, view in keys)
+    return f"{bar}{sep}{cycle_hint}" if cycle_hint else bar
 
 
 def prompt_for(view):
@@ -495,9 +490,10 @@ def prompt_for(view):
     return f"spans[{view}] ({KINDS[view][0]})" if view in KINDS else view
 
 
-# fzf keeps the prompt's counts current: `selected/matching` (fzf's own $FZF_SELECT_COUNT and $FZF_MATCH_COUNT)
-PROMPT_COUNTS = ("result,multi:transform-prompt(printf '%s %s/%s > ' \"$OPTMUX_EXTRACT_PROMPT\" "
-                 "\"$FZF_SELECT_COUNT\" \"$FZF_MATCH_COUNT\")")
+# fzf keeps the prompt's counts current: `selected/matching`, the item under the cursor counting as selected when
+# nothing is (Enter types it) and there is one. From fzf's own $FZF_SELECT_COUNT and $FZF_MATCH_COUNT.
+PROMPT_COUNTS = ("result,multi:transform-prompt(s=$FZF_SELECT_COUNT; [ $s = 0 ] && [ $FZF_MATCH_COUNT -gt 0 ] && s=1; "
+                 "printf '%s %s/%s > ' \"$OPTMUX_EXTRACT_PROMPT\" $s $FZF_MATCH_COUNT)")
 
 
 def labels(filter_name, copier, paths="shown"):
