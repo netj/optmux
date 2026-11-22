@@ -735,7 +735,7 @@ def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
     path = tmp_path / "q.json"
     path.write_text("{bad")
     pt.log_query("hello", now=1000, path=str(path))
-    assert (tmp_path / "q.json.bak").read_text() == "{bad"
+    assert (tmp_path / "q.json~").read_text() == "{bad"
     assert list(pt.load_query_log(str(path))) == ["hello"]
 
 

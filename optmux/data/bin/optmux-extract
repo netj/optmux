@@ -466,7 +466,7 @@ def load_query_log(path=None):
         return {}
     except (OSError, ValueError, AttributeError):
         try:  # (unreadable: keep it aside, so the next write does not replace 28 days with one query)
-            os.replace(path or query_log_path(), f"{path or query_log_path()}.bak")
+            os.replace(path or query_log_path(), f"{path or query_log_path()}~")
         except OSError:
             pass
         return {}
@@ -591,7 +591,7 @@ def labels(filter_name, copier, paths="shown"):
     what is listed and which keys do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; C-r/M-p: hist; M-r: paths {paths}\n"
+                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; C-r: history; M-r: paths {paths}\n"
                 + view_bar(filter_name, ", ", "C-M-x/M-x to cycle:\n"),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
