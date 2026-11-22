@@ -813,3 +813,8 @@ def test_a_path_or_quote_the_program_colored_is_in_its_bucket_and_listed_once_in
     assert [t for t, _ in pt.choices(cap, "refs")] == ["#12"]
     assert [t for t, _ in pt.choices(cap, "quotes")] == ["msg"]
     assert [t for t, _ in pt.choices(cap, "spans")] == ["main.go", "./c.py", "#12", '"msg"']
+
+
+def test_a_path_is_found_across_its_coloring():
+    cap = "\x1b[34mdocs/\x1b[0m\x1b[1;33musage.md\x1b[0m:12 and \x1b[31m.claude\x1b[0m/\x1b[32mtmp\x1b[0m/x.md\n"
+    assert [t for t, _ in pt.choices(cap, "paths")] == ["docs/usage.md:12", ".claude/tmp/x.md"]
