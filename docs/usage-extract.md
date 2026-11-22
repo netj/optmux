@@ -42,3 +42,17 @@ The spans filter skips plain grey text, and what a coding tool draws on every sc
 ```
 
 A pattern ending in `:` is written `[:]`, or YAML reads it as a key.
+
+## Teaching it more file names
+
+Beyond the usual `name.ext`, eXtract lists a few well-known extensions that the plain rule misses (they start with a digit or run past 8 letters: `a.7z`, `App.xcodeproj`) and extensionless names like `Makefile`, `Dockerfile.dev` and `Gemfile.lock`. `+known_files` under `+find:` is that list: groups of entries, `*.ext` for an extension and anything else for a file name. The defaults live in `optmux-defaults.yaml`; as with `+ignore_spans`, setting a group replaces its list, `[]` drops it, and a new group adds to the rest:
+
+```yaml
++optmux:
+  +find:
+    +known_files:
+      my_tool:
+      - '*.mytool'
+      - Toolfile
+      build_files: []
+```

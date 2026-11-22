@@ -25,6 +25,7 @@ and `C-M-f` searches everything (optmux Find, started in this same popup with th
 """
 
 import base64
+import functools
 import json
 import math
 import os
@@ -139,7 +140,7 @@ def parse_line(raw):
 
 FILTERS = ["lines", "spans"]
 # Meta+digit picks the view, C-M-x steps through them (VIEW_ORDER), M-x back. M-1 spans and M-0 lines are the two FILTERS; the rest narrow the spans to a bucket of
-# pattern kinds (the labels of PATTERNS, plus "styled" for the program's own runs). To add a pattern, put its kind in
+# pattern kinds (the labels of PATTERN_SOURCES, plus "styled" for the program's own runs). To add a pattern, put its kind in
 # a bucket (or leave it out: "others" takes whatever no bucket claims). Digits left free are for more buckets later.
 KINDS = {  # bucket: (what the prompt calls it, the pattern kinds in it); None: everything not in another bucket
     "styled": ("colored, bold, stylized text", {"styled"}),
@@ -160,17 +161,8 @@ PATH_OPTION = "@optmux-extract-paths"
 # Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
 # is not listed again, and nothing overlaps within a line.
 PATH_CHARS = r"[\w.@%+=,~-]"
-# Extensions a plain `[A-Za-z][A-Za-z0-9]{0,7}` misses (they start with a digit or run long), and the well-known file names
-# that have no extension (only the ...file ones: an all-caps README or BUILD is too often just a word), told from any capitalized word by name: Makefile, Dockerfile.dev, Cargo.lock.
-LONG_EXTENSIONS = ["7z", "3gp", "3g2", "m4a", "m4v", "h5", "properties", "xcodeproj", "xcworkspace", "storyboard", "entitlements",
-                   "webmanifest", "editorconfig", "gitignore", "gitattributes", "dockerignore", "gitmodules", "terraform", "tfstate", "tfvars"]
-KNOWN_FILES = ["Makefile", "makefile", "GNUmakefile", "Dockerfile", "Containerfile", "Rakefile", "Gemfile", "Guardfile", "Capfile",
-               "Berksfile", "Brewfile", "Podfile", "Fastfile", "Appfile", "Matchfile", "Snapfile", "Vagrantfile", "Procfile",
-               "Jenkinsfile", "Justfile", "Taskfile", "Tiltfile", "Earthfile", "Caddyfile", "Pipfile", "Steepfile", "Dangerfile",
-               "Cartfile", "Puppetfile", "Thorfile", "Buildfile"]
-EXT_RX = "(?:" + "|".join(sorted(map(re.escape, LONG_EXTENSIONS), key=len, reverse=True)) + r"|[A-Za-z][A-Za-z0-9]{0,7})"
-FILE_NAMES_RX = "(?:" + "|".join(sorted(map(re.escape, dict.fromkeys(KNOWN_FILES)), key=len, reverse=True)) + ")"
-PATTERNS = [
+# (the `file` ones take what `+find: +known_files` adds: see compile_patterns)
+PATTERN_SOURCES = [
     ("url", r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"'`]+"),
     ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
     ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:(?:/{PATH_CHARS}+)+/?|/)(?::\d+){{0,2}}"),  # dir/with/slash, .claude/
@@ -178,8 +170,8 @@ PATTERNS = [
     ("pr", r"(?<![\w&/#])#\d+\b"),  # PR/issue numbers: #234
     ("addr", r"(?<![\w.:/-])(?:(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?|localhost:\d{1,5})(?![\w-]|\.\d)"),  # 192.168.1.100[:8080], localhost:3000
     ("ver", r"(?<![\w.])v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not the tail of 192.168.1.100)
-    ("file", rf"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.{EXT_RX}(?:\.\d+)*\b(?::\d+){{0,2}}"),  # name.ext[:line[:col]], lib.so.6
-    ("file", rf"(?<![\w/.~-]){FILE_NAMES_RX}(?:\.[\w-]+)*\b(?::\d+){{0,2}}"),  # Makefile, Dockerfile.dev
+    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.@EXT@(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
+    ("file", r"(?<![\w/.~-])@NAMES@(?:\.[\w-]+)*\b(?::\d+){0,2}"),  # Makefile, Dockerfile.dev
     ("file", r"(?<![\w/.~-])\.[A-Za-z][\w-]*(?:\.[\w-]+)*\b(?::\d+){0,2}"),  # dotfiles: .env, .gitignore
     # quoted text: 'x' "x" `x` “x” ‘x’ and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
     # recognizable inside (a path, a file) is listed as itself. An apostrophe (don't) doesn't open a quote, and inside
@@ -187,7 +179,32 @@ PATTERNS = [
     ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)((?:[^'\n]|(?<=\w)'(?=\w))+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\""
      r"|“(?=\S)([^”\n]+?)(?<=\S)”|‘(?=\S)((?:[^’\n]|(?<=\w)’(?=\w))+?)(?<=\S)’)(?!\w)"),
 ]
-PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
+
+
+def compile_patterns(extensions, names):
+    """[(label, compiled)] for PATTERN_SOURCES. `extensions` are what a plain `[A-Za-z][A-Za-z0-9]{0,7}` misses (they start
+    with a digit or run long), `names` the well-known files that have no extension (Makefile, Dockerfile.dev)."""
+    alternatives = lambda words: "|".join(sorted(map(re.escape, dict.fromkeys(words)), key=len, reverse=True))
+    ext = "(?:" + "".join(f"{a}|" for a in [alternatives(extensions)] if a) + "[A-Za-z][A-Za-z0-9]{0,7})"
+    out = []
+    for label, rx in PATTERN_SOURCES:
+        if "@NAMES@" in rx and not names:
+            continue
+        out.append((label, re.compile(rx.replace("@EXT@", ext).replace("@NAMES@", "(?:" + alternatives(names) + ")"))))
+    return out
+
+
+@functools.lru_cache(maxsize=None)
+def patterns_for(optmux_dir):
+    """The compiled patterns with the `+find: +known_files` of $OPTMUX_DIR/find.json: groups of entries, `*.ext` an extension
+    and anything else a file name."""
+    try:
+        groups = json.loads(open(os.path.join(optmux_dir, "find.json")).read()).get("known_files")
+    except (OSError, ValueError, AttributeError):
+        groups = None
+    entries = [e for group in (groups.values() if isinstance(groups, dict) else []) for e in (group if isinstance(group, list) else [])
+               if isinstance(e, str) and re.fullmatch(r"\*?\.?[\w.-]+", e)]
+    return compile_patterns(tuple(e[2:] for e in entries if e.startswith("*.")), tuple(e for e in entries if not e.startswith("*.")))
 TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
 CLOSERS = {")": "(", "]": "[", "}": "{"}
 
@@ -226,7 +243,7 @@ def icon_style():
 def find_patterns(plain):
     """[(start, label, text)] for the well-known patterns in a line, left to right, without overlaps."""
     taken, found = [], []
-    for label, rx in PATTERNS:
+    for label, rx in patterns_for(os.environ.get("OPTMUX_DIR", "")):
         for m in rx.finditer(plain):
             if label == "quote":
                 i = next(i for i, g in enumerate(m.groups(), 1) if g is not None)

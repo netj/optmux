@@ -783,7 +783,25 @@ def test_smart_quotes_and_apostrophes_inside_a_single_quoted_text():
     assert [t for _, _, t in pt.find_patterns(line)] == ["smart quotes", "it\u2019s", "don't stop", "x y"]
 
 
-def test_well_known_extensions_and_somethingfile_names_are_files():
+def test_well_known_extensions_and_somethingfile_names_are_files(monkeypatch, tmp_path):
+    import json
+
+    import yaml
+
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    (tmp_path / "find.json").write_text(json.dumps({"known_files": defaults["+optmux"]["+find"]["+known_files"]}))
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
     line = "edit Makefile Dockerfile.dev Gemfile.lock:3 a.7z app.xcodeproj log.properties but not Profile or Makefiles or BUILD"
     assert [t for _, _, t in pt.find_patterns(line)] == [
         "Makefile", "Dockerfile.dev", "Gemfile.lock:3", "a.7z", "app.xcodeproj", "log.properties"]
+
+
+def test_known_files_are_configurable_in_find_json(monkeypatch, tmp_path):
+    import json
+
+    (tmp_path / "find.json").write_text(json.dumps({"known_files": {"mine": ["*.mytool", "Toolfile", "not a name!"], "none": []}}))
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    assert [t for _, _, t in pt.find_patterns("a.mytool Toolfile.x Makefile a.7z")] == ["a.mytool", "Toolfile.x"]
+    (tmp_path / "other").mkdir()
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path / "other"))  # (no find.json: the plain rule only)
+    assert [t for _, _, t in pt.find_patterns("a.mytool Toolfile Makefile a.7z")] == ["a.mytool"]
