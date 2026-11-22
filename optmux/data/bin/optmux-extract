@@ -26,6 +26,7 @@ and `C-M-f` searches everything (optmux Find, started in this same popup with th
 
 import base64
 import json
+import math
 import os
 import re
 import shlex
@@ -458,9 +459,16 @@ def load_query_log(path=None):
     try:
         with open(path or query_log_path()) as f:
             log = json.load(f)
-        return {q: [float(t) for t in ts if isinstance(t, (int, float))] for q, ts in log.items()
-                if isinstance(q, str) and isinstance(ts, list)}
+        times = lambda ts: [float(t) for t in ts if isinstance(t, (int, float)) and math.isfinite(t)]
+        return {q: ts for q, ts in ((q, times(ts)) for q, ts in log.items() if isinstance(q, str) and isinstance(ts, list))
+                if ts}  # (an entry without a time is of no use)
+    except FileNotFoundError:
+        return {}
     except (OSError, ValueError, AttributeError):
+        try:  # (unreadable: keep it aside, so the next write does not replace 28 days with one query)
+            os.replace(path or query_log_path(), f"{path or query_log_path()}.bak")
+        except OSError:
+            pass
         return {}
 
 
@@ -476,14 +484,17 @@ def log_query(query, now=None, path=None):
     log[query] = [now, *log.get(query, [])][:QUERY_LOG_USES]
     cutoff = now - QUERY_LOG_DAYS * 86400
     log = {q: ts for q, ts in log.items() if ts and ts[0] >= cutoff}
+    tmp = f"{path}.{os.getpid()}"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.{os.getpid()}"
         with open(tmp, "w") as f:
             json.dump(log, f, ensure_ascii=False)
         os.replace(tmp, path)  # (whole or not at all: two popups may be leaving at once)
     except OSError:
-        pass  # (no history is no reason to lose what you picked)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass  # (no history is no reason to lose what you picked)
 
 
 def ago(seconds):
@@ -502,7 +513,7 @@ def history_rows(log, now=None, extra=()):
     for q, ts in sorted(log.items(), key=lambda kv: -kv[1][0]):
         week = sum(1 for t in ts if now - t < 604800)
         rows.append(f"{q}\t\x1b[2m{ago(max(0, now - ts[0]))}" + (f"  ×{week}" if week > 1 else "") + "\x1b[0m")
-    rows += [q for q in dict.fromkeys(q for q in extra if q.strip() and q not in log)]
+    rows += [q for q in dict.fromkeys(CONTROL_CHARS.sub(" ", q) for q in extra) if q.strip() and q not in log]
     return rows
 
 
@@ -580,7 +591,7 @@ def labels(filter_name, copier, paths="shown"):
     what is listed and which keys do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; C-r/M-p: hx; M-r: paths {paths}\n"
+                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; C-r/M-p: hist; M-r: paths {paths}\n"
                 + view_bar(filter_name, ", ", "C-M-x/M-x to cycle:\n"),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
@@ -955,8 +966,20 @@ def load_state(d):
 
 
 def show_history(d):
-    """Detached from eXtract's popup: the history popup, then eXtract again."""
+    """Detached from eXtract's popup: the history popup, then eXtract again (whatever goes wrong in between)."""
     state = load_state(d)
+    try:
+        return show_history_popup(d, state)
+    except Exception:
+        for pane in filter(None, state["panes"]):
+            tmux("kill-pane", "-t", pane, capture_output=True)
+        subprocess.run(["tmux", "display-popup", "-c", state["client"], "-E", "-w", str(state["box"][2]),
+                        "-h", str(state["box"][3]), "-b", "rounded", "-T", TITLE,
+                        shell('exec "$1" "$2" --resume "$3"', *self_argv()[:2], d)])
+
+
+def show_history_popup(d, state):
+    """The history popup itself, then the new eXtract popup."""
     left, top, width, height = state["box"]
     def at(name):
         return os.path.join(d, name)
@@ -994,7 +1017,7 @@ def show_history(d):
         chosen = state["query"]  # (left with Esc, or never opened: eXtract as it was)
     with open(at("chosen"), "w") as f:
         f.write(chosen)
-    if state["panes"]:  # the copy eXtract shows until its fzf draws, and the lookalike goes once it's up
+    if all(state["panes"]) and state["panes"]:  # the copy eXtract shows until its fzf draws, and the lookalike goes once it's up
         with open(at("snapshot"), "w") as f:
             f.write("\x1b[?25l" + tmux("capture-pane", "-e", "-p", "-t", state["panes"][1],
                                        capture_output=True, text=True).stdout.rstrip("\n"))

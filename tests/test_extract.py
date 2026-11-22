@@ -722,3 +722,22 @@ def test_the_lookalike_shows_eXtract_as_it_is_now_not_as_it_opened():
     assert "--bind=load:pos(3)+unbind(load)" not in argv and sum(a.startswith("--prompt=") for a in argv) == 1
     assert not any(a.startswith("--bind=load:pos(") for a in pt.lookalike_argv(config, "", 0, 0))
     assert pt.counted_prompt("lines", 0) == "--prompt=lines 0/0 > "
+
+
+def test_query_log_drops_entries_without_usable_times(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text('{"a": [], "b": ["x"], "c": [1e999], "d": [5]}')
+    assert pt.load_query_log(str(path)) == {"d": [5.0]}
+    assert pt.history_rows(pt.load_query_log(str(path)), now=10)[0].startswith("d\t")
+
+
+def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text("{bad")
+    pt.log_query("hello", now=1000, path=str(path))
+    assert (tmp_path / "q.json.bak").read_text() == "{bad"
+    assert list(pt.load_query_log(str(path))) == ["hello"]
+
+
+def test_history_rows_extra_queries_lose_control_characters():
+    assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == ["a b [0m"]
