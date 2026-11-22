@@ -672,6 +672,15 @@ def test_the_history_rows_say_when_and_how_often_without_repeating_a_query():
     assert pt.ago(0) == "now" and pt.ago(59) == "now" and pt.ago(120) == "2m" and pt.ago(86400 * 15) == "2w"
 
 
+def test_the_history_rows_line_up_with_the_prompt():
+    log = {"bash": [100 * 86400] * 120, "x": [1]}
+    rows = pt.history_rows(log, now=100 * 86400 + 5, extra=["old"])
+    for row in rows:
+        meta, query = row.split("\t", 1)
+        assert len(re.sub(r"\x1b\[[0-9;]*m", "", meta)) == pt.HISTORY_META_WIDTH and query
+    assert len(pt.HISTORY_PROMPT) == pt.HISTORY_META_WIDTH + 3  # (the tab as one column, fzf's 2-column gutter)
+
+
 def test_the_popup_box_matches_where_tmux_centers_it():
     # measured with a 168x132 client and `-w 100% -h 60%`: rows 25..103
     assert pt.popup_box(168, 132, 166, 77) == (0, 25, 168, 79)
