@@ -805,3 +805,11 @@ def test_known_files_are_configurable_in_find_json(monkeypatch, tmp_path):
     (tmp_path / "other").mkdir()
     monkeypatch.setenv("OPTMUX_DIR", str(tmp_path / "other"))  # (no find.json: the plain rule only)
     assert [t for _, _, t in pt.find_patterns("a.mytool Toolfile Makefile a.7z")] == ["a.mytool"]
+
+
+def test_a_path_or_quote_the_program_colored_is_in_its_bucket_and_listed_once_in_spans():
+    cap = "- \x1b[33mmain.go\x1b[0m \x1b[31m./c.py\x1b[0m \x1b[1m#12\x1b[0m \x1b[32m\"msg\"\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "paths")] == ["main.go", "./c.py"]
+    assert [t for t, _ in pt.choices(cap, "refs")] == ["#12"]
+    assert [t for t, _ in pt.choices(cap, "quotes")] == ["msg"]
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["main.go", "./c.py", "#12", '"msg"']
