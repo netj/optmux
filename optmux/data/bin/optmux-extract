@@ -364,6 +364,10 @@ def choices(capture, mode, width=None):
         entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text, "quote"))
     stoplist = load_stoplist()
     styled = {text for *_, text, _, kind in entries if kind == "styled"}
+    sgr = {text: style.sgr() for text, style, _, _ in spans}
+    # a pattern the program also styled whole is the more certain pick: it keeps its kind's icon and takes the program's colors,
+    # and all spans list it as that, not as the bare span
+    confirmed = {text for *_, text, _, kind in entries if kind != "styled" and text in styled}
     found = {}  # the same text found twice stays once, at its latest position (the styled span, which sorts after the patterns)
     for *_, text, display, kind in sorted(entries, key=lambda e: e[:4]):
         if mode in KINDS and not in_bucket(mode, kind) or any(rx.fullmatch(text) for rx in stoplist):
@@ -371,6 +375,11 @@ def choices(capture, mode, width=None):
         # all spans list a quote the program styled whole (marks and all) once, as that span
         if mode == "spans" and kind == "quote" and any(s != text and s.strip("`'\"\u201c\u201d\u2018\u2019") == text for s in styled):
             continue
+        if kind == "styled" and mode == "spans" and text in confirmed:
+            continue
+        if kind != "styled" and text in confirmed:
+            icon, _, _ = display.partition(text)
+            display = f"{icon}{sgr[text]}{text}\x1b[0m"
         found.pop(text, None)
         found[text] = display
     return list(found.items())

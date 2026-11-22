@@ -818,3 +818,12 @@ def test_a_path_or_quote_the_program_colored_is_in_its_bucket_and_listed_once_in
 def test_a_path_is_found_across_its_coloring():
     cap = "\x1b[34mdocs/\x1b[0m\x1b[1;33musage.md\x1b[0m:12 and \x1b[31m.claude\x1b[0m/\x1b[32mtmp\x1b[0m/x.md\n"
     assert [t for t, _ in pt.choices(cap, "paths")] == ["docs/usage.md:12", ".claude/tmp/x.md"]
+
+
+def test_a_pattern_the_program_also_styled_keeps_its_icon_and_the_programs_colors():
+    cap = "\x1b[31m./c.py\x1b[0m and ./d.py \x1b[32mgit commit\x1b[0m\n"
+    shown = dict(pt.choices(cap, "spans"))
+    icon = pt.PATTERN_ICONS[pt.icon_style()]["path"]
+    assert icon in shown["./c.py"] and "\x1b[0;31m" in shown["./c.py"] and icon in shown["./d.py"]
+    assert "\x1b[0;31m" not in shown["./d.py"] and pt.PATTERN_ICONS[pt.icon_style()]["spans"] in shown["git commit"]
+    assert "\x1b[0;31m" in dict(pt.choices(cap, "paths"))["./c.py"]
