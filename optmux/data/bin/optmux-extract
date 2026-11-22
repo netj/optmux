@@ -591,7 +591,8 @@ def labels(filter_name, copier, paths="shown"):
     what is listed and which keys do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; C-r: history; M-r: paths {paths}\n"
+                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-r: paths {paths}\n"
+                f"C-r/M-p/M-n: history\n"
                 + view_bar(filter_name, ", ", "C-M-x/M-x to cycle:\n"),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
