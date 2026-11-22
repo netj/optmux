@@ -896,8 +896,8 @@ def prepare_history(d, query, pos, matching):
     drawn before the popup goes, so there is nothing to see in between. `d` holds what eXtract left for it."""
     with open(os.path.join(d, "config.json")) as f:
         config = json.load(f)
-    with open(os.path.join(d, "query"), "w") as f:  # (what the history popup starts with)
-        f.write(query)
+    with open(os.path.join(d, "query"), "w") as f:  # (what the history popup starts with: nothing, so every query is listed)
+        f.write("")
     # (one question, not five)
     client, cw, ch, version, status, position = show_format(
         "#{client_tty}\t#{client_width}\t#{client_height}\t#{version}\t#{status}\t#{status-position}").split("\t")
@@ -969,10 +969,10 @@ def show_history(d):
     below = client_height - state["status_below"] - prompt_row  # (rows from the prompt down to the status line)
     layout, first = ("reverse", prompt_row) if below >= lines else ("default", prompt_row - lines + 1)
     with open(at("paint"), "w") as f:  # (the look and the prompt, put up before fzf is, so the popup never shows empty)
-        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1Hhistory > {state['query']}")
+        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1Hhistory > ")
     script = (f'cat "$1/paint"; : > "$1/started"; fzf --ansi --layout="$2" --no-info --delimiter="\t" --nth=1 --tiebreak=index '
               f'--prompt="history > " --color="{HISTORY_FZF_COLORS}" --print-query --no-scrollbar --query="$(cat "$1/query")" '
-              f'< "$1/history" > "$1/out"')
+              f'< "$1/history" > "$1/out"; echo $? > "$1/status"')
     # display-popup's -y is the row under the popup (as for menus). While eXtract's popup is still closing, tmux
     # ignores this one (and we never started): so try again a moment later
     for _ in range(100):
@@ -983,10 +983,14 @@ def show_history(d):
             break
         time.sleep(0.03)
     try:
+        with open(at("status")) as f:
+            accepted = f.read().strip() in ("0", "1")  # (1: Enter on a typed query nothing in the history matches)
         with open(at("out")) as f:
             typed, *picked = f.read().split("\n")[:-1] or [""]
-        chosen = picked[0].split("\t", 1)[0] if picked else typed
+        chosen = (picked[0].split("\t", 1)[0] if picked else typed) if accepted else ""
     except OSError:
+        chosen = ""
+    if not chosen:
         chosen = state["query"]  # (left with Esc, or never opened: eXtract as it was)
     with open(at("chosen"), "w") as f:
         f.write(chosen)
