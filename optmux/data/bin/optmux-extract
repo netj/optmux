@@ -733,7 +733,8 @@ def pane_directory(pane):
 
 def edit_plan(chosen, mode, cwd):
     """(targets, text, message): what to edit. Files that exist (with their position) when every pick is a path or
-    URL; else the whole selection as text, for a temp file."""
+    URL, else (when none exists) the missing ones as new files whose directory exists; else the whole selection as
+    text, for a temp file."""
     kinds = [classify(p) for p in chosen]
     if any(k not in ("path", "file", "url") for k in kinds):
         return [], compose(chosen, mode), None
@@ -746,14 +747,15 @@ def edit_plan(chosen, mode, cwd):
         if os.path.exists(full):
             targets.append((full, line, col))
         else:
-            missing.append((full, line, col))
+            missing.append(((full, line, col), kind))
     if targets:
         return targets, None, None
     # nothing exists yet: edit the names as new files (a plan doc, say), when their directories are there to hold them
-    new = [t for t in missing if os.path.isdir(os.path.dirname(t[0]))]
+    # (a bare domain like docs.python.org is more likely a site than a file name)
+    new = [t for t, k in missing if os.path.isdir(os.path.dirname(t[0])) and not (k == "file" and bare_domain(os.path.basename(t[0])))]
     if new:
         return new, None, None
-    return [], None, f"no such directory: {os.path.dirname(missing[0][0])}" if missing else "URLs are opened with C-o, not edited"
+    return [], None, f"no such file or directory: {missing[0][0][0]}" if missing else "URLs are opened with C-o, not edited"
 
 
 def edit(pane, chosen, mode):
