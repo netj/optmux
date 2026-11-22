@@ -146,7 +146,7 @@ KINDS = {  # bucket: (what the prompt calls it, the pattern kinds in it); None: 
     "quotes": ("quoted text", {"quote"}),
     "others": ("anything else", None),
     "paths": ("paths, file names", {"path", "file"}),
-    "refs": ("URLs, hashes, PRs, versions", {"url", "hash", "pr", "ver"}),  # what C-o opens
+    "refs": ("URLs, IPs, hashes, PRs, versions", {"url", "addr", "hash", "pr", "ver"}),  # what C-o opens
 }
 VIEW_KEYS = {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
 KIND_KEYS = {f"alt-{d}": view for d, view in VIEW_KEYS.items()}
@@ -160,17 +160,32 @@ PATH_OPTION = "@optmux-extract-paths"
 # Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
 # is not listed again, and nothing overlaps within a line.
 PATH_CHARS = r"[\w.@%+=,~-]"
+# Extensions a plain `[A-Za-z][A-Za-z0-9]{0,7}` misses (they start with a digit or run long), and the well-known file names
+# that have no extension (only the ...file ones: an all-caps README or BUILD is too often just a word), told from any capitalized word by name: Makefile, Dockerfile.dev, Cargo.lock.
+LONG_EXTENSIONS = ["7z", "3gp", "3g2", "m4a", "m4v", "h5", "properties", "xcodeproj", "xcworkspace", "storyboard", "entitlements",
+                   "webmanifest", "editorconfig", "gitignore", "gitattributes", "dockerignore", "gitmodules", "terraform", "tfstate", "tfvars"]
+KNOWN_FILES = ["Makefile", "makefile", "GNUmakefile", "Dockerfile", "Containerfile", "Rakefile", "Gemfile", "Guardfile", "Capfile",
+               "Berksfile", "Brewfile", "Podfile", "Fastfile", "Appfile", "Matchfile", "Snapfile", "Vagrantfile", "Procfile",
+               "Jenkinsfile", "Justfile", "Taskfile", "Tiltfile", "Earthfile", "Caddyfile", "Pipfile", "Steepfile", "Dangerfile",
+               "Cartfile", "Puppetfile", "Thorfile", "Buildfile"]
+EXT_RX = "(?:" + "|".join(sorted(map(re.escape, LONG_EXTENSIONS), key=len, reverse=True)) + r"|[A-Za-z][A-Za-z0-9]{0,7})"
+FILE_NAMES_RX = "(?:" + "|".join(sorted(map(re.escape, dict.fromkeys(KNOWN_FILES)), key=len, reverse=True)) + ")"
 PATTERNS = [
     ("url", r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"'`]+"),
     ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
-    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
+    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:(?:/{PATH_CHARS}+)+/?|/)(?::\d+){{0,2}}"),  # dir/with/slash, .claude/
     ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
     ("pr", r"(?<![\w&/#])#\d+\b"),  # PR/issue numbers: #234
-    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not 192.168.1.100)
-    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
-    # quoted text: 'x' "x" `x` and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
-    # recognizable inside (a path, a file) is listed as itself, and an apostrophe (don't) doesn't open one.
-    ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)([^'\n]+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\")(?!\w)"),
+    ("addr", r"(?<![\w.:/-])(?:(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?|localhost:\d{1,5})(?![\w-]|\.\d)"),  # 192.168.1.100[:8080], localhost:3000
+    ("ver", r"(?<![\w.])v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not the tail of 192.168.1.100)
+    ("file", rf"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.{EXT_RX}(?:\.\d+)*\b(?::\d+){{0,2}}"),  # name.ext[:line[:col]], lib.so.6
+    ("file", rf"(?<![\w/.~-]){FILE_NAMES_RX}(?:\.[\w-]+)*\b(?::\d+){{0,2}}"),  # Makefile, Dockerfile.dev
+    ("file", r"(?<![\w/.~-])\.[A-Za-z][\w-]*(?:\.[\w-]+)*\b(?::\d+){0,2}"),  # dotfiles: .env, .gitignore
+    # quoted text: 'x' "x" `x` “x” ‘x’ and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
+    # recognizable inside (a path, a file) is listed as itself. An apostrophe (don't) doesn't open a quote, and inside
+    # one it only counts between letters ('don't stop'); \' and '' escapes are not understood.
+    ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)((?:[^'\n]|(?<=\w)'(?=\w))+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\""
+     r"|“(?=\S)([^”\n]+?)(?<=\S)”|‘(?=\S)((?:[^’\n]|(?<=\w)’(?=\w))+?)(?<=\S)’)(?!\w)"),
 ]
 PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
 TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
@@ -189,11 +204,11 @@ def trim_url(text):
 # How each item is drawn, by `icons` (the same setting as optmux Find, whose glyphs these follow): a pattern by
 # its kind, any other by the filter it is listed by (the same icon on every row, so switching filters keeps the columns).
 PATTERN_ICONS = {
-    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "quote": "💬", "hash": "#️⃣", "pr": "🔀", "ver": "🏷️", "lines": "📃", "spans": "🎨"},
-    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "quote": "\uf10d", "hash": "\ue729", "pr": "\ue726", "ver": "\uf02b",
+    "emoji": {"url": "🔗", "addr": "🌐", "path": "📁", "file": "📄", "quote": "💬", "hash": "#️⃣", "pr": "🔀", "ver": "🏷️", "lines": "📃", "spans": "🎨"},
+    "nerd": {"url": "\uf0c1", "addr": "\uf0ac", "path": "\uf07b", "file": "\uf016", "quote": "\uf10d", "hash": "\ue729", "pr": "\ue726", "ver": "\uf02b",
              "lines": "\uf0c9", "spans": "\uf1fc"},
-    "none": {kind: "" for kind in ("url", "path", "file", "quote", "hash", "pr", "ver", "lines", "spans")},
-    "text": {"url": "url ", "path": "path", "file": "file", "quote": "quot", "hash": "hash", "pr": "pr  ", "ver": "ver ", "lines": "line", "spans": "span"},
+    "none": {kind: "" for kind in ("url", "addr", "path", "file", "quote", "hash", "pr", "ver", "lines", "spans")},
+    "text": {"url": "url ", "addr": "addr", "path": "path", "file": "file", "quote": "quot", "hash": "hash", "pr": "pr  ", "ver": "ver ", "lines": "line", "spans": "span"},
 }
 
 
@@ -214,10 +229,15 @@ def find_patterns(plain):
     for label, rx in PATTERNS:
         for m in rx.finditer(plain):
             if label == "quote":
-                text, (s, e) = next(g for g in m.groups() if g is not None), m.span()
-            else:
-                text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
-                s, e = m.start(), m.start() + len(text)
+                i = next(i for i, g in enumerate(m.groups(), 1) if g is not None)
+                text, (s, e) = m.group(i), m.span()
+                # a quote around more than one thing (a command with a path in it) is listed too; one that is just a
+                # path, a file... is that, listed once
+                if text and (m.start(i), m.end(i)) not in taken:
+                    found.append((s, label, text))
+                continue
+            text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
+            s, e = m.start(), m.start() + len(text)
             if text and not any(s < te and ts < e for ts, te in taken):
                 taken.append((s, e))
                 found.append((s, label, text))
@@ -243,7 +263,8 @@ def load_stoplist():
 
 # a quote that runs over several lines (a program wraps its own text with newlines): only " and `, which seldom
 # open without closing; no blank line inside, a closing quote has no space before it, so a stray one does not pair up
-MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`)(?!\w)")
+MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`"
+                             r"|“(?=\S)((?:[^”\n]|\n(?!\s*\n)){1,800}?)(?<=\S)”)(?!\w)")
 
 
 def find_multiline_quotes(lines):
@@ -255,7 +276,7 @@ def find_multiline_quotes(lines):
         pos += len(line) + 1
     found = []
     for m in MULTILINE_QUOTE.finditer(text):
-        inner = m.group(1) if m.group(1) is not None else m.group(2)
+        inner = next(g for g in m.groups() if g is not None)
         if "\n" not in inner:
             continue  # (the one-line quotes are found line by line)
         first = max(i for i, st in enumerate(starts) if st <= m.start())
@@ -322,10 +343,12 @@ def choices(capture, mode, width=None):
             # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
             end = start + len(text)
             inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
-            if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
+            # (a styled quote is its span already: one that is the quote, give or take its quote marks; a bigger span, say a
+            # diff's highlighted words, doesn't make the quote inside it any less of one)
+            if not any(start <= s and e <= end + 2 for s, e in inside) if label == "quote" else (start, end) not in inside:
                 entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text, label))
     for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
-        if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
+        if not any(col <= s and e <= col + len(text) + 2 for s, e in covered.get(line, [])):  # (not when it is a styled run itself)
             entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text, "quote"))
     stoplist = load_stoplist()
     found = {}  # repeats stay once, at their latest position
@@ -572,7 +595,7 @@ def view_bar(active, sep=",  ", cycle_hint="C-M-x/M-x to cycle:  "):
 
 
 def prompt_for(view):
-    """The prompt's fixed part: `spans[refs] (URLs, hashes, PRs, versions)`, or just `spans` or `lines`."""
+    """The prompt's fixed part: `spans[refs] (URLs, IPs, hashes, PRs, versions)`, or just `spans` or `lines`."""
     return f"spans[{view}] ({KINDS[view][0]})" if view in KINDS else view
 
 
@@ -651,10 +674,10 @@ def open_find(pane, source, query):
 
 
 def classify(pick):
-    """What a pick is as a whole: url, path, file, hash, pr, or other (anything that is not exactly one pattern)."""
+    """What a pick is as a whole: url, addr, path, file, hash, pr, or other (anything that is not exactly one pattern)."""
     pick = pick.strip()
     found = find_patterns(pick)
-    if len(found) == 1 and found[0][0] == 0 and found[0][2] == pick and found[0][1] in ("url", "path", "file", "hash", "pr"):
+    if len(found) == 1 and found[0][0] == 0 and found[0][2] == pick and found[0][1] in ("url", "addr", "path", "file", "hash", "pr"):
         return found[0][1]
     return "other"
 
@@ -795,13 +818,15 @@ def bare_domain(pick):
 
 
 def open_command(pick, cwd, system=None):
-    """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, a hash or PR/issue
+    """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, an IP address in the browser, a hash or PR/issue
     number on GitHub. argv is None when it cannot be opened, and the message says why."""
     system, pick = system or sys.platform, pick.strip()
     kind = classify(pick)
     opener = ["open"] if system == "darwin" else ["xdg-open"]
     if kind == "url":
         return opener + [pick], None
+    if kind == "addr":
+        return opener + [f"http://{pick}"], None
     if kind in ("path", "file"):
         full = resolve(split_position(pick)[0], cwd)
         if not os.path.exists(full):

@@ -95,7 +95,7 @@ def test_view_keys_cycle_and_the_active_one_highlighted():
 def test_prompts_and_labels(monkeypatch):
     import os
     assert pt.prompt_for("lines") == "lines" and pt.prompt_for("spans") == "spans"
-    assert pt.prompt_for("refs") == "spans[refs] (URLs, hashes, PRs, versions)"
+    assert pt.prompt_for("refs") == "spans[refs] (URLs, IPs, hashes, PRs, versions)"
     for width in (120, 60):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
         header, prompt = pt.labels("paths", "osc52")
@@ -750,3 +750,40 @@ def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
 
 def test_history_rows_extra_queries_lose_control_characters():
     assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == [" " * pt.HISTORY_META_WIDTH + "\ta b [0m"]
+
+
+def test_quote_inside_a_larger_styled_run_is_still_a_quote():
+    capture = "\x1b[41mcall `query \\t` last used\x1b[0m done\n"
+    assert "query \\t" in [t for t, _ in pt.choices(capture, "quotes")]
+
+
+def test_a_quote_around_a_path_or_version_is_listed_besides_the_thing_inside():
+    line = 'run `uv run optmux ./ex.yaml` and "see optmux/cli.py" or "v1.2.3" or \'a.py\''
+    assert [(label, text) for _, label, text in pt.find_patterns(line)] == [
+        ("quote", "uv run optmux ./ex.yaml"), ("path", "./ex.yaml"), ("quote", "see optmux/cli.py"), ("path", "optmux/cli.py"),
+        ("ver", "v1.2.3"), ("file", "a.py"),
+    ]
+
+
+def test_multiline_quote_inside_a_larger_styled_run_is_still_listed():
+    capture = '\x1b[41mnote "first half\nsecond half" end\x1b[0m\n'
+    assert "first half second half" in [t for t, _ in pt.choices(capture, "quotes")]
+
+
+def test_dotfiles_dot_directories_and_addresses_are_found_and_an_ip_is_not_a_version():
+    assert [(k, t) for _, k, t in pt.find_patterns("ls .env .claude/ src/ ./.env")] == [
+        ("file", ".env"), ("path", ".claude/"), ("path", "src/"), ("path", "./.env")]
+    assert [(k, t) for _, k, t in pt.find_patterns("on 192.168.1.100 or 10.0.0.1:8080, localhost:3000, v1.2.3")] == [
+        ("addr", "192.168.1.100"), ("addr", "10.0.0.1:8080"), ("addr", "localhost:3000"), ("ver", "v1.2.3")]
+    assert pt.open_command("10.0.0.1:8080", "/", "darwin") == (["open", "http://10.0.0.1:8080"], None)
+
+
+def test_smart_quotes_and_apostrophes_inside_a_single_quoted_text():
+    line = "say \u201csmart quotes\u201d and \u2018it\u2019s\u2019 or 'don't stop', can't 'x y'"
+    assert [t for _, _, t in pt.find_patterns(line)] == ["smart quotes", "it\u2019s", "don't stop", "x y"]
+
+
+def test_well_known_extensions_and_somethingfile_names_are_files():
+    line = "edit Makefile Dockerfile.dev Gemfile.lock:3 a.7z app.xcodeproj log.properties but not Profile or Makefiles or BUILD"
+    assert [t for _, _, t in pt.find_patterns(line)] == [
+        "Makefile", "Dockerfile.dev", "Gemfile.lock:3", "a.7z", "app.xcodeproj", "log.properties"]
