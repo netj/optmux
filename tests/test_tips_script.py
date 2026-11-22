@@ -340,7 +340,7 @@ def test_popup_less_ignores_user_less_config(tmp_path):
             check=True,
         )
         for _ in range(100):
-            if (tmp_path / "less-seen").exists():
+            if (tmp_path / "less-seen").exists() and "ARGS=" in (tmp_path / "less-seen").read_text():
                 break
             time.sleep(0.1)
         seen = (tmp_path / "less-seen").read_text()
