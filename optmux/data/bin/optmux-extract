@@ -746,10 +746,14 @@ def edit_plan(chosen, mode, cwd):
         if os.path.exists(full):
             targets.append((full, line, col))
         else:
-            missing.append(path)
+            missing.append((full, line, col))
     if targets:
         return targets, None, None
-    return [], None, f"no such file: {missing[0]}" if missing else "URLs are opened with C-o, not edited"
+    # nothing exists yet: edit the names as new files (a plan doc, say), when their directories are there to hold them
+    new = [t for t in missing if os.path.isdir(os.path.dirname(t[0]))]
+    if new:
+        return new, None, None
+    return [], None, f"no such directory: {os.path.dirname(missing[0][0])}" if missing else "URLs are opened with C-o, not edited"
 
 
 def edit(pane, chosen, mode):

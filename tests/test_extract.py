@@ -533,7 +533,8 @@ def test_vim_jumps_once_for_one_file_and_in_every_window_for_several():
 def test_edit_plan_files_that_exist_else_the_text(tmp_path):
     (tmp_path / "a.py").write_text("x")
     assert pt.edit_plan(["a.py:4", "https://x.org", "nope.py"], "spans", str(tmp_path)) == ([(str(tmp_path / "a.py"), 4, None)], None, None)
-    assert pt.edit_plan(["nope.py"], "spans", str(tmp_path))[2] == "no such file: nope.py"
+    assert pt.edit_plan(["nope.py:3"], "spans", str(tmp_path)) == ([(str(tmp_path / "nope.py"), 3, None)], None, None)  # a new file
+    assert "no such directory" in pt.edit_plan(["no/dir/nope.py"], "spans", str(tmp_path))[2]
     assert "C-o" in pt.edit_plan(["https://x.org"], "spans", str(tmp_path))[2]
     assert pt.edit_plan(["a.py", "git commit"], "spans", str(tmp_path)) == ([], "a.py\ngit commit", None)
     assert pt.edit_plan(["  #234"], "lines", str(tmp_path)) == ([], "#234", None)
