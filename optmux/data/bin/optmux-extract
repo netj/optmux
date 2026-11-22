@@ -964,7 +964,7 @@ def show_history(d):
     with open(at("history"), "w") as f:
         f.write("\n".join(rows) + "\n" if rows else "")
     prompt_row = top + height - 2  # eXtract's prompt: the last row inside its border
-    lines = max(4, min(HISTORY_ROWS, len(rows) + 1))
+    lines = max(8, min(HISTORY_ROWS, len(rows) + 2))  # (room for a few more, even while the list is short)
     client_height = int(show_format("#{client_height}", "-c", state["client"]))
     below = client_height - state["status_below"] - prompt_row  # (rows from the prompt down to the status line)
     layout, first = ("reverse", prompt_row) if below >= lines else ("default", prompt_row - lines + 1)
