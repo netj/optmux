@@ -360,11 +360,9 @@ def choices(capture, mode, width=None):
             # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
             end = start + len(text)
             inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
-            # (the span the program styled is the pattern itself, give or take a quote's marks: all spans list it once, as the span;
-            # a bucket lists it by what it is, so a colored path is in paths, and a bigger span, say a diff's highlighted
-            # words, doesn't make the quote or path inside it any less of one)
-            same = any(start <= s and e <= end + 2 for s, e in inside) if label == "quote" else (start, end) in inside
-            if not (same and mode == "spans"):
+            # every pattern is a candidate whatever the program styled; the same text found twice is listed once at the end
+            # (below). Only a quote is another text than its styled span (the marks), so all spans drop it there.
+            if not (label == "quote" and mode == "spans" and any(start <= s and e <= end + 2 for s, e in inside)):
                 entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text, label))
     for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
         if not any(col <= s and e <= col + len(text) + 2 for s, e in covered.get(line, [])):  # (not when it is a styled run itself)
