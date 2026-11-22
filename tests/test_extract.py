@@ -643,3 +643,101 @@ def test_the_stoplist_covers_jump_to_bottom_and_new_messages():
     patterns = defaults["+optmux"]["+find"]["+ignore_spans"]["claude_code"]
     for chrome in ("Jump to bottom (click) ↓", "3 new messages (click) ↓", "1 new message (click)"):
         assert any(re.fullmatch(p, chrome, re.I) for p in patterns), chrome
+
+
+def test_the_query_log_keeps_when_each_query_was_used_for_a_month(tmp_path):
+    path = str(tmp_path / "q.json")
+    day = 86400
+    pt.log_query("bash", now=100 * day, path=path)
+    pt.log_query("  ", now=100 * day, path=path)  # blank: nothing to recall
+    pt.log_query("old", now=60 * day, path=path)
+    pt.log_query("bash\nx", now=101 * day, path=path)  # (control characters become spaces)
+    pt.log_query("bash", now=102 * day, path=path)
+    log = pt.load_query_log(path)
+    assert log == {"bash": [102 * day, 100 * day], "bash x": [101 * day]}  # (old is past the 28 days)
+    for n in range(pt.QUERY_LOG_USES + 5):
+        pt.log_query("busy", now=102 * day + n, path=path)
+    assert len(pt.load_query_log(path)["busy"]) == pt.QUERY_LOG_USES
+    Path(path).write_text("garbage")
+    assert pt.load_query_log(path) == {}
+    assert pt.load_query_log(str(tmp_path / "missing.json")) == {}
+
+
+def test_the_history_rows_say_when_and_how_often_without_repeating_a_query():
+    day = 86400
+    log = {"bash": [100 * day, 99 * day, 98 * day], "once": [95 * day]}
+    rows = pt.history_rows(log, now=100 * day + 3 * 3600, extra=["once", "from-before", "from-before", " "])
+    assert [r.split("\t")[0] for r in rows] == ["bash", "once", "from-before"]  # (newest first; each query once)
+    assert "3h" in rows[0] and "×3" in rows[0] and "5d" in rows[1] and "×" not in rows[1]
+    assert pt.ago(0) == "now" and pt.ago(59) == "now" and pt.ago(120) == "2m" and pt.ago(86400 * 15) == "2w"
+
+
+def test_the_popup_box_matches_where_tmux_centers_it():
+    # measured with a 168x132 client and `-w 100% -h 60%`: rows 25..103
+    assert pt.popup_box(168, 132, 166, 77) == (0, 25, 168, 79)
+    assert pt.popup_box(80, 24, 78, 12) == (0, 4, 80, 14)  # 80x24 client: rows 4..17
+
+
+def test_the_frame_is_the_popups_border():
+    lines = pt.frame(20, 5).lstrip("\x1b[?25l").split("\n")
+    assert [len(l) for l in lines] == [20] * 5
+    assert lines[0].startswith("╭─ OPTMUX eXtract ") and lines[0].endswith("╮") and lines[1] == "│" + " " * 18 + "│"
+    assert lines[-1] == "╰" + "─" * 18 + "╯"
+
+
+def test_the_header_mentions_the_query_history(monkeypatch):
+    for columns in (200, 60):
+        monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda columns=columns: type("S", (), {"columns": columns})())
+        assert "C-r" in pt.labels("spans", "osc52")[0]
+
+
+def test_back_from_the_history_eXtract_keeps_the_query_picked_even_when_nothing_matches(monkeypatch):
+    seen = []
+
+    def fake_run(argv, **kw):
+        if argv[0] == "fzf" and "--filter" not in argv:
+            seen.append(next(a for a in argv if a.startswith("--query=")))
+            return type("P", (), {"returncode": 130, "stdout": ""})()
+        return type("P", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "80"})())
+    monkeypatch.setattr(pt, "show_option", lambda name: "")
+    monkeypatch.setattr(pt, "choices", lambda capture, mode, width=None: [("one", "one")])
+    monkeypatch.setattr(pt.subprocess, "run", fake_run)
+    pt.pick("%0", resume=dict(mode="spans", query="zzz-no-match", item=None))
+    assert seen == ["--query=zzz-no-match"]
+
+
+def test_status_rows_and_the_tmux_that_has_floating_panes():
+    assert [pt.status_rows(s, "bottom", "bottom") for s in ("on", "off", "2")] == [1, 0, 2]
+    assert pt.status_rows("on", "top", "bottom") == 0 and pt.status_rows("on", "top", "top") == 1
+    assert [pt.has_floating_panes(v) for v in ("3.8", "3.7a", "next-3.8", "3.6", "3.5a", "")] == [True, True, True, False, False, False]
+
+
+def test_the_lookalike_shows_eXtract_as_it_is_now_not_as_it_opened():
+    config = dict(view="spans", argv=["fzf", "--ansi", "--query=", "--bind=load:pos(3)+unbind(load)", "--prompt=spans 0/0 > ", "--no-info"])
+    argv = pt.lookalike_argv(config, "al", 2, 4)
+    assert argv[:3] == ["fzf", "--ansi", "--no-info"]  # (what it opened with, but the old query, cursor and prompt)
+    assert "--query=al" in argv and "--bind=load:pos(2)+unbind(load)" in argv and "--prompt=spans 1/4 > " in argv
+    assert "--bind=load:pos(3)+unbind(load)" not in argv and sum(a.startswith("--prompt=") for a in argv) == 1
+    assert not any(a.startswith("--bind=load:pos(") for a in pt.lookalike_argv(config, "", 0, 0))
+    assert pt.counted_prompt("lines", 0) == "--prompt=lines 0/0 > "
+
+
+def test_query_log_drops_entries_without_usable_times(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text('{"a": [], "b": ["x"], "c": [1e999], "d": [5]}')
+    assert pt.load_query_log(str(path)) == {"d": [5.0]}
+    assert pt.history_rows(pt.load_query_log(str(path)), now=10)[0].startswith("d\t")
+
+
+def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text("{bad")
+    pt.log_query("hello", now=1000, path=str(path))
+    assert (tmp_path / "q.json~").read_text() == "{bad"
+    assert list(pt.load_query_log(str(path))) == ["hello"]
+
+
+def test_history_rows_extra_queries_lose_control_characters():
+    assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == ["a b [0m"]

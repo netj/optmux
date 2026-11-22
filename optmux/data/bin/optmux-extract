@@ -13,6 +13,9 @@ item the cursor was on: it opens on the query you left, and `M-p` steps back thr
 cursor), `M-n` forward again to a fresh start (`C-u` clears the query). `icons` (emoji, nerd or
 text, as in optmux Find) says how a pattern's kind is drawn.
 
+`C-r` opens the history of queries typed in the last weeks (all filters, most recent first, with when and how often)
+as a popup over eXtract's prompt; Enter brings one back into the query.
+
 `C-e` edits the selection in `$EDITOR` in a new pane (files at their `:line:col`, anything else through a temp file), `C-o`
 opens it (files revealed in Finder, URLs in the browser, `#234` and commit hashes on GitHub), and `M-r` cycles how
 paths are typed and copied: as shown, relative to the project, or absolute.
@@ -23,6 +26,7 @@ and `C-M-f` searches everything (optmux Find, started in this same popup with th
 
 import base64
 import json
+import math
 import os
 import re
 import shlex
@@ -438,6 +442,81 @@ def save_state(name, query, item):
         pass  # (forgetting where you were is no reason to lose what you picked)
 
 
+QUERY_LOG_DAYS = 28  # how long C-r remembers a query (each one with when it was used)
+QUERY_LOG_USES = 50  # times kept per query (enough to count a busy week)
+
+
+def query_log_path():
+    """Per project like optmux Find's state: $OPTMUX_DIR/extract/queries.json, else the user-wide XDG state dir."""
+    base = os.environ.get("OPTMUX_DIR")
+    d = os.path.join(base, "extract") if base else os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "optmux")
+    return os.path.join(d, "extract-queries.json" if not base else "queries.json")
+
+
+def load_query_log(path=None):
+    """{query: [epoch seconds it was used, newest first]}, or {} when there is none (or it is unreadable)."""
+    try:
+        with open(path or query_log_path()) as f:
+            log = json.load(f)
+        times = lambda ts: [float(t) for t in ts if isinstance(t, (int, float)) and math.isfinite(t)]
+        return {q: ts for q, ts in ((q, times(ts)) for q, ts in log.items() if isinstance(q, str) and isinstance(ts, list))
+                if ts}  # (an entry without a time is of no use)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, AttributeError):
+        try:  # (unreadable: keep it aside, so the next write does not replace 28 days with one query)
+            os.replace(path or query_log_path(), f"{path or query_log_path()}~")
+        except OSError:
+            pass
+        return {}
+
+
+def log_query(query, now=None, path=None):
+    """Remember that `query` was used now (one line, as typed; blank ones are not worth recalling), and forget
+    whatever was last used longer ago than QUERY_LOG_DAYS."""
+    query = CONTROL_CHARS.sub(" ", query)[:MAX_QUERY]
+    if not query.strip():
+        return
+    now = time.time() if now is None else now
+    path = path or query_log_path()
+    log = load_query_log(path)
+    log[query] = [now, *log.get(query, [])][:QUERY_LOG_USES]
+    cutoff = now - QUERY_LOG_DAYS * 86400
+    log = {q: ts for q, ts in log.items() if ts and ts[0] >= cutoff}
+    tmp = f"{path}.{os.getpid()}"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump(log, f, ensure_ascii=False)
+        os.replace(tmp, path)  # (whole or not at all: two popups may be leaving at once)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass  # (no history is no reason to lose what you picked)
+
+
+def ago(seconds):
+    """`now`, `5m`, `3h`, `2d`, `3w`: how long ago, roughly."""
+    for unit, size in (("w", 604800), ("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= size:
+            return f"{int(seconds // size)}{unit}"
+    return "now"
+
+
+def history_rows(log, now=None, extra=()):
+    """C-r's list, most recently used first, one row per query: `query \\t last used, uses this week`. Queries in
+    `extra` (the per-filter M-p histories, e.g. from before the log existed) follow, once, without a time."""
+    now = time.time() if now is None else now
+    rows = []
+    for q, ts in sorted(log.items(), key=lambda kv: -kv[1][0]):
+        week = sum(1 for t in ts if now - t < 604800)
+        rows.append(f"{q}\t\x1b[2m{ago(max(0, now - ts[0]))}" + (f"  ×{week}" if week > 1 else "") + "\x1b[0m")
+    rows += [q for q in dict.fromkeys(CONTROL_CHARS.sub(" ", q) for q in extra) if q.strip() and q not in log]
+    return rows
+
+
 def fzf_order(numbered, query, shown):
     """The lines `fzf` would list for `query`, best match first (what `pos(N)` counts), or all of them."""
     lines = [f"{i}\t{t}\t{d}" for i, (t, d) in numbered]
@@ -452,14 +531,19 @@ def fzf_order(numbered, query, shown):
 def cursor_position(numbered, query, shown, item, recalled=False):
     """(query, position): where the cursor goes for `item`, 1-based from the best match. A recalled query that
     matches nothing now is dropped (an empty list is no way to come back), and an item no longer here gives None."""
+    return cursor_position_and_count(numbered, query, shown, item, recalled)[:2]
+
+
+def cursor_position_and_count(numbered, query, shown, item, recalled=False):
+    """`cursor_position`, and how many lines match the query it returns (what the prompt counts)."""
     shown_lines = fzf_order(numbered, query, shown)
     if recalled and query and not shown_lines:
         query, shown_lines = "", fzf_order(numbered, "", shown)
     if item is not None:
         for n, line in enumerate(shown_lines, 1):
             if line.split("\t", 2)[1:2] and line.split("\t", 2)[1][:MAX_ITEM] == item:  # (an item is remembered cut to MAX_ITEM)
-                return query, n
-    return query, None
+                return query, n, len(shown_lines)
+    return query, None, len(shown_lines)
 
 
 def history_name(mode):
@@ -496,16 +580,23 @@ PROMPT_COUNTS = ("result,multi:transform-prompt(s=$FZF_SELECT_COUNT; [ $s = 0 ] 
                  "printf '%s %s/%s > ' \"$OPTMUX_EXTRACT_PROMPT\" $s $FZF_MATCH_COUNT)")
 
 
+def counted_prompt(view, matching):
+    """fzf's --prompt as it will read once it has counted (`1/4`: the item under the cursor counts as selected), so
+    it never flashes `0/0` first; PROMPT_COUNTS keeps it current from there."""
+    return f"--prompt={prompt_for(view)} {min(matching, 1)}/{matching} > "
+
+
 def labels(filter_name, copier, paths="shown"):
     """fzf's --header (the editing keys, the lookup keys, then the views, the active one highlighted) and --prompt:
     what is listed and which keys do what."""
     if shutil.get_terminal_size().columns < NARROW:
         return [f"--header=Tab: multi; Enter: type; C-y: copy ({copier}; C-t); C-e: edit; C-o: open\n"
-                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-p: older; M-r: paths {paths}\n"
+                f"C-u: clear; C-f: files, C-g: grep, C-M-f: all; M-r: paths {paths}\n"
+                f"C-r/M-p/M-n: history\n"
                 + view_bar(filter_name, ", ", "C-M-x/M-x to cycle:\n"),
                 f"--prompt={prompt_for(filter_name)} 0/0 > "]
     return [f"--header=Up/Down to select;  Tab to multiselect;  Enter to insert;  C-y to copy ({copier}; C-t to switch);  C-e edit;  C-o open\n"
-            f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  M-p/M-n: older/newer query;  M-r: paths {paths}\n"
+            f"C-u: clear;  find selection in:  C-f files,  C-g grep,  C-M-f all;  C-r: query history (M-p/M-n: older/newer);  M-r: paths {paths}\n"
             + view_bar(filter_name),
             f"--prompt={prompt_for(filter_name)} 0/0 > "]
 
@@ -750,13 +841,225 @@ def open_items(pane, chosen):
     return 0
 
 
+# ---- C-r: the query history, in a popup "on top of" eXtract's ------------------------------------------------
+# A popup cannot open another popup (tmux just changes the one it is in), so C-r puts a lookalike of eXtract in its
+# place, in floating panes (tmux 3.7+): its rounded, titled frame, and in it the same fzf with the same list,
+# query and cursor, given no keys. eXtract's popup closes, and from `run-shell -b` (outside any popup) the history
+# opens as a popup with its prompt on eXtract's prompt line. Then eXtract opens again as a popup on the query picked
+# (showing a copy of the lookalike until its fzf draws), and the lookalike goes. Older tmux: no lookalike.
+
+TITLE = " OPTMUX eXtract "  # as the shortcuts open it (optmux-defaults.yaml): display-popup -b rounded -T ...
+HISTORY_ROWS = 12  # most rows the history popup takes
+HISTORY_STYLE = "bg=colour237"  # the history popup's own look, so it reads as something on top, not eXtract
+HISTORY_FZF_COLORS = "bg:237,bg+:239"
+
+
+def has_floating_panes(version):
+    """tmux 3.7+ (`new-pane`), going by the server's version (`3.8`, `3.7a`, `next-3.8`)."""
+    m = re.search(r"(\d+)\.(\d+)", version)
+    return bool(m) and (int(m[1]), int(m[2])) >= (3, 7)
+
+
+def show_format(fmt, *target):
+    return tmux("display-message", "-p", *target, fmt, capture_output=True, text=True).stdout.strip()
+
+
+def popup_box(client_width, client_height, cols, rows):
+    """(left, top, width, height) of the popup this runs in, border included, on the client: tmux centers a popup
+    by its last row and column, (size - 1) / 2 + extent / 2 (measured: rows 25-103 of 132 for -h 60%)."""
+    width, height = cols + 2, rows + 2
+    return (max(0, (client_width - 1) // 2 + width // 2 - width), max(0, (client_height - 1) // 2 + height // 2 - height),
+            width, height)
+
+
+def status_rows(status, position, side):
+    """Rows the status line takes on `side` ("top" or "bottom") of the client: `status` is on, off or a number
+    of lines, `position` top or bottom."""
+    lines = 0 if status == "off" else int(status) if status.isdigit() else 1
+    return lines if position == side else 0
+
+
+def frame(width, height, title=TITLE):
+    """The popup's border, as text: ╭─ OPTMUX eXtract ──╮, │ │ down the sides, ╰──╯."""
+    inner = width - 2
+    top = ("─" + title + "─" * inner)[:inner]
+    return "\x1b[?25l" + "\n".join(["╭" + top + "╮", *(["│" + " " * inner + "│"] * (height - 2)), "╰" + "─" * inner + "╯"])
+
+
+def self_argv(*args):
+    return [sys.executable, os.path.abspath(__file__), *args]
+
+
+def shell(script, *args):
+    """A popup or pane command: `sh -c script`, so the user's own shell (fish ...) never reads it."""
+    return shlex.join(["sh", "-c", script, "sh", *args])
+
+
+def lookalike_argv(config, query, pos, matching):
+    """The fzf command line of eXtract as it is right now: the one it started with, the query typed since, the cursor
+    where it is (`pos`, 1-based) and the prompt's count, so the lookalike never shows an older screen."""
+    argv = [a for a in config["argv"] if not a.startswith(("--query=", "--bind=load:pos(", "--prompt="))]
+    return [*argv, f"--query={query}", *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
+            counted_prompt(config["view"], matching)]
+
+
+def prepare_history(d, query, pos, matching):
+    """C-r, while eXtract is still on screen (fzf runs this and waits): the lookalike behind the popup (tmux 3.7+),
+    drawn before the popup goes, so there is nothing to see in between. `d` holds what eXtract left for it."""
+    with open(os.path.join(d, "config.json")) as f:
+        config = json.load(f)
+    with open(os.path.join(d, "query"), "w") as f:  # (what the history popup starts with: nothing, so every query is listed)
+        f.write("")
+    # (one question, not five)
+    client, cw, ch, version, status, position = show_format(
+        "#{client_tty}\t#{client_width}\t#{client_height}\t#{version}\t#{status}\t#{status-position}").split("\t")
+    box = popup_box(int(cw), int(ch), config["cols"], config["rows"])
+    state = dict(pane=config["pane"], client=client, box=box, shown=config["shown"], query=query, item=None, panes=[],
+                 status_below=status_rows(status, position, "bottom"))
+    if has_floating_panes(version):
+        left, top, width, height = box
+        y = top - status_rows(status, position, "top")
+        with open(os.path.join(d, "frame"), "w") as f:
+            f.write(frame(width, height))
+        new = ["new-pane", "-d", "-B", "none", "-t", config["pane"], "-P", "-F", "#{pane_id}"]
+        fzf = shlex.join(["env", f"OPTMUX_EXTRACT_PROMPT={prompt_for(config['view'])}",
+                          *lookalike_argv(config, query, pos, matching)])
+        state["panes"] = [  # (the frame, and inside it the same fzf with the same list: no key reaches it)
+            tmux(*new, "-x", str(width), "-y", str(height), "-X", str(left), "-Y", str(y),
+                 shell('cat "$1"; exec sleep 600', os.path.join(d, "frame")), capture_output=True, text=True).stdout.strip(),
+            tmux(*new, "-x", str(width - 2), "-y", str(height - 2), "-X", str(left + 1), "-Y", str(y + 1),
+                 f"{fzf} < {shlex.quote(os.path.join(d, 'items'))} > /dev/null; exec sleep 600",
+                 capture_output=True, text=True).stdout.strip(),
+        ]
+        for _ in range(30):  # (a moment: it is only fzf)
+            if prompt_for(config["view"]) in tmux("capture-pane", "-p", "-t", state["panes"][1],
+                                                  capture_output=True, text=True).stdout:
+                break
+            time.sleep(0.01)
+    with open(os.path.join(d, "state.json"), "w") as f:
+        json.dump(state, f)
+
+
+def prepare_history_from_fzf(d):
+    """`--prepare-history D`, run by fzf on C-r with its query, cursor position and match count in the environment."""
+    num = lambda name: int(os.environ.get(name) or 0)
+    prepare_history(d, os.environ.get("FZF_QUERY", ""), num("FZF_POS"), num("FZF_MATCH_COUNT"))
+
+
+def start_history(d, query, item, where):
+    """C-r, after fzf has left: the history step, detached, to open as soon as this popup is gone. (The lookalike was
+    made while fzf was still up; if that did not happen, it is made now, with `where()`: (cursor position, matches).)"""
+    if not os.path.exists(os.path.join(d, "state.json")):
+        prepare_history(d, query, *where())
+    state = load_state(d)
+    state["item"] = item
+    with open(os.path.join(d, "state.json"), "w") as f:
+        json.dump(state, f)
+    open(os.path.join(d, "handoff"), "w").close()  # (the history step cleans up the directory, not this process)
+    subprocess.Popen(self_argv("--history", d), start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return 0
+
+
+def load_state(d):
+    with open(os.path.join(d, "state.json")) as f:
+        return json.load(f)
+
+
+def show_history(d):
+    """Detached from eXtract's popup: the history popup, then eXtract again (whatever goes wrong in between)."""
+    state = load_state(d)
+    try:
+        return show_history_popup(d, state)
+    except Exception:
+        for pane in filter(None, state["panes"]):
+            tmux("kill-pane", "-t", pane, capture_output=True)
+        subprocess.run(["tmux", "display-popup", "-c", state["client"], "-E", "-w", str(state["box"][2]),
+                        "-h", str(state["box"][3]), "-b", "rounded", "-T", TITLE,
+                        shell('exec "$1" "$2" --resume "$3"', *self_argv()[:2], d)])
+
+
+def show_history_popup(d, state):
+    """The history popup itself, then the new eXtract popup."""
+    left, top, width, height = state["box"]
+    def at(name):
+        return os.path.join(d, name)
+    rows = history_rows(load_query_log(), extra=[q for name in ("spans", "lines") for q, _ in load_history(name)])
+    with open(at("history"), "w") as f:
+        f.write("\n".join(rows) + "\n" if rows else "")
+    prompt_row = top + height - 2  # eXtract's prompt: the last row inside its border
+    lines = max(8, min(HISTORY_ROWS, len(rows) + 2))  # (room for a few more, even while the list is short)
+    client_height = int(show_format("#{client_height}", "-c", state["client"]))
+    below = client_height - state["status_below"] - prompt_row  # (rows from the prompt down to the status line)
+    layout, first = ("reverse", prompt_row) if below >= lines else ("default", prompt_row - lines + 1)
+    with open(at("paint"), "w") as f:  # (the look and the prompt, put up before fzf is, so the popup never shows empty)
+        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1Hhistory > ")
+    script = (f'cat "$1/paint"; : > "$1/started"; fzf --ansi --layout="$2" --no-info --delimiter="\t" --nth=1 --tiebreak=index '
+              f'--prompt="history > " --color="{HISTORY_FZF_COLORS}" --print-query --no-scrollbar --query="$(cat "$1/query")" '
+              f'< "$1/history" > "$1/out"; echo $? > "$1/status"')
+    # display-popup's -y is the row under the popup (as for menus). While eXtract's popup is still closing, tmux
+    # ignores this one (and we never started): so try again a moment later
+    for _ in range(100):
+        subprocess.run(["tmux", "display-popup", "-c", state["client"], "-B", "-s", HISTORY_STYLE, "-x", str(left + 1),
+                        "-y", str(first + lines), "-w", str(width - 2), "-h", str(lines), "-E",
+                        shell(script, d, layout)])
+        if os.path.exists(at("started")):
+            break
+        time.sleep(0.03)
+    try:
+        with open(at("status")) as f:
+            accepted = f.read().strip() in ("0", "1")  # (1: Enter on a typed query nothing in the history matches)
+        with open(at("out")) as f:
+            typed, *picked = f.read().split("\n")[:-1] or [""]
+        chosen = (picked[0].split("\t", 1)[0] if picked else typed) if accepted else ""
+    except OSError:
+        chosen = ""
+    if not chosen:
+        chosen = state["query"]  # (left with Esc, or never opened: eXtract as it was)
+    with open(at("chosen"), "w") as f:
+        f.write(chosen)
+    if all(state["panes"]) and state["panes"]:  # the copy eXtract shows until its fzf draws, and the lookalike goes once it's up
+        with open(at("snapshot"), "w") as f:
+            f.write("\x1b[?25l" + tmux("capture-pane", "-e", "-p", "-t", state["panes"][1],
+                                       capture_output=True, text=True).stdout.rstrip("\n"))
+        kill = "; ".join(shlex.join(["tmux", "kill-pane", "-t", p]) for p in state["panes"])
+        tmux("run-shell", "-b", f"sleep 0.15; {kill}".replace("#", "##"))
+    subprocess.run(["tmux", "display-popup", "-c", state["client"], "-E", "-w", str(width), "-h", str(height),
+                    "-b", "rounded", "-T", TITLE,
+                    shell('cat "$1/snapshot" 2>/dev/null; exec "$2" "$3" --resume "$1"', d, *self_argv()[:2])])
+
+
+def resume(d):
+    """eXtract again, after the history: on the query picked (or as it was), in the same view, the cursor on the
+    same item when the query is the same."""
+    state = load_state(d)
+    try:
+        with open(os.path.join(d, "chosen")) as f:
+            chosen = f.read()
+    except OSError:
+        chosen = state["query"]
+    shutil.rmtree(d, ignore_errors=True)
+    # (the query stays even if nothing matches it now, like the one eXtract opens on: C-u clears it)
+    return pick(state["pane"], resume=dict(mode=state["shown"], query=chosen,
+                                           item=state["item"] if chosen == state["query"] else None))
+
+
 def parse_fzf_output(stdout):
     """(query, key, texts) from `fzf --print-query --expect=...`; texts in screen order, not pick order."""
     query, key, *picked = stdout.split("\n")[:-1] or ["", "esc"]
     return query, key, [t for _, t in sorted((int(i), t) for i, t, _ in (c.split("\t", 2) for c in picked))]
 
 
-def pick(pane):
+def pick(pane, resume=None):
+    d = tempfile.mkdtemp(prefix="optmux-extract-")  # (what C-r needs from this run; gone with it, unless handed over)
+    try:
+        return run_pick(pane, resume, d)
+    finally:
+        if not os.path.exists(os.path.join(d, "handoff")):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def run_pick(pane, resume, d):
     history = os.environ.get("OPTMUX_EXTRACT_HISTORY", "1000")
     capture = tmux(
         "capture-pane", "-p", "-e", "-J", "-S", f"-{history}", "-t", pane,
@@ -773,7 +1076,10 @@ def pick(pane):
     earlier = load_history(history_name(mode))
     fresh = not earlier or is_stale(history_name(mode))  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
     query, remembered = ("", None) if fresh else earlier[0]
-    back, recalled = (-1 if fresh else 0), False  # (the query it opens on stays even if it matches nothing: C-u clears it)
+    back, recalled = (-1 if fresh else 0), False
+    if resume:  # (back from C-r's history: the view it was in, the query picked, and the item when it is the same query)
+        # (the query stays even if nothing matches it now, like the one eXtract opens on: C-u clears it)
+        mode, query, remembered, back = resume["mode"], resume["query"], resume["item"], -1
     while True:
         # fall through to the next filter when the remembered one has nothing here, without forgetting it
         # (a kind with nothing here shows all spans, and the prompt says so)
@@ -790,24 +1096,35 @@ def pick(pane):
         # natural order with the most recent choices under the cursor (and ahead among equal matches)
         numbered = list(reversed(list(enumerate(items))))
         # (after a filter switch the text just typed comes along; the cursor goes back only for M-p)
-        query, pos = cursor_position(numbered, query, shown, remembered, recalled)
+        query, pos, matching = cursor_position_and_count(numbered, query, shown, remembered, recalled)
         recalled = False
-        proc = subprocess.run(
-            [
+        header = labels(shown, copier, paths)[0]
+        marker = os.path.join(d, "ctrl-r")
+        fzf_argv = [
                 "fzf", "--ansi", "--multi", "--tiebreak=index", *(["--no-sort"] if shown == "lines" else []),
                 "--no-info", f"--bind={PROMPT_COUNTS}", "--delimiter=\t", "--with-nth=3", "--print-query", f"--query={query}",
                 *([f"--bind=load:pos({pos})+unbind(load)"] if pos else []),
                 f"--expect=ctrl-alt-x,alt-x,ctrl-t,ctrl-y,ctrl-e,ctrl-o,alt-r,ctrl-c,esc,alt-p,alt-n,{','.join(FIND_KEYS)},{','.join(KIND_KEYS)}",
-                *labels(shown, copier, paths),
-            ],
-            input="\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered), stdout=subprocess.PIPE, text=True,
-            env={**os.environ, "OPTMUX_EXTRACT_PROMPT": prompt_for(shown)},
-        )
+                header, counted_prompt(shown, matching),
+                f"--bind=ctrl-r:execute-silent({shlex.join(self_argv('--prepare-history', d))}; touch {shlex.quote(marker)})+accept",
+            ]
+        items_text = "\n".join(f"{i}\t{t}\t{d}" for i, (t, d) in numbered)
+        if os.path.exists(marker):
+            os.unlink(marker)
+        with open(os.path.join(d, "items"), "w") as f:  # (what C-r's lookalike lists, written now: fzf runs it on the key)
+            f.write(items_text)
+        with open(os.path.join(d, "config.json"), "w") as f:
+            json.dump(dict(pane=pane, shown=shown, view=shown, argv=fzf_argv, cols=shutil.get_terminal_size().columns,
+                           rows=shutil.get_terminal_size().lines), f)
+        env = {**os.environ, "OPTMUX_EXTRACT_PROMPT": prompt_for(shown)}
+        proc = subprocess.run(fzf_argv, input=items_text, stdout=subprocess.PIPE, text=True, env=env)
         if proc.returncode not in (0, 1, 130):
             input(f"[optmux-extract] fzf exited with status {proc.returncode}. Press Return/Enter to dismiss...")
         if proc.returncode not in (0, 1):
             return proc.returncode
         query, key, chosen = parse_fzf_output(proc.stdout)
+        if os.path.exists(marker):  # (C-r is a binding, not a key fzf reports: it left a mark)
+            key = "ctrl-r"
         if key in ("alt-p", "alt-n"):  # older and newer queries of this filter, each with the item the cursor was on
             earlier = load_history(history_name(shown))
             was = back
@@ -819,6 +1136,11 @@ def pick(pane):
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
         if key not in ("ctrl-t", "alt-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
             save_state(history_name(shown), query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
+        if key not in ("ctrl-t", "alt-r"):
+            log_query(query)  # (what C-r recalls: anything you left a query as, picked from or not)
+        if key == "ctrl-r":  # the history: this popup closes, and it opens (see start_history)
+            item = chosen[-1] if chosen else remembered
+            return start_history(d, query, item, lambda: cursor_position_and_count(numbered, query, shown, item)[1:])
         if key in FIND_KEYS:
             text = find_query(chosen, query)
             if not text:
@@ -857,6 +1179,10 @@ def pick(pane):
 
 
 if __name__ == "__main__":
+    # the steps of C-r's history run as this script too (see start_history); each takes the directory it keeps its state in
+    steps = {"--history": show_history, "--resume": resume, "--prepare-history": prepare_history_from_fzf}
+    if len(sys.argv) > 2 and sys.argv[1] in steps:
+        sys.exit(steps[sys.argv[1]](*sys.argv[2:]) or 0)
     if len(sys.argv) > 2:
         sys.exit(__doc__)
     # a popup's shell command is not format-expanded, but its TMUX env still points at the right session
