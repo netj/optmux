@@ -315,3 +315,39 @@ def test_macos_own_ctags_is_flagged_but_exuberant_is_fine(tmp_path):
     bin_dir = stub_tools(tmp_path / "ok", ctags="echo Exuberant Ctags 5.8")
     out = run_tips(tmp_path / "ok", TERM="xterm-256color", PATH=f"{bin_dir}:/usr/bin:/bin")
     assert "✓ ctags" in out
+
+
+@skip_no_tmux
+def test_popup_less_ignores_user_less_config(tmp_path):
+    """--mouse toggles: on top of LESS's own it would turn the mouse off, so the popup's less gets none of the user's config."""
+    import time
+    stubs = tmp_path / "stubs"
+    stub_tools(tmp_path)
+    (stubs / "less").write_text(
+        '#!/bin/sh\n'
+        f'case "$1" in --version) echo "less 710 (PCRE2)"; exit 0;; esac\n'
+        f'{{ echo "LESS=[$LESS]"; echo "LESSOPEN=[$LESSOPEN]"; echo "LESSKEYIN=[$LESSKEYIN]"; '
+        f'echo "LESSHISTFILE=[$LESSHISTFILE]"; echo "ARGS=[$*]"; }} > {tmp_path}/less-seen\n'
+        'cat >/dev/null\n'
+    )
+    sock = f"optmux-tips-lessenv-test-{os.getpid()}"
+    tmux = ["tmux", "-L", sock, "-f", "/dev/null"]
+    try:
+        subprocess.run(
+            [*tmux, "new-session", "-d", "-x", "100", "-y", "10",
+             f"PATH={stubs}:$PATH LESS='-R --mouse' LESSOPEN='|x %s' OPTMUX_DIR={tmp_path} TERM=screen-256color "
+             f"bash {TIPS_SH} --force --popup; sleep 30"],
+            check=True,
+        )
+        for _ in range(100):
+            if (tmp_path / "less-seen").exists():
+                break
+            time.sleep(0.1)
+        seen = (tmp_path / "less-seen").read_text()
+    finally:
+        subprocess.run([*tmux, "kill-server"], capture_output=True)
+    assert "LESS=[]" in seen
+    assert "LESSOPEN=[]" in seen
+    assert "LESSKEYIN=[/dev/null]" in seen
+    assert "LESSHISTFILE=[-]" in seen
+    assert seen.count("--mouse") == 1
