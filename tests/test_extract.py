@@ -667,7 +667,7 @@ def test_the_history_rows_say_when_and_how_often_without_repeating_a_query():
     day = 86400
     log = {"bash": [100 * day, 99 * day, 98 * day], "once": [95 * day]}
     rows = pt.history_rows(log, now=100 * day + 3 * 3600, extra=["once", "from-before", "from-before", " "])
-    assert [r.split("\t")[0] for r in rows] == ["bash", "once", "from-before"]  # (newest first; each query once)
+    assert [r.split("\t")[1] for r in rows] == ["bash", "once", "from-before"]  # (newest first; each query once)
     assert "3h" in rows[0] and "×3" in rows[0] and "5d" in rows[1] and "×" not in rows[1]
     assert pt.ago(0) == "now" and pt.ago(59) == "now" and pt.ago(120) == "2m" and pt.ago(86400 * 15) == "2w"
 
@@ -728,7 +728,7 @@ def test_query_log_drops_entries_without_usable_times(tmp_path):
     path = tmp_path / "q.json"
     path.write_text('{"a": [], "b": ["x"], "c": [1e999], "d": [5]}')
     assert pt.load_query_log(str(path)) == {"d": [5.0]}
-    assert pt.history_rows(pt.load_query_log(str(path)), now=10)[0].startswith("d\t")
+    assert pt.history_rows(pt.load_query_log(str(path)), now=10)[0].endswith("\td")
 
 
 def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
@@ -740,4 +740,4 @@ def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
 
 
 def test_history_rows_extra_queries_lose_control_characters():
-    assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == ["a b [0m"]
+    assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == [" " * pt.HISTORY_META_WIDTH + "\ta b [0m"]
