@@ -95,7 +95,7 @@ def test_view_keys_cycle_and_the_active_one_highlighted():
 def test_prompts_and_labels(monkeypatch):
     import os
     assert pt.prompt_for("lines") == "lines" and pt.prompt_for("spans") == "spans"
-    assert pt.prompt_for("refs") == "spans[refs] (URLs, hashes, PRs, versions)"
+    assert pt.prompt_for("refs") == "spans[refs] (URLs, IPs, hashes, PRs, versions)"
     for width in (120, 60):
         monkeypatch.setattr(pt.shutil, "get_terminal_size", lambda w=width: os.terminal_size((w, 30)))
         header, prompt = pt.labels("paths", "osc52")
@@ -754,3 +754,98 @@ def test_corrupt_query_log_is_kept_aside_not_replaced(tmp_path):
 
 def test_history_rows_extra_queries_lose_control_characters():
     assert pt.history_rows({}, extra=["a\tb\x1b[0m"]) == [" " * pt.HISTORY_META_WIDTH + "\ta b [0m"]
+
+
+def test_quote_inside_a_larger_styled_run_is_still_a_quote():
+    capture = "\x1b[41mcall `query \\t` last used\x1b[0m done\n"
+    assert "query \\t" in [t for t, _ in pt.choices(capture, "quotes")]
+
+
+def test_a_quote_around_a_path_or_version_is_listed_besides_the_thing_inside():
+    line = 'run `uv run optmux ./ex.yaml` and "see optmux/cli.py" or "v1.2.3" or \'a.py\''
+    assert [(label, text) for _, label, text in pt.find_patterns(line)] == [
+        ("quote", "uv run optmux ./ex.yaml"), ("path", "./ex.yaml"), ("quote", "see optmux/cli.py"), ("path", "optmux/cli.py"),
+        ("ver", "v1.2.3"), ("file", "a.py"),
+    ]
+
+
+def test_multiline_quote_inside_a_larger_styled_run_is_still_listed():
+    capture = '\x1b[41mnote "first half\nsecond half" end\x1b[0m\n'
+    assert "first half second half" in [t for t, _ in pt.choices(capture, "quotes")]
+
+
+def test_dotfiles_dot_directories_and_addresses_are_found_and_an_ip_is_not_a_version():
+    assert [(k, t) for _, k, t in pt.find_patterns("ls .env .claude/ src/ ./.env")] == [
+        ("file", ".env"), ("path", ".claude/"), ("path", "src/"), ("path", "./.env")]
+    assert [(k, t) for _, k, t in pt.find_patterns("on 192.168.1.100 or 10.0.0.1:8080, localhost:3000, v1.2.3")] == [
+        ("addr", "192.168.1.100"), ("addr", "10.0.0.1:8080"), ("addr", "localhost:3000"), ("ver", "v1.2.3")]
+    assert pt.open_command("10.0.0.1:8080", "/", "darwin") == (["open", "http://10.0.0.1:8080"], None)
+
+
+def test_smart_quotes_and_apostrophes_inside_a_single_quoted_text():
+    line = "say \u201csmart quotes\u201d and \u2018it\u2019s\u2019 or 'don't stop', can't 'x y'"
+    assert [t for _, _, t in pt.find_patterns(line)] == ["smart quotes", "it\u2019s", "don't stop", "x y"]
+
+
+def test_well_known_extensions_and_somethingfile_names_are_files(monkeypatch, tmp_path):
+    import json
+
+    import yaml
+
+    defaults = yaml.safe_load((Path(__file__).parent.parent / "optmux/data/optmux-defaults.yaml").read_text())
+    (tmp_path / "find.json").write_text(json.dumps({"known_files": defaults["+optmux"]["+find"]["+known_files"]}))
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    line = "edit Makefile Dockerfile.dev Gemfile.lock:3 a.7z app.xcodeproj log.properties but not Profile or Makefiles or BUILD"
+    assert [t for _, _, t in pt.find_patterns(line)] == [
+        "Makefile", "Dockerfile.dev", "Gemfile.lock:3", "a.7z", "app.xcodeproj", "log.properties"]
+
+
+def test_known_files_are_configurable_in_find_json(monkeypatch, tmp_path):
+    import json
+
+    (tmp_path / "find.json").write_text(json.dumps({"known_files": {"mine": ["*.mytool", "Toolfile", "not a name!"], "none": []}}))
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path))
+    assert [t for _, _, t in pt.find_patterns("a.mytool Toolfile.x Makefile a.7z")] == ["a.mytool", "Toolfile.x"]
+    (tmp_path / "other").mkdir()
+    monkeypatch.setenv("OPTMUX_DIR", str(tmp_path / "other"))  # (no find.json: the plain rule only)
+    assert [t for _, _, t in pt.find_patterns("a.mytool Toolfile Makefile a.7z")] == ["a.mytool"]
+
+
+def test_a_path_or_quote_the_program_colored_is_in_its_bucket_and_listed_once_in_spans():
+    cap = "- \x1b[33mmain.go\x1b[0m \x1b[31m./c.py\x1b[0m \x1b[1m#12\x1b[0m \x1b[32m\"msg\"\x1b[0m\n"
+    assert [t for t, _ in pt.choices(cap, "paths")] == ["main.go", "./c.py"]
+    assert [t for t, _ in pt.choices(cap, "refs")] == ["#12"]
+    assert [t for t, _ in pt.choices(cap, "quotes")] == ["msg"]
+    assert [t for t, _ in pt.choices(cap, "spans")] == ["main.go", "./c.py", "#12", '"msg"']
+
+
+def test_a_path_is_found_across_its_coloring():
+    cap = "\x1b[34mdocs/\x1b[0m\x1b[1;33musage.md\x1b[0m:12 and \x1b[31m.claude\x1b[0m/\x1b[32mtmp\x1b[0m/x.md\n"
+    assert [t for t, _ in pt.choices(cap, "paths")] == ["docs/usage.md:12", ".claude/tmp/x.md"]
+
+
+def test_a_pattern_the_program_also_styled_keeps_its_icon_and_the_programs_colors():
+    cap = "\x1b[31m./c.py\x1b[0m and ./d.py \x1b[32mgit commit\x1b[0m\n"
+    shown = dict(pt.choices(cap, "spans"))
+    icon = pt.PATTERN_ICONS[pt.icon_style()]["path"]
+    assert icon in shown["./c.py"] and "\x1b[0;31m" in shown["./c.py"] and icon in shown["./d.py"]
+    assert "\x1b[0;31m" not in shown["./d.py"] and pt.PATTERN_ICONS[pt.icon_style()]["spans"] in shown["git commit"]
+    assert "\x1b[0;31m" in dict(pt.choices(cap, "paths"))["./c.py"]
+
+
+def test_confirmation_is_by_position_not_by_text():
+    # the same text plain on one line and colored on another: the later one is listed, so make it the plain one
+    shown = dict(pt.choices("\x1b[31m./c.py\x1b[0m\nthen ./c.py\n", "paths"))
+    assert "\x1b[0;31m" not in shown["./c.py"]
+    shown = dict(pt.choices("then ./c.py\n\x1b[31m./c.py\x1b[0m\n", "paths"))
+    assert "\x1b[0;31m" in shown["./c.py"]
+    assert [t for t, _ in pt.choices("'foo' \x1b[32m'foo'\x1b[0m\n", "spans")] == ["foo", "'foo'"]  # (the plain one is its own pick)
+    assert [t for t, _ in pt.choices("'foo' \x1b[32mbar\x1b[0m 'foo'\n", "quotes")] == ["foo"]
+
+
+def test_noisy_candidates_are_not_listed():
+    texts = lambda s: [t for _, _, t in pt.find_patterns(s)]
+    assert texts("a/ b foo//bar") == []
+    assert texts("foo(x).bar $.each get().Name") == []
+    assert texts("300.1.1.1 999.1.1.1") == []
+    assert texts("10.0.0.1:80") == ["10.0.0.1:80"]

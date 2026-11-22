@@ -25,6 +25,7 @@ and `C-M-f` searches everything (optmux Find, started in this same popup with th
 """
 
 import base64
+import functools
 import json
 import math
 import os
@@ -139,14 +140,14 @@ def parse_line(raw):
 
 FILTERS = ["lines", "spans"]
 # Meta+digit picks the view, C-M-x steps through them (VIEW_ORDER), M-x back. M-1 spans and M-0 lines are the two FILTERS; the rest narrow the spans to a bucket of
-# pattern kinds (the labels of PATTERNS, plus "styled" for the program's own runs). To add a pattern, put its kind in
+# pattern kinds (the labels of PATTERN_SOURCES, plus "styled" for the program's own runs). To add a pattern, put its kind in
 # a bucket (or leave it out: "others" takes whatever no bucket claims). Digits left free are for more buckets later.
 KINDS = {  # bucket: (what the prompt calls it, the pattern kinds in it); None: everything not in another bucket
     "styled": ("colored, bold, stylized text", {"styled"}),
     "quotes": ("quoted text", {"quote"}),
     "others": ("anything else", None),
     "paths": ("paths, file names", {"path", "file"}),
-    "refs": ("URLs, hashes, PRs, versions", {"url", "hash", "pr", "ver"}),  # what C-o opens
+    "refs": ("URLs, IPs, hashes, PRs, versions", {"url", "addr", "hash", "pr", "ver"}),  # what C-o opens
 }
 VIEW_KEYS = {"1": "spans", "2": "styled", "3": "quotes", "6": "others", "8": "paths", "9": "refs", "0": "lines"}
 KIND_KEYS = {f"alt-{d}": view for d, view in VIEW_KEYS.items()}
@@ -160,19 +161,52 @@ PATH_OPTION = "@optmux-extract-paths"
 # Well-known things worth copying. An earlier pattern claims its text first, so a path inside a URL
 # is not listed again, and nothing overlaps within a line.
 PATH_CHARS = r"[\w.@%+=,~-]"
-PATTERNS = [
+# (the `file` ones take what `+find: +known_files` adds: see compile_patterns)
+PATTERN_SOURCES = [
     ("url", r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"'`]+"),
     ("path", rf"(?<![\w/.~-])(?:~|\.{{1,2}})?/{PATH_CHARS}+(?:/{PATH_CHARS}+)*/?(?::\d+){{0,2}}"),  # /abs ~/home ./rel ../up
-    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:/{PATH_CHARS}+)+/?(?::\d+){{0,2}}"),  # dir/with/slash
+    ("path", rf"(?<![\w/.~-]){PATH_CHARS}+(?:(?:/{PATH_CHARS}+)+/?|/(?![\w/.])(?<=[^/\s][^/\s]/))(?::\d+){{0,2}}"),  # dir/with/slash, .claude/
     ("hash", r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"),  # git hashes: hex with digits and letters
     ("pr", r"(?<![\w&/#])#\d+\b"),  # PR/issue numbers: #234
-    ("ver", r"\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not 192.168.1.100)
-    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,7}(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
-    # quoted text: 'x' "x" `x` and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
-    # recognizable inside (a path, a file) is listed as itself, and an apostrophe (don't) doesn't open one.
-    ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)([^'\n]+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\")(?!\w)"),
+    ("addr", r"(?<![\w.:/-])(?:(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?::\d{1,5})?|localhost:\d{1,5})(?![\w-]|\.\d)"),  # 192.168.1.100[:8080], localhost:3000
+    ("ver", r"(?<![\w.])v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?!\.?\d)"),  # semver (not the tail of 192.168.1.100)
+    ("file", r"(?<![\w/.~-])[\w-]+(?:\.[\w-]+)*\.@EXT@(?:\.\d+)*\b(?::\d+){0,2}"),  # name.ext[:line[:col]], lib.so.6
+    ("file", r"(?<![\w/.~-])@NAMES@(?:\.[\w-]+)*\b(?::\d+){0,2}"),  # Makefile, Dockerfile.dev
+    ("file", r"(?<![\w/.~)\]}$*-])\.[A-Za-z][\w-]*(?:\.[\w-]+)*\b(?::\d+){0,2}"),  # dotfiles: .env, .gitignore
+    # quoted text: 'x' "x" `x` “x” ‘x’ and GNU's `x' (help and man pages); the quotes are dropped. Last, so what is
+    # recognizable inside (a path, a file) is listed as itself. An apostrophe (don't) doesn't open a quote, and inside
+    # one it only counts between letters ('don't stop'); \' and '' escapes are not understood.
+    ("quote", r"(?<!\w)(?:`(?=\S)([^`\n]+?)(?<=\S)[`']|'(?=\S)((?:[^'\n]|(?<=\w)'(?=\w))+?)(?<=\S)'|\"(?=\S)([^\"\n]+?)(?<=\S)\""
+     r"|“(?=\S)([^”\n]+?)(?<=\S)”|‘(?=\S)((?:[^’\n]|(?<=\w)’(?=\w))+?)(?<=\S)’)(?!\w)"),
 ]
-PATTERNS = [(label, re.compile(rx)) for label, rx in PATTERNS]
+
+
+def compile_patterns(extensions, names):
+    """[(label, compiled)] for PATTERN_SOURCES. `extensions` are what a plain `[A-Za-z][A-Za-z0-9]{0,7}` misses (they start
+    with a digit or run long), `names` the well-known files that have no extension (Makefile, Dockerfile.dev)."""
+    alternatives = lambda words: "|".join(sorted(map(re.escape, dict.fromkeys(words)), key=len, reverse=True))
+    ext = "(?:" + "".join(f"{a}|" for a in [alternatives(extensions)] if a) + "[A-Za-z][A-Za-z0-9]{0,7})"
+    out = []
+    for label, rx in PATTERN_SOURCES:
+        if "@NAMES@" in rx and not names:
+            continue
+        out.append((label, re.compile(rx.replace("@EXT@", ext).replace("@NAMES@", "(?:" + alternatives(names) + ")"))))
+    return out
+
+
+@functools.lru_cache(maxsize=None)
+def patterns_for(optmux_dir):
+    """The compiled patterns with the `+find: +known_files` of $OPTMUX_DIR/find.json: groups of entries, `*.ext` an extension
+    and anything else a file name."""
+    if not optmux_dir:  # (not in an optmux session: no file to look for in whatever the current directory is)
+        return compile_patterns((), ())
+    try:
+        groups = json.loads(open(os.path.join(optmux_dir, "find.json")).read()).get("known_files")
+    except (OSError, ValueError, AttributeError):
+        groups = None
+    entries = [e for group in (groups.values() if isinstance(groups, dict) else []) for e in (group if isinstance(group, list) else [])
+               if isinstance(e, str) and re.fullmatch(r"\*?\.?[\w.-]+", e)]
+    return compile_patterns(tuple(e[2:] for e in entries if e.startswith("*.")), tuple(e for e in entries if not e.startswith("*.")))
 TRAILING_PUNCTUATION = ".,;:!?'\")]}>"
 CLOSERS = {")": "(", "]": "[", "}": "{"}
 
@@ -189,11 +223,11 @@ def trim_url(text):
 # How each item is drawn, by `icons` (the same setting as optmux Find, whose glyphs these follow): a pattern by
 # its kind, any other by the filter it is listed by (the same icon on every row, so switching filters keeps the columns).
 PATTERN_ICONS = {
-    "emoji": {"url": "🔗", "path": "📁", "file": "📄", "quote": "💬", "hash": "#️⃣", "pr": "🔀", "ver": "🏷️", "lines": "📃", "spans": "🎨"},
-    "nerd": {"url": "\uf0c1", "path": "\uf07b", "file": "\uf016", "quote": "\uf10d", "hash": "\ue729", "pr": "\ue726", "ver": "\uf02b",
+    "emoji": {"url": "🔗", "addr": "🌐", "path": "📁", "file": "📄", "quote": "💬", "hash": "#️⃣", "pr": "🔀", "ver": "🏷️", "lines": "📃", "spans": "🎨"},
+    "nerd": {"url": "\uf0c1", "addr": "\uf0ac", "path": "\uf07b", "file": "\uf016", "quote": "\uf10d", "hash": "\ue729", "pr": "\ue726", "ver": "\uf02b",
              "lines": "\uf0c9", "spans": "\uf1fc"},
-    "none": {kind: "" for kind in ("url", "path", "file", "quote", "hash", "pr", "ver", "lines", "spans")},
-    "text": {"url": "url ", "path": "path", "file": "file", "quote": "quot", "hash": "hash", "pr": "pr  ", "ver": "ver ", "lines": "line", "spans": "span"},
+    "none": {kind: "" for kind in ("url", "addr", "path", "file", "quote", "hash", "pr", "ver", "lines", "spans")},
+    "text": {"url": "url ", "addr": "addr", "path": "path", "file": "file", "quote": "quot", "hash": "hash", "pr": "pr  ", "ver": "ver ", "lines": "line", "spans": "span"},
 }
 
 
@@ -211,13 +245,18 @@ def icon_style():
 def find_patterns(plain):
     """[(start, label, text)] for the well-known patterns in a line, left to right, without overlaps."""
     taken, found = [], []
-    for label, rx in PATTERNS:
+    for label, rx in patterns_for(os.environ.get("OPTMUX_DIR", "")):
         for m in rx.finditer(plain):
             if label == "quote":
-                text, (s, e) = next(g for g in m.groups() if g is not None), m.span()
-            else:
-                text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
-                s, e = m.start(), m.start() + len(text)
+                i = next(i for i, g in enumerate(m.groups(), 1) if g is not None)
+                text, (s, e) = m.group(i), m.span()
+                # a quote around more than one thing (a command with a path in it) is listed too; one that is just a
+                # path, a file... is that, listed once
+                if text and (m.start(i), m.end(i)) not in taken:
+                    found.append((s, label, text))
+                continue
+            text = trim_url(m.group()) if label == "url" else m.group().rstrip(".,")
+            s, e = m.start(), m.start() + len(text)
             if text and not any(s < te and ts < e for ts, te in taken):
                 taken.append((s, e))
                 found.append((s, label, text))
@@ -243,7 +282,8 @@ def load_stoplist():
 
 # a quote that runs over several lines (a program wraps its own text with newlines): only " and `, which seldom
 # open without closing; no blank line inside, a closing quote has no space before it, so a stray one does not pair up
-MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`)(?!\w)")
+MULTILINE_QUOTE = re.compile(r"(?<!\w)(?:\"(?=\S)((?:[^\"\n]|\n(?!\s*\n)){1,800}?)(?<=\S)\"|`(?=\S)((?:[^`\n]|\n(?!\s*\n)){1,800}?)(?<=\S)`"
+                             r"|“(?=\S)((?:[^”\n]|\n(?!\s*\n)){1,800}?)(?<=\S)”)(?!\w)")
 
 
 def find_multiline_quotes(lines):
@@ -255,7 +295,7 @@ def find_multiline_quotes(lines):
         pos += len(line) + 1
     found = []
     for m in MULTILINE_QUOTE.finditer(text):
-        inner = m.group(1) if m.group(1) is not None else m.group(2)
+        inner = next(g for g in m.groups() if g is not None)
         if "\n" not in inner:
             continue  # (the one-line quotes are found line by line)
         first = max(i for i, st in enumerate(starts) if st <= m.start())
@@ -317,21 +357,38 @@ def choices(capture, mode, width=None):
     spans, covered = span_items(parsed, width)
     # (entries sort by line, column, then rank: a styled span follows the patterns inside it, so fzf shows the span first and a pattern is one skip away)
     entries = [(line, col, 1, 0, text, f"{mark}{style.sgr()}{text}\x1b[0m", "styled") for text, style, line, col in spans]
-    for line, ((plain, _), _) in enumerate(parsed):  # the patterns the program did not style itself
+    for line, ((plain, _), _) in enumerate(parsed):  # the patterns, found in the plain text: what the program colored makes no difference
         for start, label, text in find_patterns(plain):
-            # (a pattern inside a styled span is still listed, a path in a command; the span itself is not listed twice)
             end = start + len(text)
-            inside = [(s, e) for s, e in covered.get(line, []) if start < e and s < end]
-            if not inside if label == "quote" else (start, end) not in inside:  # (a styled quote is its span already)
-                entries.append((line, min([s for s, _ in inside], default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text, label))
+            inside = [s for s, e in covered.get(line, []) if start < e and s < end]  # (only to sort a pattern next to the span around it)
+            entries.append((line, min(inside, default=start), 0, start, text, (f"\x1b[2m{icons[label]}\x1b[0m " if icons[label] else "") + text, label))
     for line, col, text in find_multiline_quotes([plain for ((plain, _), _) in parsed]):
-        if not any(col < e and s < col + 1 for s, e in covered.get(line, [])):
-            entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text, "quote"))
+        entries.append((line, col, 0, 0, text, (f"\x1b[2m{icons['quote']}\x1b[0m " if icons["quote"] else "") + text, "quote"))
     stoplist = load_stoplist()
-    found = {}  # repeats stay once, at their latest position
-    for *_, text, display, kind in sorted(entries, key=lambda e: e[:4]):
+    marks = "`'\"\u201c\u201d\u2018\u2019"
+    styled_at = {(line, col): text for line, col, rank, _, text, _, kind in entries if kind == "styled"}
+    sgr = {(line, col): style.sgr() for _, style, line, col in spans}
+
+    def styled_here(line, start, text, kind):
+        """The position of the styled span that is this pattern (a quote: with its marks), else None."""
+        s = styled_at.get((line, start))
+        if s is not None and (s == text or kind == "quote" and len(s) == len(text) + 2 and s[0] in marks and s[-1] in marks and s[1:-1] == text):
+            return (line, start)
+
+    # a pattern the program also styled whole (at the same place) is the more certain pick: it keeps its kind's icon and takes the
+    # program's colors, and all spans list it as that, not as the bare span. A quote's styled span has its marks, so all spans keep
+    # that span and drop the quote.
+    confirmed = {(e[0], e[3]) for e in entries if e[6] not in ("styled", "quote") and styled_here(e[0], e[3], e[4], e[6])}
+    found = {}  # the same text found twice stays once, at its latest position (the styled span, which sorts after the patterns)
+    for line, col, rank, start, text, display, kind in sorted(entries, key=lambda e: e[:4]):
         if mode in KINDS and not in_bucket(mode, kind) or any(rx.fullmatch(text) for rx in stoplist):
             continue
+        if mode == "spans" and (kind == "styled" and (line, col) in confirmed
+                                or kind == "quote" and styled_at.get((line, start), text) != text and styled_here(line, start, text, kind)):
+            continue
+        if kind != "styled" and styled_here(line, start, text, kind):
+            icon = f"\x1b[2m{icons[kind]}\x1b[0m " if icons[kind] else ""
+            display = f"{icon}{sgr[(line, start)]}{text}\x1b[0m"
         found.pop(text, None)
         found[text] = display
     return list(found.items())
@@ -572,7 +629,7 @@ def view_bar(active, sep=",  ", cycle_hint="C-M-x/M-x to cycle:  "):
 
 
 def prompt_for(view):
-    """The prompt's fixed part: `spans[refs] (URLs, hashes, PRs, versions)`, or just `spans` or `lines`."""
+    """The prompt's fixed part: `spans[refs] (URLs, IPs, hashes, PRs, versions)`, or just `spans` or `lines`."""
     return f"spans[{view}] ({KINDS[view][0]})" if view in KINDS else view
 
 
@@ -651,10 +708,10 @@ def open_find(pane, source, query):
 
 
 def classify(pick):
-    """What a pick is as a whole: url, path, file, hash, pr, or other (anything that is not exactly one pattern)."""
+    """What a pick is as a whole: url, addr, path, file, hash, pr, or other (anything that is not exactly one pattern)."""
     pick = pick.strip()
     found = find_patterns(pick)
-    if len(found) == 1 and found[0][0] == 0 and found[0][2] == pick and found[0][1] in ("url", "path", "file", "hash", "pr"):
+    if len(found) == 1 and found[0][0] == 0 and found[0][2] == pick and found[0][1] in ("url", "addr", "path", "file", "hash", "pr"):
         return found[0][1]
     return "other"
 
@@ -801,13 +858,15 @@ def bare_domain(pick):
 
 
 def open_command(pick, cwd, system=None):
-    """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, a hash or PR/issue
+    """(argv, message) for opening a pick: a URL in the browser, a path revealed in the file manager, an IP address in the browser, a hash or PR/issue
     number on GitHub. argv is None when it cannot be opened, and the message says why."""
     system, pick = system or sys.platform, pick.strip()
     kind = classify(pick)
     opener = ["open"] if system == "darwin" else ["xdg-open"]
     if kind == "url":
         return opener + [pick], None
+    if kind == "addr":
+        return opener + [f"http://{pick}"], None
     if kind in ("path", "file"):
         full = resolve(split_position(pick)[0], cwd)
         if not os.path.exists(full):
