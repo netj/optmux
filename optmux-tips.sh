@@ -229,7 +229,8 @@ if [[ -t 0 && -t 1 ]] && ((${#lines[@]} + 5 > $(screen_rows))); then
         less_mouse=(); [[ "${less_version:-0}" -ge 551 ]] && less_mouse=(--mouse)
         # the prompt line doubles as the scroll hint (no ? : . % in it, which are less prompt syntax); q goes on to the dismiss prompt
         hint=' wheel / arrows / PgUp / PgDn scroll  -  / searches  -  q when done reading '
-        printf '%s\n' "${lines[@]}" | less -R "${less_mouse[@]}" -Ps"$hint" -Pm"$hint" -PM"$hint" || true
+        # a clean less: none of the user's LESS options, lesskey bindings, preprocessor, or history (--mouse would even toggle off)
+        printf '%s\n' "${lines[@]}" | env -u LESS -u LESSOPEN -u LESSCLOSE -u LESSKEY -u LESSKEYIN LESSKEYIN=/dev/null LESSHISTFILE=- less -R "${less_mouse[@]}" -Ps"$hint" -Pm"$hint" -PM"$hint" || true
         clear 2>/dev/null || true
         printf '\n%s\n%s\n\n' "$(rule)" "$footer"
     elif [[ "$popup" != true ]]; then
