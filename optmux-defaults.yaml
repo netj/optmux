@@ -124,15 +124,12 @@
     # File names and extensions eXtract lists as files beyond the usual `name.ext` (an extension that starts with a digit or
     # runs past 8 letters, a name without one). Groups of entries, with the same rules as ignore_files: set a group to
     # replace its list, `[]` to drop it, or add a group of your own. `*.ext` is an extension, anything else a file name
-    # (also matched with a suffix: Dockerfile.dev, Gemfile.lock). Only the ...file names are here: README or BUILD is too often just a word.
+    # (also matched with a suffix: Dockerfile.dev, Gemfile.lock). Of the names without an extension, only those ending in `file` are here: README or BUILD is too often just a word. Extensions that start with a letter and have up to 8 characters need no entry.
     +known_files:
       long_extensions:
       - "*.7z"
       - "*.3gp"
       - "*.3g2"
-      - "*.m4a"
-      - "*.m4v"
-      - "*.h5"
       - "*.properties"
       - "*.xcodeproj"
       - "*.xcworkspace"
@@ -145,8 +142,6 @@
       - "*.dockerignore"
       - "*.gitmodules"
       - "*.terraform"
-      - "*.tfstate"
-      - "*.tfvars"
       build_files:
       - Makefile
       - makefile

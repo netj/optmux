@@ -827,3 +827,21 @@ def test_a_pattern_the_program_also_styled_keeps_its_icon_and_the_programs_color
     assert icon in shown["./c.py"] and "\x1b[0;31m" in shown["./c.py"] and icon in shown["./d.py"]
     assert "\x1b[0;31m" not in shown["./d.py"] and pt.PATTERN_ICONS[pt.icon_style()]["spans"] in shown["git commit"]
     assert "\x1b[0;31m" in dict(pt.choices(cap, "paths"))["./c.py"]
+
+
+def test_confirmation_is_by_position_not_by_text():
+    # the same text plain on one line and colored on another: the later one is listed, so make it the plain one
+    shown = dict(pt.choices("\x1b[31m./c.py\x1b[0m\nthen ./c.py\n", "paths"))
+    assert "\x1b[0;31m" not in shown["./c.py"]
+    shown = dict(pt.choices("then ./c.py\n\x1b[31m./c.py\x1b[0m\n", "paths"))
+    assert "\x1b[0;31m" in shown["./c.py"]
+    assert [t for t, _ in pt.choices("'foo' \x1b[32m'foo'\x1b[0m\n", "spans")] == ["foo", "'foo'"]  # (the plain one is its own pick)
+    assert [t for t, _ in pt.choices("'foo' \x1b[32mbar\x1b[0m 'foo'\n", "quotes")] == ["foo"]
+
+
+def test_noisy_candidates_are_not_listed():
+    texts = lambda s: [t for _, _, t in pt.find_patterns(s)]
+    assert texts("a/ b foo//bar") == []
+    assert texts("foo(x).bar $.each get().Name") == []
+    assert texts("300.1.1.1 999.1.1.1") == []
+    assert texts("10.0.0.1:80") == ["10.0.0.1:80"]
