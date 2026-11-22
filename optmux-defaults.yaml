@@ -121,6 +121,59 @@
       - Not logged in.*
       - recap[:]
       - /(add-dir|clear|compact|config|context|cost|effort|help|init|login|logout|mcp|model|permissions|resume|status|terminal-setup)
+    # File names and extensions eXtract lists as files beyond the usual `name.ext` (an extension that starts with a digit or
+    # runs past 8 letters, a name without one). Groups of entries, with the same rules as ignore_files: set a group to
+    # replace its list, `[]` to drop it, or add a group of your own. `*.ext` is an extension, anything else a file name
+    # (also matched with a suffix: Dockerfile.dev, Gemfile.lock). Of the names without an extension, only those ending in `file` are here: README or BUILD is too often just a word. Extensions that start with a letter and have up to 8 characters need no entry.
+    +known_files:
+      long_extensions:
+      - "*.7z"
+      - "*.3gp"
+      - "*.3g2"
+      - "*.properties"
+      - "*.xcodeproj"
+      - "*.xcworkspace"
+      - "*.storyboard"
+      - "*.entitlements"
+      - "*.webmanifest"
+      - "*.editorconfig"
+      - "*.gitignore"
+      - "*.gitattributes"
+      - "*.dockerignore"
+      - "*.gitmodules"
+      - "*.terraform"
+      build_files:
+      - Makefile
+      - makefile
+      - GNUmakefile
+      - Dockerfile
+      - Containerfile
+      - Rakefile
+      - Gemfile
+      - Guardfile
+      - Capfile
+      - Berksfile
+      - Brewfile
+      - Podfile
+      - Fastfile
+      - Appfile
+      - Matchfile
+      - Snapfile
+      - Vagrantfile
+      - Procfile
+      - Jenkinsfile
+      - Justfile
+      - Taskfile
+      - Tiltfile
+      - Earthfile
+      - Caddyfile
+      - Pipfile
+      - Steepfile
+      - Dangerfile
+      - Cartfile
+      - Puppetfile
+      - Thorfile
+      - Buildfile
     +lsp:
       python:
         +extensions:
