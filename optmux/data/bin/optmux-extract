@@ -506,14 +506,16 @@ def ago(seconds):
 
 
 def history_rows(log, now=None, extra=()):
-    """C-r's list, most recently used first, one row per query: `query \\t last used, uses this week`. Queries in
+    """C-r's list, most recently used first, one row per query: `last used, uses this week \\t query`.
+    The first column is a fixed HISTORY_META_WIDTH wide, so the queries line up where the prompt ends. Queries in
     `extra` (the per-filter M-p histories, e.g. from before the log existed) follow, once, without a time."""
     now = time.time() if now is None else now
     rows = []
     for q, ts in sorted(log.items(), key=lambda kv: -kv[1][0]):
         week = sum(1 for t in ts if now - t < 604800)
-        rows.append(f"{q}\t\x1b[2m{ago(max(0, now - ts[0]))}" + (f"  ×{week}" if week > 1 else "") + "\x1b[0m")
-    rows += [q for q in dict.fromkeys(CONTROL_CHARS.sub(" ", q) for q in extra) if q.strip() and q not in log]
+        meta = f"{ago(max(0, now - ts[0])):<4}" + (f"×{week}" if week > 1 else "")
+        rows.append(f"\x1b[2m{meta:<{HISTORY_META_WIDTH}}\x1b[0m\t{q}")
+    rows += [" " * HISTORY_META_WIDTH + "\t" + q for q in dict.fromkeys(CONTROL_CHARS.sub(" ", q) for q in extra) if q.strip() and q not in log]
     return rows
 
 
@@ -852,6 +854,8 @@ TITLE = " OPTMUX eXtract "  # as the shortcuts open it (optmux-defaults.yaml): d
 HISTORY_ROWS = 12  # most rows the history popup takes
 HISTORY_STYLE = "bg=colour237"  # the history popup's own look, so it reads as something on top, not eXtract
 HISTORY_FZF_COLORS = "bg:237,bg+:239"
+HISTORY_META_WIDTH = 9  # (+ the tab, shown as one column, + fzf's 2-column gutter = the width of HISTORY_PROMPT)
+HISTORY_PROMPT = "history >".ljust(HISTORY_META_WIDTH + 3)
 
 
 def has_floating_panes(version):
@@ -993,9 +997,9 @@ def show_history_popup(d, state):
     below = client_height - state["status_below"] - prompt_row  # (rows from the prompt down to the status line)
     layout, first = ("reverse", prompt_row) if below >= lines else ("default", prompt_row - lines + 1)
     with open(at("paint"), "w") as f:  # (the look and the prompt, put up before fzf is, so the popup never shows empty)
-        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1Hhistory > ")
-    script = (f'cat "$1/paint"; : > "$1/started"; fzf --ansi --layout="$2" --no-info --delimiter="\t" --nth=1 --tiebreak=index '
-              f'--prompt="history > " --color="{HISTORY_FZF_COLORS}" --print-query --no-scrollbar --query="$(cat "$1/query")" '
+        f.write(f"\x1b[48;5;237m\x1b[2J\x1b[{1 if layout == 'reverse' else lines};1H{HISTORY_PROMPT}")
+    script = (f'cat "$1/paint"; : > "$1/started"; fzf --ansi --layout="$2" --no-info --delimiter="\t" --nth=2 --tabstop=1 --tiebreak=index '
+              f'--prompt="{HISTORY_PROMPT}" --color="{HISTORY_FZF_COLORS}" --print-query --no-scrollbar --query="$(cat "$1/query")" '
               f'< "$1/history" > "$1/out"; echo $? > "$1/status"')
     # display-popup's -y is the row under the popup (as for menus). While eXtract's popup is still closing, tmux
     # ignores this one (and we never started): so try again a moment later
@@ -1011,7 +1015,7 @@ def show_history_popup(d, state):
             accepted = f.read().strip() in ("0", "1")  # (1: Enter on a typed query nothing in the history matches)
         with open(at("out")) as f:
             typed, *picked = f.read().split("\n")[:-1] or [""]
-        chosen = (picked[0].split("\t", 1)[0] if picked else typed) if accepted else ""
+        chosen = (picked[0].split("\t", 1)[-1] if picked else typed) if accepted else ""
     except OSError:
         chosen = ""
     if not chosen:
