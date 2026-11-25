@@ -292,43 +292,55 @@ def test_patterns_are_drawn_with_the_icons_of_the_icons_setting(monkeypatch):
 
 def test_the_queries_and_items_of_a_filter_are_remembered_newest_first(monkeypatch):
     options = {}
-    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
-    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
-    assert pt.load_history("spans") == []  # nothing yet
-    pt.save_state("spans", "bash", "bashrc")
-    pt.save_state("spans", ".tmp/", ".tmp/x")
-    pt.save_state("spans", "bash", '  an "item"\twith odd bits')  # again: moves to the front, once
-    assert pt.load_history("spans") == [("bash", '  an "item"\twith odd bits'), (".tmp/", ".tmp/x")]  # (leading space and all)
-    assert pt.load_history("lines") == []  # each filter has its own
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__((a[3], a[4]), a[5]))
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: options.get((pane, name), ""))
+    assert pt.load_history("spans", "%1") == []  # nothing yet
+    pt.save_state("spans", "%1", "bash", "bashrc")
+    pt.save_state("spans", "%1", ".tmp/", ".tmp/x")
+    pt.save_state("spans", "%1", "bash", '  an "item"\twith odd bits')  # again: moves to the front, once
+    assert pt.load_history("spans", "%1") == [("bash", '  an "item"\twith odd bits'), (".tmp/", ".tmp/x")]  # (leading space and all)
+    assert pt.load_history("lines", "%1") == []  # each filter has its own
     for n in range(pt.MAX_HISTORY + 5):
-        pt.save_state("spans", f"q{n}", None)
-    assert len(pt.load_history("spans")) == pt.MAX_HISTORY and pt.load_history("spans")[0] == (f"q{pt.MAX_HISTORY + 4}", None)
-    options[pt.STATE_OPTION + "spans"] = "garbage"
-    assert pt.load_history("spans") == []
-    options[pt.STATE_OPTION + "spans"] = '[1, {"query": 5}, {"query": "ok"}]'
-    assert pt.load_history("spans") == [("ok", None)]
+        pt.save_state("spans", "%1", f"q{n}", None)
+    assert len(pt.load_history("spans", "%1")) == pt.MAX_HISTORY and pt.load_history("spans", "%1")[0] == (f"q{pt.MAX_HISTORY + 4}", None)
+    options[("%1", pt.STATE_OPTION + "spans")] = "garbage"
+    assert pt.load_history("spans", "%1") == []
+    options[("%1", pt.STATE_OPTION + "spans")] = '[1, {"query": 5}, {"query": "ok"}]'
+    assert pt.load_history("spans", "%1") == [("ok", None)]
+
+
+def test_each_pane_remembers_its_own_queries(monkeypatch):
+    options = {}
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__((a[3], a[4]), a[5]))
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: options.get((pane, name), ""))
+    pt.save_state("spans", "%1", "gcloud", "gcloud run")
+    pt.save_state("spans", "%2", "^!", "! ls")
+    assert pt.load_history("spans", "%1") == [("gcloud", "gcloud run")]
+    assert pt.load_history("spans", "%2") == [("^!", "! ls")]
+    assert pt.load_history("spans", "%3") == [] and pt.is_stale("spans", "%3")  # (a pane never left starts fresh)
+    assert not pt.is_stale("spans", "%1")
 
 
 def test_the_last_query_goes_stale_after_a_few_minutes(monkeypatch):
     options = {}
-    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
-    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__((a[3], a[4]), a[5]))
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: options.get((pane, name), ""))
     monkeypatch.delenv("OPTMUX_EXTRACT_RESUME_MINUTES", raising=False)
-    assert pt.is_stale("spans")  # (never left: nothing to open on)
-    pt.save_state("spans", "bash", None)
-    assert not pt.is_stale("spans")
+    assert pt.is_stale("spans", "%1")  # (never left: nothing to open on)
+    pt.save_state("spans", "%1", "bash", None)
+    assert not pt.is_stale("spans", "%1")
     now = pt.time.time()
     monkeypatch.setattr(pt.time, "time", lambda: now + 10 * 60)
-    assert pt.is_stale("spans")
-    assert pt.load_history("spans") == [("bash", None)]  # (still there for M-p)
+    assert pt.is_stale("spans", "%1")
+    assert pt.load_history("spans", "%1") == [("bash", None)]  # (still there for M-p)
     monkeypatch.setenv("OPTMUX_EXTRACT_RESUME_MINUTES", "-1")
-    assert not pt.is_stale("spans")
+    assert not pt.is_stale("spans", "%1")
     monkeypatch.setenv("OPTMUX_EXTRACT_RESUME_MINUTES", "60")
-    assert not pt.is_stale("spans")
+    assert not pt.is_stale("spans", "%1")
     monkeypatch.setattr(pt.time, "time", lambda: now - 3600)  # (the clock went back: the query is not "from the future")
-    assert pt.is_stale("spans")
-    options[pt.STATE_OPTION + "spans"] = '[{"query": "old"}]'  # (saved before timestamps existed)
-    assert pt.is_stale("spans")
+    assert pt.is_stale("spans", "%1")
+    options[("%1", pt.STATE_OPTION + "spans")] = '[{"query": "old"}]'  # (saved before timestamps existed)
+    assert pt.is_stale("spans", "%1")
 
 
 @pytest.mark.skipif(shutil.which("fzf") is None, reason="fzf not installed")
@@ -374,20 +386,20 @@ def test_a_long_item_gets_its_cursor_back_too():
 
 def test_save_state_dedupes_and_keeps_empty_history_alone(monkeypatch):
     options = {}
-    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
-    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
-    pt.save_state("lines", "ssh", "ssh host")
-    assert [q for q, _ in pt.load_history("lines")] == ["ssh"]
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__((a[3], a[4]), a[5]))
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: options.get((pane, name), ""))
+    pt.save_state("lines", "%1", "ssh", "ssh host")
+    assert [q for q, _ in pt.load_history("lines", "%1")] == ["ssh"]
 
 
 def test_an_emptied_query_is_saved_first_and_keeps_its_item(monkeypatch):
     options = {}
-    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__(a[2], a[3]))
-    monkeypatch.setattr(pt, "show_option", lambda name: options.get(name, ""))
-    pt.save_state("lines", "", "first item")
-    pt.save_state("lines", "ssh", "ssh host")
-    pt.save_state("lines", "", None)  # C-u, then Esc
-    assert pt.load_history("lines") == [("", "first item"), ("ssh", "ssh host")]
+    monkeypatch.setattr(pt, "tmux", lambda *a, **k: options.__setitem__((a[3], a[4]), a[5]))
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: options.get((pane, name), ""))
+    pt.save_state("lines", "%1", "", "first item")
+    pt.save_state("lines", "%1", "ssh", "ssh host")
+    pt.save_state("lines", "%1", "", None)  # C-u, then Esc
+    assert pt.load_history("lines", "%1") == [("", "first item"), ("ssh", "ssh host")]
 
 
 def test_osc52_copy_goes_to_our_own_terminal_not_whichever_client_tmux_likes(monkeypatch):
@@ -714,7 +726,7 @@ def test_back_from_the_history_eXtract_keeps_the_query_picked_even_when_nothing_
         return type("P", (), {"returncode": 0, "stdout": ""})()
 
     monkeypatch.setattr(pt, "tmux", lambda *a, **k: type("P", (), {"returncode": 0, "stdout": "80"})())
-    monkeypatch.setattr(pt, "show_option", lambda name: "")
+    monkeypatch.setattr(pt, "show_option", lambda name, pane=None: "")
     monkeypatch.setattr(pt, "choices", lambda capture, mode, width=None: [("one", "one")])
     monkeypatch.setattr(pt.subprocess, "run", fake_run)
     pt.pick("%0", resume=dict(mode="spans", query="zzz-no-match", item=None))
