@@ -416,16 +416,23 @@ def load_buffer(text, clipboard=False):
     tmux("load-buffer", *(["-w"] if clipboard else []), "-b", BUFFER, "-", input=text, text=True)
 
 
-def show_option(name):
-    return subprocess.run(["tmux", "show-options", "-gqv", name], capture_output=True, text=True).stdout.strip()
+def scope(pane):
+    """The tmux option flags for the pane's own options (what eXtract remembers per pane), else the server's."""
+    return ["-p", "-t", pane] if pane else ["-g"]
+
+
+def show_option(name, pane=None):
+    """An option's value: the one set on `pane` itself (not inherited, so another pane's state never leaks in), else the server's."""
+    flags = ["-pqv", "-t", pane] if pane else ["-gqv"]
+    return subprocess.run(["tmux", "show-options", *flags, name], capture_output=True, text=True).stdout.strip()
 
 
 def show_server_option(name):
     return subprocess.run(["tmux", "show-options", "-gsv", name], capture_output=True, text=True).stdout.strip()
 
 
-def get_option(name, choices, default):
-    value = show_option(name)
+def get_option(name, choices, default, pane=None):
+    value = show_option(name, pane)
     return value if value in choices else default
 
 
@@ -450,49 +457,49 @@ def copy(text, method):
         raise RuntimeError("no system clipboard command found (pbcopy, wl-copy, xclip, xsel)")
 
 
-STATE_OPTION = "@optmux-extract-at-"  # + the filter: where you left it, newest first (JSON: [{query, item}, ...])
+STATE_OPTION = "@optmux-extract-at-"  # + the filter: where you left it in a pane, newest first (JSON: [{query, item}, ...])
 MAX_ITEM = 300  # characters remembered of an item
 MAX_HISTORY = 30  # queries remembered per filter
 RESUME_MINUTES = 5  # how long the last query stays the starting point (OPTMUX_EXTRACT_RESUME_MINUTES); after that M-p recalls it
 
 
-def load_history(name):
-    """[(query, item)] last left in the filter `name`, newest first (an item may be None: not known)."""
+def load_history(name, pane):
+    """[(query, item)] last left in the filter `name` of `pane`, newest first (an item may be None: not known)."""
     try:
-        entries = json.loads(show_option(STATE_OPTION + name))
+        entries = json.loads(show_option(STATE_OPTION + name, pane))
         return [(e["query"], e.get("item") if isinstance(e.get("item"), str) else None)
                 for e in entries if isinstance(e, dict) and isinstance(e.get("query"), str)]
     except (ValueError, TypeError, KeyError):
         return []
 
 
-def left_at(name):
-    """When the filter `name` was last left (epoch seconds), or 0 when unknown."""
+def left_at(name, pane):
+    """When the filter `name` was last left in `pane` (epoch seconds), or 0 when unknown."""
     try:
-        return float(json.loads(show_option(STATE_OPTION + name))[0].get("at", 0))
+        return float(json.loads(show_option(STATE_OPTION + name, pane))[0].get("at", 0))
     except (ValueError, TypeError, KeyError, IndexError, AttributeError):
         return 0
 
 
-def is_stale(name):
+def is_stale(name, pane):
     try:
         minutes = float(os.environ.get("OPTMUX_EXTRACT_RESUME_MINUTES", RESUME_MINUTES))
     except ValueError:
         minutes = RESUME_MINUTES
-    age = time.time() - left_at(name)
+    age = time.time() - left_at(name, pane)
     return age < 0 or (minutes >= 0 and age > minutes * 60)  # (a clock that stepped back is no reason to keep it fresh)
 
 
-def save_state(name, query, item):
-    """Remember where the filter `name` was left: first in its history, the same query before it dropped."""
+def save_state(name, pane, query, item):
+    """Remember where the filter `name` was left in `pane`: first in its history, the same query before it dropped."""
     try:
-        before = load_history(name)
+        before = load_history(name, pane)
         if not item:  # (no item known now: keep the one this query had)
             item = next((i for q, i in before if q == query[:MAX_QUERY]), None)
         entries = [(query[:MAX_QUERY], item[:MAX_ITEM] if item else None)]
         entries += [e for e in before if e[0] != entries[0][0]]
         at = time.time()
-        tmux("set-option", "-g", STATE_OPTION + name,
+        tmux("set-option", *scope(pane), STATE_OPTION + name,
              json.dumps([{"query": q, "item": i, "at": at if n == 0 else 0} for n, (q, i) in enumerate(entries[:MAX_HISTORY])],
                         ensure_ascii=False))
     except (subprocess.CalledProcessError, OSError):
@@ -1053,7 +1060,7 @@ def show_history_popup(d, state):
     left, top, width, height = state["box"]
     def at(name):
         return os.path.join(d, name)
-    rows = history_rows(load_query_log(), extra=[q for name in ("spans", "lines") for q, _ in load_history(name)])
+    rows = history_rows(load_query_log(), extra=[q for name in ("spans", "lines") for q, _ in load_history(name, state["pane"])])
     with open(at("history"), "w") as f:
         f.write("\n".join(rows) + "\n" if rows else "")
     prompt_row = top + height - 2  # eXtract's prompt: the last row inside its border
@@ -1135,15 +1142,15 @@ def run_pick(pane, resume, d):
         capture_output=True, text=True,
     ).stdout
     width = int(tmux("display-message", "-p", "-t", pane, "#{pane_width}", capture_output=True, text=True).stdout)
-    mode = get_option(FILTER_OPTION, FILTERS + list(KINDS), FILTERS[0])
-    if mode in KINDS and is_stale("spans"):  # (like the query, a kind view is a few minutes' business: then all spans)
+    mode = get_option(FILTER_OPTION, FILTERS + list(KINDS), FILTERS[0], pane)
+    if mode in KINDS and is_stale("spans", pane):  # (like the query, a kind view is a few minutes' business: then all spans)
         mode = "spans"
-        tmux("set-option", "-g", FILTER_OPTION, mode)  # (for good: leaving refreshes the time, and the old kind must not come back)
+        tmux("set-option", *scope(pane), FILTER_OPTION, mode)  # (for good: leaving refreshes the time, and the old kind must not come back)
     copier = get_option(COPY_OPTION, COPIERS, COPIERS[0])
     paths = get_option(PATH_OPTION, PATH_STYLES, PATH_STYLES[0])
     # opens on the filter's last query and item (M-p steps `back` through the earlier ones, M-n forward to a fresh start)
-    earlier = load_history(history_name(mode))
-    fresh = not earlier or is_stale(history_name(mode))  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
+    earlier = load_history(history_name(mode), pane)
+    fresh = not earlier or is_stale(history_name(mode), pane)  # (a query left minutes ago is likely still wanted; one from hours ago is in the way)
     query, remembered = ("", None) if fresh else earlier[0]
     back, recalled = (-1 if fresh else 0), False
     if resume:  # (back from C-r's history: the view it was in, the query picked, and the item when it is the same query)
@@ -1195,7 +1202,7 @@ def run_pick(pane, resume, d):
         if os.path.exists(marker):  # (C-r is a binding, not a key fzf reports: it left a mark)
             key = "ctrl-r"
         if key in ("alt-p", "alt-n"):  # older and newer queries of this filter, each with the item the cursor was on
-            earlier = load_history(history_name(shown))
+            earlier = load_history(history_name(shown), pane)
             was = back
             back = max(-1, min(back + (1 if key == "alt-p" else -1), len(earlier) - 1))
             if back != was:  # (at either end there is nowhere to go: what you typed stays)
@@ -1204,7 +1211,7 @@ def run_pick(pane, resume, d):
             continue
         # however you leave (Esc too), the filter is left as it is, an emptied query included: `C-u`, then Esc, stays cleared
         if key not in ("ctrl-t", "alt-r"):  # (switching the copy method stays in the same session, and would shift the M-p index)
-            save_state(history_name(shown), query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
+            save_state(history_name(shown), pane, query, chosen[-1] if chosen else remembered)  # (the newest pick, or where it was)
         if key not in ("ctrl-t", "alt-r"):
             log_query(query)  # (what C-r recalls: anything you left a query as, picked from or not)
         if key == "ctrl-r":  # the history: this popup closes, and it opens (see start_history)
@@ -1219,7 +1226,7 @@ def run_pick(pane, resume, d):
             # C-M-x steps through the views, from the one on screen (not `mode`, which may have fallen through)
             mode = KIND_KEYS[key] if key in KIND_KEYS else cycle(VIEW_ORDER, shown, -1 if key == "alt-x" else 1)
             remembered, back = None, -1
-            tmux("set-option", "-g", FILTER_OPTION, mode)
+            tmux("set-option", *scope(pane), FILTER_OPTION, mode)
         elif key == "ctrl-t":
             copier = cycle(COPIERS, copier)
             tmux("set-option", "-g", COPY_OPTION, copier)
